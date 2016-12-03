@@ -1,0 +1,6 @@
+[package]
+name = "mles"
+version = "0.1.0"
+authors = ["jq-rs <juhamatk@gmail.com>"]
+
+[dependencies]
