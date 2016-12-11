@@ -7,8 +7,10 @@ use tokio_core::reactor::Core;
 use tokio_core::net::TcpListener;
 use std::collections::HashMap;
 use futures::Future;
+use std::sync::{Arc, Mutex};
 
 mod userchannel;
+mod messaging;
 
 fn main() {
     let mut core = Core::new().unwrap();
@@ -18,18 +20,14 @@ fn main() {
     let addr = listener.local_addr().unwrap();
     println!("Listening for connections on {}", addr);
 
+    let mut channel_db = userchannel::ChannelDb{ channelname: "Rust".to_string(), users: HashMap::new(), values: Vec::new() };
+
     let clients = listener.incoming();
-    let welcomes = clients.map(|(socket, _peer_addr)| {
-        {
-            let mut channel_db = userchannel::ChannelDb{ channelname: "Rust".to_string(), users: HashMap::new(), values: Vec::new() };
-            //channel_db = channel_db.join_channel(&socket, "Sampo");
-            //let socket_db = channel_db.users.get_mut("Sampo").unwrap(); 
-            tokio_core::io::write_all(socket, b"Moikka!\n")
-        }
+    let welcomes = clients.and_then(|(socket, _peer_addr)| {
+        //channel_db = channel_db.join_channel(&socket, "Sampo");
+        tokio_core::io::write_all(socket, b"Hello!\n")
     });
-    let handle = core.handle();
-    let server = welcomes.for_each(|future| {
-        handle.spawn(future.then(|_| Ok(())));
+    let server = welcomes.for_each(|(_socket, _welcome)| {
         Ok(())
     });
 

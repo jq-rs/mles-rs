@@ -11,7 +11,7 @@ use tokio_core::net::TcpListener;
 use tokio_core::net::TcpStream;
 //use std::net::TcpStream;
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct ChannelDb<'a> {
     pub channelname: String,
     pub users: HashMap<String, &'a TcpStream>,
@@ -44,9 +44,9 @@ impl<'a> ChannelDb<'a> {
         }
         return false;
     }
-
 }
 
+/*
 #[cfg(test)]
 
 mod tests {
@@ -119,3 +119,4 @@ mod tests {
         }
     }
 }
+*/
