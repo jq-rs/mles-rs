@@ -7,28 +7,23 @@
 extern crate tokio_core;
 
 use std::collections::HashMap;
-//use tokio_core::net::TcpStream;
-use std::net::TcpStream;
+use tokio_core::net::TcpListener;
+use tokio_core::net::TcpStream;
+//use std::net::TcpStream;
 
-#[derive(Debug)]
-struct ChannelDb<'a> {
-    channels: HashMap<String, ChannelDb<'a>>,
-    users: HashMap<String, &'a TcpStream>,
-    values: Vec<Vec<String>>
+#[derive(Clone)]
+pub struct ChannelDb<'a> {
+    pub channelname: String,
+    pub users: HashMap<String, &'a TcpStream>,
+    pub values: Vec<Vec<String>>
 }
 
 impl<'a> ChannelDb<'a> {
-    pub fn join_channel(mut self, socket: &'a TcpStream, userid: &str, channelid: &str) -> ChannelDb<'a> {
+    pub fn join_channel(mut self, socket: &'a TcpStream, userid: &str) -> ChannelDb<'a> {
         let user_exists = self.check_user_existence(userid);
 
         if !user_exists {
             self.users.insert(userid.to_string(), socket);
-        }
-
-        let channel_exists = self.check_channel_existence(channelid);
-        if !channel_exists {
-            let channel = ChannelDb{ channels: HashMap::new(), users: HashMap::new(), values: Vec::new() };
-            self.channels.insert(channelid.to_string(), channel);
         }
         self
     }
@@ -36,10 +31,6 @@ impl<'a> ChannelDb<'a> {
     pub fn leave_channel(mut self, userid: &str, channelid: &str) -> ChannelDb<'a> {
         let user_exists = self.check_user_existence(userid);
         if user_exists {
-            let channel_exists = self.check_channel_existence(channelid);
-            if channel_exists {
-                self.channels.remove(channelid);
-            }
             self.users.remove(userid);
         }
         self
@@ -53,17 +44,9 @@ impl<'a> ChannelDb<'a> {
         }
         return false;
     }
-
-    pub fn check_channel_existence(&'a self, channelid: &str) -> bool {
-        let opt = self.channels.get(channelid);
-        match opt {
-            Some(_) => return true,
-            None => {}
-        }
-        return false;
-    }
 }
 
+/*
 #[cfg(test)]
 
 mod tests {
@@ -136,3 +119,4 @@ mod tests {
         }
     }
 }
+*/
