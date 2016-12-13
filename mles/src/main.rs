@@ -1,3 +1,6 @@
+#![feature(proc_macro)]
+#[macro_use]
+extern crate serde_derive;
 
 extern crate futures;
 extern crate tokio_core;

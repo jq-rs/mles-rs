@@ -7,4 +7,5 @@ authors = ["jq-rs <juhamatk@gmail.com>"]
 futures = "0.1"
 tokio-core = "0.1"
 serde = "0.8.19"
+serde_derive = "0.8.19"
 serde_cbor = "0.4"
