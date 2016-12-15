@@ -52,9 +52,7 @@ fn main() {
             });
             let thr_feed = rx.recv().unwrap();
             println!("Got thr_feed");
-            thr_feed.send(socket.unwrap()).unwrap();
             spawned.insert("Channel", thr_feed);
-            continue;
         }
         let thr_socket = spawned.get_mut("Channel").unwrap();
         thr_socket.send(socket.unwrap()).unwrap();
