@@ -13,6 +13,10 @@ use std::sync::mpsc::channel;
 use std::net::TcpListener;
 use std::collections::HashMap;
 use std::io::Write;
+//use std::io::Read;
+use std::io;
+use std::io::prelude::*;
+use std::io::BufReader;
 //use futures::Future;
 use std::sync::{Arc, Mutex};
 
@@ -34,7 +38,12 @@ fn main() {
          * 2. If it does not exist, spawn new thread 
          * 3. Send socket to thread
          */
-        if !spawned.contains_key("Channel") { 
+        let mut result_str = String::new();
+        let mut socket = socket.unwrap();
+        let mut stream = BufReader::new(socket.try_clone().unwrap());
+        let len  = stream.read_line(&mut result_str);
+        println!("Got string {}", result_str);
+        if !spawned.contains_key(&result_str) { 
             let tx = tx.clone();
             thread::spawn(move|| {
                 let (thr_tx, thr_rx) = channel();
@@ -43,17 +52,21 @@ fn main() {
                 let mut channel_db = userchannel::ChannelDb{ channelname: "Rust".to_string(), users: HashMap::new(), values: Vec::new() };
 
                 tx.send(thr_tx.clone()).unwrap();
+                let mut thr_sock: std::net::TcpStream = thr_rx.recv().unwrap();
+                println!("Got thr sock");
                 loop {
-                    let mut thr_sock: std::net::TcpStream = thr_rx.recv().unwrap();
-                    println!("Got thr sock");
-                    thr_sock.write(b"Hello World\r\n").unwrap();
+                    let mut bufstr = String::new();
+                    let mut stream = BufReader::new(thr_sock.try_clone().unwrap());
+                    let len = stream.read_line(&mut bufstr);
+
+                    thr_sock.write(&bufstr.into_bytes()).unwrap();
                 }
             });
             let thr_feed = rx.recv().unwrap();
             println!("Got thr_feed");
-            spawned.insert("Channel", thr_feed);
+            spawned.insert(result_str.clone(), thr_feed);
         }
-        let thr_socket = spawned.get_mut("Channel").unwrap();
-        thr_socket.send(socket.unwrap()).unwrap()
+        let thr_socket = spawned.get_mut(&result_str).unwrap();
+        thr_socket.send(socket).unwrap()
     }
 }
