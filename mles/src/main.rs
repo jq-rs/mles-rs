@@ -34,8 +34,7 @@ fn main() {
          * 2. If it does not exist, spawn new thread 
          * 3. Send socket to thread
          */
-        cnt += 1;
-        if(1 == cnt) {
+        if !spawned.contains_key("Channel") { 
             let tx = tx.clone();
             thread::spawn(move|| {
                 let (thr_tx, thr_rx) = channel();
@@ -55,6 +54,6 @@ fn main() {
             spawned.insert("Channel", thr_feed);
         }
         let thr_socket = spawned.get_mut("Channel").unwrap();
-        thr_socket.send(socket.unwrap()).unwrap();
+        thr_socket.send(socket.unwrap()).unwrap()
     }
 }
