@@ -22,6 +22,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 //use futures::Future;
 use std::sync::{Arc, Mutex};
+use std::io::{Error, ErrorKind};
 
 mod userchannel;
 mod messaging;
@@ -58,6 +59,7 @@ fn main() {
                 tx.send(thr_tx.clone()).unwrap();
                 println!("Got thr sock");
                 loop {
+                    let mut removals = Vec::new();
                     match thr_rx.try_recv() {
                         Ok(val) => { 
                             let thr: TcpStream = val;
@@ -81,9 +83,21 @@ fn main() {
                                         }
                                     }
                                 }
+                                else {
+                                    /* Socket closed, drop user */
+                                    removals.push(user.clone());
+                                }
                             },
-                            Err(_) => {}
+                            Err(_) => {
+                                //println!("{:?}", err.kind());
+                            }
                         }
+                    }
+                    for removal in &removals {
+                        users.remove(removal);
+                    }
+                    if cnt > 0 && users.is_empty() {
+                        break;
                     }
                 }
             });
@@ -92,6 +106,6 @@ fn main() {
             spawned.insert(result_str.clone(), thr_feed);
         }
         let thr_socket = spawned.get_mut(&result_str).unwrap();
-        thr_socket.send(socket).unwrap()
+        thr_socket.send(socket).unwrap();
     }
 }
