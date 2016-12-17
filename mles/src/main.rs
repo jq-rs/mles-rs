@@ -76,7 +76,7 @@ fn main() {
                                 if(len > 0) {
                                     for (another_user, mut thr_sock) in &users {
                                         if user != another_user {
-                                            let mut msg = another_user.to_string();
+                                            let mut msg = user.to_string();
                                             msg.push_str(":");
                                             msg.push_str(&bufstr);
                                             thr_sock.write(&msg.into_bytes()).unwrap();
