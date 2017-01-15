@@ -28,7 +28,7 @@ mod userchannel;
 mod messaging;
 
 fn main() {
-    let address = "127.0.0.1:8080";
+    let address = "0.0.0.0:8081";
     let listener = TcpListener::bind(&address).unwrap();
     let mut spawned = HashMap::new();
     let mut cnt = 0;
