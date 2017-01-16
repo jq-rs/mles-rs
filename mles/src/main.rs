@@ -1,4 +1,3 @@
-#![feature(proc_macro)]
 #[macro_use]
 extern crate serde_derive;
 
@@ -23,9 +22,11 @@ use std::io::BufReader;
 //use futures::Future;
 use std::sync::{Arc, Mutex};
 use std::io::{Error, ErrorKind};
+use std::str;
 
 mod userchannel;
 mod messaging;
+use messaging::*;
 
 fn main() {
     let address = "0.0.0.0:8081";
@@ -43,21 +44,27 @@ fn main() {
          * 2. If it does not exist, spawn new thread 
          * 3. Send socket to thread
          */
-        let mut result_str = String::new();
         let mut socket = socket.unwrap();
         let mut stream = BufReader::new(socket.try_clone().unwrap());
+<<<<<<< HEAD
+        let mut buf = vec![0;80];
+        let len = stream.read(&mut buf);
+        let decoded_msg = messaging::message_decode(&buf);
+
+        socket.set_nodelay(true);
+=======
         let len = stream.read_line(&mut result_str);
-        println!("Got string {}", result_str);
+        //println!("Got string {}", result_str);
+>>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
         socket.set_read_timeout(option);
-        if !spawned.contains_key(&result_str) { 
+        if !spawned.contains_key(&decoded_msg.message[1]) { 
             let tx = tx.clone();
-            let result_str = result_str.clone();
             thread::spawn(move|| {
                 let (thr_tx, thr_rx) = channel();
-                println!("Spawned: Sending socket");
+                println!("Spawned: New channel created!");
                 let mut users = HashMap::new();
                 tx.send(thr_tx.clone()).unwrap();
-                println!("Got thr sock");
+                //println!("Got thr sock");
                 loop {
                     let mut removals = Vec::new();
                     match thr_rx.try_recv() {
@@ -66,19 +73,31 @@ fn main() {
                             cnt += 1;
                             users.insert(cnt, thr);
                         },
-                        Err(_) => {}
+                Err(_) => {}
                     }
-                    let mut bufstr = String::new();
+                    let mut bufstr = vec![0; 80];
                     for (user, thr_socket) in &users {
                         let mut stream = BufReader::new(thr_socket.try_clone().unwrap());
-                        match stream.read_line(&mut bufstr) {
+                        match stream.read(&mut bufstr) {
                             Ok(len) => {
+<<<<<<< HEAD
+                                if len > 0 {
+                                    for (another_user, mut thr_sock) in &users {
+                                        if user != another_user {
+                                            let mut msg = String::new();
+                                            let s = str::from_utf8(bufstr.as_slice()).unwrap();
+                                            //msg.push_str(":");
+=======
                                 if(len > 0) {
+                                    println!("Len is {:?}", len);
                                     for (another_user, mut thr_sock) in &users {
                                         if user != another_user {
                                             let mut msg = user.to_string();
+                                            let s = str::from_utf8(bufstr.as_slice()).unwrap();
                                             msg.push_str(":");
-                                            msg.push_str(&bufstr);
+>>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
+                                            msg.push_str(s);
+                                            println!("Msg is {:?}", s);
                                             thr_sock.write(&msg.into_bytes()).unwrap();
                                         }
                                     }
@@ -88,9 +107,15 @@ fn main() {
                                     removals.push(user.clone());
                                 }
                             },
+<<<<<<< HEAD
+                                Err(_) => {
+                                    // println!("Error!");
+                                }
+=======
                             Err(_) => {
-                                //println!("{:?}", err.kind());
+                                println!("Error!");
                             }
+>>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
                         }
                     }
                     for removal in &removals {
@@ -102,10 +127,15 @@ fn main() {
                 }
             });
             let thr_feed = rx.recv().unwrap();
-            println!("Got thr_feed");
+<<<<<<< HEAD
+            println!("Channel {}", decoded_msg.message[1]);
+            spawned.insert(decoded_msg.message[1].clone(), thr_feed);
+=======
+            //println!("Got thr_feed");
             spawned.insert(result_str.clone(), thr_feed);
+>>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
         }
-        let thr_socket = spawned.get_mut(&result_str).unwrap();
+        let thr_socket = spawned.get_mut(&decoded_msg.message[1]).unwrap();
         thr_socket.send(socket).unwrap();
     }
 }

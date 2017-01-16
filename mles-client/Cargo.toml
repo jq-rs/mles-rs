@@ -6,6 +6,13 @@ authors = ["jq-rs <juhamatk@gmail.com>"]
 [dependencies]
 futures = "0.1"
 tokio-core = "0.1"
+<<<<<<< HEAD
+serde = "0.8.19"
+serde_derive = "0.8.19"
+serde_cbor = "0.4"
+=======
+ncurses = "5.85.0"
 #serde = "0.8.19"
 #serde_derive = "0.8.19"
 #serde_cbor = "0.4"
+>>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
