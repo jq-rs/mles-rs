@@ -6,13 +6,25 @@ pub struct Msg {
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
-    let encoded = serde_cbor::to_vec(msg).unwrap();
-    encoded
+    let encoded = serde_cbor::to_vec(msg);
+    match encoded {
+        Ok(encoded) => encoded,
+        Err(err) => {
+            println!("Error on encode: {}", err);
+            Vec::new()
+        }
+    }
 }
 
 pub fn message_decode(slice: &[u8]) -> Msg {
-    let value: Msg = serde_cbor::from_slice(slice).unwrap();
-    value
+    let value = serde_cbor::from_slice(slice);
+    match value {
+        Ok(value) => value,
+        Err(err) => {
+            println!("Error on decode: {}", err);
+            Msg { message: Vec::new() } // return empty vec in case of error
+        }
+    }
 }
 
 #[cfg(test)]

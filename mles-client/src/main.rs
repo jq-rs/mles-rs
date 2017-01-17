@@ -1,25 +1,9 @@
 #[macro_use]
 extern crate serde_derive;
 
-<<<<<<< HEAD
-=======
-//! A simple client to connect Mles server based on Tokio connect.rs example.
-//! 
-//! This example will connect to a server specified in the argument list and
-//! then forward all data read on stdin to the server, printing out all data
-//! received on stdout.
-//! 
-//! Note that this is not currently optimized for performance, especially around
-//! buffer management. Rather it's intended to show an example of working with a
-//! client.
-//!
->>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
-
-#![feature(unicode)]
 
 extern crate futures;
 extern crate tokio_core;
-<<<<<<< HEAD
 extern crate serde_cbor;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -28,18 +12,26 @@ pub struct Msg {
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
-    let encoded = serde_cbor::to_vec(msg).unwrap();
-    encoded
+    let encoded = serde_cbor::to_vec(msg);
+    match encoded {
+        Ok(encoded) => encoded,
+        Err(err) => {
+            println!("Error on encode: {}", err);
+            Vec::new()
+        }
+    }
 }
 
 pub fn message_decode(slice: &[u8]) -> Msg {
-    let value: Msg = serde_cbor::from_slice(slice).unwrap();
-    value
+    let value = serde_cbor::from_slice(slice);
+    match value {
+        Ok(value) => value,
+        Err(err) => {
+            println!("Error on decode: {}", err);
+            Msg { message: Vec::new() } // return empty vec in case of error
+        }
+    }
 }
-
-=======
-extern crate ncurses;
->>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
 
 use std::env;
 use std::io::{self, Read, Write};
@@ -51,9 +43,6 @@ use futures::sync::mpsc;
 use tokio_core::reactor::Core;
 use tokio_core::io::{Io, EasyBuf, Codec};
 use tokio_core::net::TcpStream;
-
-use std::char;
-use ncurses::*;
 
 fn main() {
     // Parse what address we're going to connect to
@@ -77,7 +66,17 @@ fn main() {
         let (sink, stream) = stream.framed(Bytes).split();
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
-            stdout.write_all(buf.as_slice())
+            let decoded = message_decode(buf.as_slice());
+            let mut msg = "".to_string();
+            if 0 == decoded.message.len() {
+                println!("Error happened");
+            }
+            else {
+                msg.push_str(decoded.message[0].as_str());
+                msg.push_str(":");
+                msg.push_str(decoded.message[2].as_str());
+            }
+            stdout.write_all(&msg.into_bytes())
         });
 
         send_stdin.map(|_| ())
@@ -86,7 +85,6 @@ fn main() {
     });
 
     core.run(client).unwrap();
-    endwin();
 }
 
 struct Bytes;
@@ -111,7 +109,6 @@ impl Codec for Bytes {
 }
 
 fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
-<<<<<<< HEAD
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
     /* Set user */
@@ -124,7 +121,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     };
     buf.truncate(n-1);
     let user = buf.clone();
-    let userstr = String::from_utf8(buf.clone()).unwrap();
+    let userstr = String::from_utf8_lossy(buf.clone().as_slice());
 
     /* Set channel */
     stdout.write_all(b"Channel?\n");
@@ -136,11 +133,13 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     };
     buf.truncate(n-1);
     let channel = buf.clone();
-    let channelstr = String::from_utf8(buf.clone()).unwrap();
+    let channelstr = String::from_utf8_lossy(buf.clone().as_slice());
 
-    let mut msg =  String::from_utf8(user).unwrap();
+    let mut msg =  String::from_utf8_lossy(user.as_slice());
     msg.push_str("::");
-    msg.push_str(String::from_utf8(channel.clone()).unwrap().as_str());
+    let str =  String::from_utf8_lossy(channel.clone());
+    msg.push_str(str.as_str);
+
     let mut welcome = "Welcome to ".to_string();
     welcome.push_str(msg.as_str());
     welcome.push_str("!\n");
@@ -149,6 +148,8 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let mut msgvec: Vec<String> = Vec::new();
     msgvec.push(userstr);
     msgvec.push(channelstr);
+    let msg = Msg { message: msgvec.clone() };
+    rx = rx.send(message_encode(&msg)).wait().unwrap();
 
     loop {
         let mut buf = vec![0;80];
@@ -159,28 +160,10 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
                 Ok(n) => n,
         };
         buf.truncate(n);
-        msgv.push(String::from_utf8(buf).unwrap());
+        let str =  String::from_utf8_lossy(buf);
+        msgv.push(str);
         let msg = Msg { message: msgv };
         rx = rx.send(message_encode(&msg)).wait().unwrap();
-=======
-    let locale_conf = LcCategory::all;
-    setlocale(locale_conf, "en_US.UTF-8");
-
-    /* Setup ncurses. */
-    initscr();
-    raw();
-
-    loop {
-        let c = getch();
-        let c = char::from_u32(c as u32).unwrap();
-        let mut buf = vec![0;4];
-        c.encode_utf8(&mut buf);
-        buf.truncate(c.len_utf8());
-        if '\n' == c {
-            printw("\n");
-        }
-        refresh();
-        rx = rx.send(buf).wait().unwrap();
->>>>>>> e321903f944f5113a4eca4fbb121c6f099f96ede
     }
-}    
+}
+
