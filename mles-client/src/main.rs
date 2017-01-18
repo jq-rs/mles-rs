@@ -5,6 +5,13 @@ extern crate serde_derive;
 extern crate futures;
 extern crate tokio_core;
 extern crate serde_cbor;
+extern crate byteorder;
+
+pub struct Hdr {
+    payload_type: u8,
+    payload_res: u8,
+    payload_len: u16
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
@@ -43,6 +50,7 @@ use futures::sync::mpsc;
 use tokio_core::reactor::Core;
 use tokio_core::io::{Io, EasyBuf, Codec};
 use tokio_core::net::TcpStream;
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
 fn main() {
     // Parse what address we're going to connect to
@@ -94,7 +102,7 @@ impl Codec for Bytes {
     type Out = Vec<u8>;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> io::Result<Option<EasyBuf>> {
-        if buf.len() > 0 {
+        if buf.len() >= 4 { // 4 is header min size
             let len = buf.len();
             Ok(Some(buf.drain_to(len)))
         } else {
@@ -121,7 +129,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     };
     buf.truncate(n-1);
     let user = buf.clone();
-    let userstr = String::from_utf8_lossy(buf.clone().as_slice());
+    let userstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
 
     /* Set channel */
     stdout.write_all(b"Channel?\n");
@@ -133,23 +141,27 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     };
     buf.truncate(n-1);
     let channel = buf.clone();
-    let channelstr = String::from_utf8_lossy(buf.clone().as_slice());
+    let channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
 
-    let mut msg =  String::from_utf8_lossy(user.as_slice());
-    msg.push_str("::");
-    let str =  String::from_utf8_lossy(channel.clone());
-    msg.push_str(str.as_str);
+    let mut msg = String::from_utf8_lossy(user.as_slice()).into_owned();
+    msg += "::";
+    let str =  String::from_utf8_lossy(channel.clone().as_slice()).into_owned();
+    msg += str.as_str();
 
     let mut welcome = "Welcome to ".to_string();
-    welcome.push_str(msg.as_str());
-    welcome.push_str("!\n");
+    welcome += msg.as_str();
+    welcome += "!\n";
     stdout.write_all(welcome.as_bytes());
 
     let mut msgvec: Vec<String> = Vec::new();
     msgvec.push(userstr);
     msgvec.push(channelstr);
-    let msg = Msg { message: msgvec.clone() };
-    rx = rx.send(message_encode(&msg)).wait().unwrap();
+    let msg = message_encode(&Msg { message: msgvec.clone() });
+    println!("Payload len {}", msg.len());
+    let mut msgv = write_hdr(msg.len());
+    msgv.extend(msg);
+    println!("Msgv {:?}", msgv);
+    rx = rx.send(msgv).wait().unwrap();
 
     loop {
         let mut buf = vec![0;80];
@@ -160,10 +172,21 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
                 Ok(n) => n,
         };
         buf.truncate(n);
-        let str =  String::from_utf8_lossy(buf);
+        let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
         msgv.push(str);
-        let msg = Msg { message: msgv };
-        rx = rx.send(message_encode(&msg)).wait().unwrap();
+        let msg = message_encode(&Msg { message: msgv });
+        println!("Payload len {}", msg.len());
+        let mut msgv = write_hdr(msg.len());
+        msgv.extend(msg);
+        println!("Msgv {:?}", msgv);
+        rx = rx.send(msgv).wait().unwrap();
     }
+}
+
+fn write_hdr(len: usize) -> Vec<u8> {
+    let hdr = (('M' as u32) << 24) | len as u32;
+    let mut msgv = vec![];
+    msgv.write_u32::<BigEndian>(hdr).unwrap();
+    msgv
 }
 
