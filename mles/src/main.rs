@@ -80,13 +80,26 @@ fn main() {
 
     for socket in listener.incoming() {
         /* Check first has anybody removed channels */
+        let mut remrx = false;
         match removedrx.try_recv() {
             Ok(val) => { 
                 let removed_channel: Vec<u8> = val;
                 println!("Removing unused channel {}", String::from_utf8_lossy(removed_channel.as_slice()).into_owned().as_str());
                 spawned.remove(&removed_channel);
+                remrx = true;
             },
             Err(_) => {}
+        }
+        while (remrx) {
+            match removedrx.try_recv() {
+                Ok(val) => { 
+                    let removed_channel: Vec<u8> = val;
+                    println!("Removing unused channel {}", String::from_utf8_lossy(removed_channel.as_slice()).into_owned().as_str());
+                    spawned.remove(&removed_channel);
+                    remrx = true;
+                },
+                Err(_) => { remrx = false; }
+            }
         }
         /* 1. Read incoming msg channel 
          * 2. If it does not exist, spawn new thread 
