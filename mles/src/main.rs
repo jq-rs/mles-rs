@@ -51,10 +51,10 @@ fn read_hdr_type(hdr: &[u8]) -> u32 {
     num >> 24
 }
 
-fn read_hdr_len(hdr: &[u8]) -> u32 { 
+fn read_hdr_len(hdr: &[u8]) -> usize { 
     let mut buf = Cursor::new(&hdr[..]);
     let num = buf.read_u32::<BigEndian>().unwrap();
-    num & 0xfff
+    (num & 0xfff) as usize
 }
 
 fn write_hdr(len: usize) -> Vec<u8> {
@@ -98,21 +98,28 @@ fn main() {
         socket.set_read_timeout(option);
         if !spawned.contains_key(&decoded_msg.message[1]) { 
             let tx = tx.clone();
-            let user = decoded_msg.message[0].clone();
-            println!("Got {}", user);
+            //let user = String::from_utf8_lossy(decoded_msg.message[0].clone().as_slice()).into_owned().as_str();
+            //println!("Got {}", user);
             thread::spawn(move|| {
                 let (thr_tx, thr_rx) = channel();
                 println!("Spawned: New channel created!");
                 let mut users = HashMap::new();
+                let mut messages: Vec<Vec<u8>> = Vec::new();
                 tx.send(thr_tx.clone()).unwrap();
                 loop {
                     let mut removals = Vec::new();
                     match thr_rx.try_recv() {
                         Ok(val) => { 
-                            let thr: TcpStream = val;
+                            let mut thr: TcpStream = val;
                             cnt += 1;
                             println!("Adding {}", cnt);
-                            users.insert(cnt, thr);
+                            users.insert(cnt, thr.try_clone().unwrap());
+
+                            /* If a new user, all push messages to her */
+                            for buf in &messages {
+                                println!("Historial msg is {:?}", buf);
+                                thr.write(buf.as_slice()).unwrap();
+                            }
                         },
                         Err(_) => {}
                     }
@@ -144,7 +151,8 @@ fn main() {
                                 thr_sock.write(buf.as_slice()).unwrap();
                             }
                         }
-                        /* TODO: Add to local db */
+                        /* Add to local db */
+                        messages.push(buf);
                     }
                     for removal in &removals {
                         users.remove(removal);
@@ -155,7 +163,7 @@ fn main() {
                 }
             });
             let thr_feed = rx.recv().unwrap();
-            println!("Channel {}", decoded_msg.message[1]);
+            println!("Channel {}", String::from_utf8_lossy(decoded_msg.message[1].as_slice()).into_owned().as_str());
             spawned.insert(decoded_msg.message[1].clone(), thr_feed);
         }
         let thr_socket = spawned.get_mut(&decoded_msg.message[1]).unwrap();

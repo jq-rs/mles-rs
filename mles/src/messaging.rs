@@ -2,7 +2,7 @@ extern crate serde_cbor;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
-    pub message: Vec<String>,
+    pub message: Vec<Vec<u8>>,
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
