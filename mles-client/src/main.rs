@@ -7,11 +7,18 @@ extern crate tokio_core;
 extern crate serde_cbor;
 extern crate byteorder;
 
-pub struct Hdr {
-    payload_type: u8,
-    payload_res: u8,
-    payload_len: u16
-}
+use std::env;
+use std::io::{self, Read, Write};
+use std::net::SocketAddr;
+use std::thread;
+
+use futures::{Sink, Future, Stream};
+use futures::sync::mpsc;
+use tokio_core::reactor::Core;
+use tokio_core::io::{Io, EasyBuf, Codec};
+use tokio_core::net::TcpStream;
+use std::io::Cursor;
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
@@ -40,17 +47,40 @@ pub fn message_decode(slice: &[u8]) -> Msg {
     }
 }
 
-use std::env;
-use std::io::{self, Read, Write};
-use std::net::SocketAddr;
-use std::thread;
 
-use futures::{Sink, Future, Stream};
-use futures::sync::mpsc;
-use tokio_core::reactor::Core;
-use tokio_core::io::{Io, EasyBuf, Codec};
-use tokio_core::net::TcpStream;
-use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+fn read_n<R>(reader: R, bytes_to_read: u64) -> Vec<u8>
+where R: Read,
+{
+    let mut buf = vec![];
+    let mut chunk = reader.take(bytes_to_read);
+    let status = chunk.read_to_end(&mut buf);
+    match status {
+        Ok(n) => assert_eq!(bytes_to_read as usize, n),
+            _ => return vec![]
+    }
+    buf
+ }
+
+fn read_hdr_type(hdr: &[u8]) -> u32 { 
+    let mut buf = Cursor::new(&hdr[..]);
+    let num = buf.read_u32::<BigEndian>().unwrap();
+    num >> 24
+}
+
+fn read_hdr_len(hdr: &[u8]) -> u32 { 
+    let mut buf = Cursor::new(&hdr[..]);
+    let num = buf.read_u32::<BigEndian>().unwrap();
+    num & 0xfff
+}
+
+fn write_hdr(len: usize) -> Vec<u8> {
+    let hdr = (('M' as u32) << 24) | len as u32;
+    let mut msgv = vec![];
+    msgv.write_u32::<BigEndian>(hdr).unwrap();
+    msgv
+}
+
+
 
 fn main() {
     // Parse what address we're going to connect to
@@ -73,8 +103,11 @@ fn main() {
     let client = tcp.and_then(|stream| {
         let (sink, stream) = stream.framed(Bytes).split();
         let send_stdin = stdin_rx.forward(sink);
-        let write_stdout = stream.for_each(move |buf| {
-            let decoded = message_decode(buf.as_slice());
+        let write_stdout = stream.for_each(move |mut buf| {
+            let payload = buf.split_off(4); // strip header
+            let len = payload.len();
+            println!("Got payload len {}", len);
+            let decoded = message_decode(payload.as_slice());
             let mut msg = "".to_string();
             if 0 == decoded.message.len() {
                 println!("Error happened");
@@ -103,7 +136,17 @@ impl Codec for Bytes {
 
     fn decode(&mut self, buf: &mut EasyBuf) -> io::Result<Option<EasyBuf>> {
         if buf.len() >= 4 { // 4 is header min size
+            if read_hdr_type(buf.as_slice()) != 'M' as u32 {
+                return Ok(None);
+            }
+            let hdr_len = read_hdr_len(buf.as_slice()) as u64;
+            if 0 == hdr_len {
+                return Ok(None);
+            }
             let len = buf.len();
+            if len < (4 + hdr_len as usize) {
+                return Ok(None);
+            }
             Ok(Some(buf.drain_to(len)))
         } else {
             Ok(None)
@@ -181,12 +224,5 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         println!("Msgv {:?}", msgv);
         rx = rx.send(msgv).wait().unwrap();
     }
-}
-
-fn write_hdr(len: usize) -> Vec<u8> {
-    let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = vec![];
-    msgv.write_u32::<BigEndian>(hdr).unwrap();
-    msgv
 }
 

@@ -40,7 +40,7 @@ where R: Read,
     let status = chunk.read_to_end(&mut buf);
     match status {
         Ok(n) => assert_eq!(bytes_to_read as usize, n),
-            _ => panic!("Didn't read enough"),
+            _ => return vec![]
     }
     buf
  }
@@ -55,6 +55,13 @@ fn read_hdr_len(hdr: &[u8]) -> u32 {
     let mut buf = Cursor::new(&hdr[..]);
     let num = buf.read_u32::<BigEndian>().unwrap();
     num & 0xfff
+}
+
+fn write_hdr(len: usize) -> Vec<u8> {
+    let hdr = (('M' as u32) << 24) | len as u32;
+    let mut msgv = vec![];
+    msgv.write_u32::<BigEndian>(hdr).unwrap();
+    msgv
 }
                               
 fn main() {
@@ -109,25 +116,35 @@ fn main() {
                         },
                         Err(_) => {}
                     }
-                    let mut buf = vec![0; 4];
                     for (user, thr_socket) in &users {
                         let stream = thr_socket.try_clone().unwrap();
-                        let buf = read_n(&stream, 4);
-                        if read_hdr_type(buf.as_slice()) != 'M' as u32 {
-                            removals.push(user.clone());
-                            break;
-                        }
-                        let buf = read_n(&stream, read_hdr_len(buf.as_slice()) as u64);
-                        let decoded_msg = messaging::message_decode(buf.as_slice());
-                        if 0 == decoded_msg.message.len() {
+                        let mut buf = read_n(&stream, 4);
+                        if 0 == buf.len() {
                             continue;
                         }
+                        println!("Got buf len {}", buf.len());
+                        if read_hdr_type(buf.as_slice()) != 'M' as u32 {
+                            continue;
+                        }
+                        println!("Ok hdr type");
+                        let hdr_len = read_hdr_len(buf.as_slice()) as u64;
+                        println!("Hdr_len {}", hdr_len);
+                        if 0 == hdr_len {
+                            continue;
+                        }
+                        let payload = read_n(&stream, hdr_len);
+                        println!("Payload len {}", payload.len());
+                        if payload.len() != (hdr_len as usize) {
+                            continue;
+                        }
+                        buf.extend(payload);
                         for (another_user, mut thr_sock) in &users {
                             if user != another_user {
                                 println!("Msg is {:?}", buf);
                                 thr_sock.write(buf.as_slice()).unwrap();
                             }
                         }
+                        /* TODO: Add to local db */
                     }
                     for removal in &removals {
                         users.remove(removal);
