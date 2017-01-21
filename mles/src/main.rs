@@ -32,17 +32,19 @@ mod userchannel;
 mod messaging;
 use messaging::*;
 
-fn read_n<R>(reader: R, bytes_to_read: u64) -> Vec<u8>
+fn read_n<R>(reader: R, bytes_to_read: u64) -> (Result<usize, Error>, Vec<u8>)
 where R: Read,
 {
     let mut buf = vec![];
     let mut chunk = reader.take(bytes_to_read);
     let status = chunk.read_to_end(&mut buf);
+    /*
     match status {
         Ok(n) => assert_eq!(bytes_to_read as usize, n),
-            _ => return vec![]
-    }
-    buf
+        Ok(0) => ,
+        Err(_) => return vec![]
+    }*/
+    (status, buf)
  }
 
 fn read_hdr_type(hdr: &[u8]) -> u32 { 
@@ -74,22 +76,56 @@ fn main() {
     let addr = listener.local_addr().unwrap();
     println!("Listening for connections on {}", addr);
     let (tx, rx) = channel();
+    let (removedtx, removedrx) = channel();
 
     for socket in listener.incoming() {
+        /* Check first has anybody removed channels */
+        match removedrx.try_recv() {
+            Ok(val) => { 
+                let removed_channel: Vec<u8> = val;
+                println!("Removing unused channel {}", String::from_utf8_lossy(removed_channel.as_slice()).into_owned().as_str());
+                spawned.remove(&removed_channel);
+            },
+            Err(_) => {}
+        }
         /* 1. Read incoming msg channel 
          * 2. If it does not exist, spawn new thread 
          * 3. Send socket to thread
          */
         let mut socket = socket.unwrap();
         let mut stream = socket.try_clone().unwrap();
-        let buf = read_n(&stream, 4);
+        let tuple = read_n(&stream, 4);
+        let status = tuple.0;
+        match status {
+            Ok(0) => {
+               continue;
+            },
+            Ok(n) => {},
+            _ => {
+               continue;
+            },
+        }
+        let buf = tuple.1;
+        if 0 == buf.len() {
+            continue;
+        }
         if read_hdr_type(buf.as_slice()) != 'M' as u32 {
             println!("Incorrect payload type");
             continue;
         }
-
         println!("Payload len {}", read_hdr_len(buf.as_slice()));
-        let buf = read_n(&stream, read_hdr_len(buf.as_slice()) as u64);
+        let tuple = read_n(&stream, read_hdr_len(buf.as_slice()) as u64);
+        let status = tuple.0;
+        match status {
+            Ok(0) => {
+               continue;
+            },
+            Ok(n) => {},
+            _ => {
+               continue;
+            },
+        }
+        let buf = tuple.1;
         let decoded_msg = messaging::message_decode(buf.as_slice());
         if 0 == decoded_msg.message.len() {
             continue;
@@ -98,6 +134,8 @@ fn main() {
         socket.set_read_timeout(option);
         if !spawned.contains_key(&decoded_msg.message[1]) { 
             let tx = tx.clone();
+            let removedtx = removedtx.clone();
+            let this_channel = decoded_msg.message[1].clone();
             //let user = String::from_utf8_lossy(decoded_msg.message[0].clone().as_slice()).into_owned().as_str();
             //println!("Got {}", user);
             thread::spawn(move|| {
@@ -125,7 +163,15 @@ fn main() {
                     }
                     for (user, thr_socket) in &users {
                         let stream = thr_socket.try_clone().unwrap();
-                        let mut buf = read_n(&stream, 4);
+                        let tuple = read_n(&stream, 4);
+                        let status = tuple.0;
+                        match status {
+                            Ok(0) => {
+                                removals.push(user.clone());
+                            },
+                            _ => {}
+                        }
+                        let mut buf = tuple.1;
                         if 0 == buf.len() {
                             continue;
                         }
@@ -139,7 +185,15 @@ fn main() {
                         if 0 == hdr_len {
                             continue;
                         }
-                        let payload = read_n(&stream, hdr_len);
+                        let tuple = read_n(&stream, hdr_len);
+                        let status = tuple.0;
+                        match status {
+                            Ok(0) => {
+                                removals.push(user.clone());
+                            },
+                            _ => {}
+                        }
+                        let payload = tuple.1;
                         println!("Payload len {}", payload.len());
                         if payload.len() != (hdr_len as usize) {
                             continue;
@@ -155,9 +209,11 @@ fn main() {
                         messages.push(buf);
                     }
                     for removal in &removals {
+                        println!("Removing user {}", removal);
                         users.remove(removal);
                     }
                     if cnt > 0 && users.is_empty() {
+                        removedtx.send(this_channel).unwrap();
                         break;
                     }
                 }
