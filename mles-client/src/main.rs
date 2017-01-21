@@ -22,7 +22,7 @@ use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
-    message: Vec<String>,
+    message: Vec<Vec<u8>>,
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
@@ -67,10 +67,10 @@ fn read_hdr_type(hdr: &[u8]) -> u32 {
     num >> 24
 }
 
-fn read_hdr_len(hdr: &[u8]) -> u32 { 
+fn read_hdr_len(hdr: &[u8]) -> usize { 
     let mut buf = Cursor::new(&hdr[..]);
     let num = buf.read_u32::<BigEndian>().unwrap();
-    num & 0xfff
+    (num & 0xfff) as usize
 }
 
 fn write_hdr(len: usize) -> Vec<u8> {
@@ -113,9 +113,9 @@ fn main() {
                 println!("Error happened");
             }
             else {
-                msg.push_str(decoded.message[0].as_str());
+                msg.push_str(String::from_utf8_lossy(decoded.message[0].as_slice()).into_owned().as_str());
                 msg.push_str(":");
-                msg.push_str(decoded.message[2].as_str());
+                msg.push_str(String::from_utf8_lossy(decoded.message[2].as_slice()).into_owned().as_str());
             }
             stdout.write_all(&msg.into_bytes())
         });
@@ -137,15 +137,19 @@ impl Codec for Bytes {
     fn decode(&mut self, buf: &mut EasyBuf) -> io::Result<Option<EasyBuf>> {
         if buf.len() >= 4 { // 4 is header min size
             if read_hdr_type(buf.as_slice()) != 'M' as u32 {
-                return Ok(None);
+                return Ok(None);  //TODO proper error handling here 
             }
-            let hdr_len = read_hdr_len(buf.as_slice()) as u64;
+            let mut hdr_len = read_hdr_len(buf.as_slice()); 
             if 0 == hdr_len {
-                return Ok(None);
+                return Ok(None);  //TODO proper error handling here 
             }
-            let len = buf.len();
-            if len < (4 + hdr_len as usize) {
-                return Ok(None);
+            let mut len = buf.len();
+            if len < (4 + hdr_len) {
+                return Ok(None); 
+            }
+            if 4 + hdr_len < len { 
+                println!("Hdr len {}", hdr_len);
+                return Ok(Some(buf.drain_to(4 + hdr_len)));
             }
             Ok(Some(buf.drain_to(len)))
         } else {
@@ -196,9 +200,9 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     welcome += "!\n";
     stdout.write_all(welcome.as_bytes());
 
-    let mut msgvec: Vec<String> = Vec::new();
-    msgvec.push(userstr);
-    msgvec.push(channelstr);
+    let mut msgvec: Vec<Vec<u8>> = Vec::new();
+    msgvec.push(userstr.into_bytes());
+    msgvec.push(channelstr.into_bytes());
     let msg = message_encode(&Msg { message: msgvec.clone() });
     println!("Payload len {}", msg.len());
     let mut msgv = write_hdr(msg.len());
@@ -208,7 +212,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
 
     loop {
         let mut buf = vec![0;80];
-        let mut msgv: Vec<String> = msgvec.clone();
+        let mut msgv: Vec<Vec<u8>> = msgvec.clone();
         let n = match stdin.read(&mut buf) {
             Err(_) |
                 Ok(0) => break,
@@ -216,7 +220,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         };
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
-        msgv.push(str);
+        msgv.push(str.into_bytes());
         let msg = message_encode(&Msg { message: msgv });
         println!("Payload len {}", msg.len());
         let mut msgv = write_hdr(msg.len());
