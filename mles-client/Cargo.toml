@@ -2,7 +2,7 @@
 name = "mles-client"
 version = "0.1.0"
 authors = ["jq-rs <juhamatk@gmail.com>"]
-description = "Mles-client, a distributed database server example client"
+description = "Mles-client, a distributed database server example (chat) client"
 license = "GPL-3.0"
 
 [dependencies]
