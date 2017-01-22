@@ -1,3 +1,4 @@
+//#![feature(type_ascription)]
 #[macro_use]
 extern crate serde_derive;
 
@@ -20,9 +21,20 @@ use tokio_core::net::TcpStream;
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
+const HDRL: usize = 4;
+
+#[derive(Serialize, Deserialize, Debug)]
+enum KeyUser {
+    Key (u64),
+    User (String)
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
-    message: Vec<Vec<u8>>,
+    keyuser: KeyUser,
+    channel: String,
+    message: Vec<u8>,
+    hash: u64
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
@@ -42,7 +54,7 @@ pub fn message_decode(slice: &[u8]) -> Msg {
         Ok(value) => value,
         Err(err) => {
             println!("Error on decode: {}", err);
-            Msg { message: Vec::new() } // return empty vec in case of error
+            Msg { keyuser: KeyUser::User("".to_string()), channel: "".to_string(), message: Vec::new(), hash: 0 } // return empty vec in case of error
         }
     }
 }
@@ -104,18 +116,20 @@ fn main() {
         let (sink, stream) = stream.framed(Bytes).split();
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |mut buf| {
-            let payload = buf.split_off(4); // strip header
-            let len = payload.len();
-            println!("Got payload len {}", len);
-            let decoded = message_decode(payload.as_slice());
+            println!("Got payload len {}", buf.len());
+            let decoded = message_decode(buf.as_slice());
             let mut msg = "".to_string();
             if 0 == decoded.message.len() {
                 println!("Error happened");
             }
             else {
-                msg.push_str(String::from_utf8_lossy(decoded.message[0].as_slice()).into_owned().as_str());
+                let user = match decoded.keyuser {
+                    KeyUser::User(user) => user,
+                    _ => "".to_string(),
+                };
+                msg.push_str(user.as_str());
                 msg.push_str(":");
-                msg.push_str(String::from_utf8_lossy(decoded.message[2].as_slice()).into_owned().as_str());
+                msg.push_str(decoded.channel.as_str());
             }
             stdout.write_all(&msg.into_bytes())
         });
@@ -135,23 +149,29 @@ impl Codec for Bytes {
     type Out = Vec<u8>;
 
     fn decode(&mut self, buf: &mut EasyBuf) -> io::Result<Option<EasyBuf>> {
-        if buf.len() >= 4 { // 4 is header min size
+        if buf.len() >= HDRL { // HDRL is header min size
             if read_hdr_type(buf.as_slice()) != 'M' as u32 {
-                return Ok(None);  //TODO proper error handling here 
+                let len = buf.len();
+                buf.drain_to(len);
+                return Ok(None);   
             }
             let mut hdr_len = read_hdr_len(buf.as_slice()); 
             if 0 == hdr_len {
-                return Ok(None);  //TODO proper error handling here 
+                let len = buf.len();
+                buf.drain_to(len);
+                return Ok(None);
             }
             let mut len = buf.len();
-            if len < (4 + hdr_len) {
+            if len < (HDRL + hdr_len) {
                 return Ok(None); 
             }
-            if 4 + hdr_len < len { 
+            if HDRL + hdr_len < len { 
+                buf.drain_to(HDRL);
                 println!("Hdr len {}", hdr_len);
-                return Ok(Some(buf.drain_to(4 + hdr_len)));
+                return Ok(Some(buf.drain_to(hdr_len)));
             }
-            Ok(Some(buf.drain_to(len)))
+            buf.drain_to(HDRL);
+            Ok(Some(buf.drain_to(hdr_len)))
         } else {
             Ok(None)
         }
@@ -200,10 +220,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     welcome += "!\n";
     stdout.write_all(welcome.as_bytes());
 
-    let mut msgvec: Vec<Vec<u8>> = Vec::new();
-    msgvec.push(userstr.into_bytes());
-    msgvec.push(channelstr.into_bytes());
-    let msg = message_encode(&Msg { message: msgvec.clone() });
+    let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: Vec::new(), hash: 0 }); 
     println!("Payload len {}", msg.len());
     let mut msgv = write_hdr(msg.len());
     msgv.extend(msg);
@@ -212,7 +229,6 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
 
     loop {
         let mut buf = vec![0;80];
-        let mut msgv: Vec<Vec<u8>> = msgvec.clone();
         let n = match stdin.read(&mut buf) {
             Err(_) |
                 Ok(0) => break,
@@ -220,8 +236,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         };
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
-        msgv.push(str.into_bytes());
-        let msg = message_encode(&Msg { message: msgv });
+        let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: str.into_bytes(), hash: 0 });
         println!("Payload len {}", msg.len());
         let mut msgv = write_hdr(msg.len());
         msgv.extend(msg);

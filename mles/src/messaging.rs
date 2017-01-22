@@ -1,8 +1,17 @@
 extern crate serde_cbor;
 
 #[derive(Serialize, Deserialize, Debug)]
+pub enum KeyUser {
+    Key (u64),
+    User (String)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
-    pub message: Vec<Vec<u8>>,
+    pub keyuser: KeyUser,
+    pub channel: String,
+    pub message: Vec<u8>,
+    pub hash: u64
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
@@ -22,7 +31,7 @@ pub fn message_decode(slice: &[u8]) -> Msg {
         Ok(value) => value,
         Err(err) => {
             println!("Error on decode: {}", err);
-            Msg { message: Vec::new() } // return empty vec in case of error
+            Msg { keyuser: KeyUser::User("".to_string()), channel: "".to_string(), message: Vec::new(), hash: 0 } // return empty vec in case of error
         }
     }
 }

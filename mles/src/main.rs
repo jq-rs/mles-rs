@@ -38,12 +38,6 @@ where R: Read,
     let mut buf = vec![];
     let mut chunk = reader.take(bytes_to_read);
     let status = chunk.read_to_end(&mut buf);
-    /*
-    match status {
-        Ok(n) => assert_eq!(bytes_to_read as usize, n),
-        Ok(0) => ,
-        Err(_) => return vec![]
-    }*/
     (status, buf)
  }
 
@@ -80,21 +74,12 @@ fn main() {
 
     for socket in listener.incoming() {
         /* Check first has anybody removed channels */
-        let mut remrx = false;
-        match removedrx.try_recv() {
-            Ok(val) => { 
-                let removed_channel: Vec<u8> = val;
-                println!("Removing unused channel {}", String::from_utf8_lossy(removed_channel.as_slice()).into_owned().as_str());
-                spawned.remove(&removed_channel);
-                remrx = true;
-            },
-            Err(_) => {}
-        }
-        while (remrx) {
+        let mut remrx = true;
+        while remrx {
             match removedrx.try_recv() {
                 Ok(val) => { 
-                    let removed_channel: Vec<u8> = val;
-                    println!("Removing unused channel {}", String::from_utf8_lossy(removed_channel.as_slice()).into_owned().as_str());
+                    let removed_channel: String = val;
+                    println!("Removing unused channel {}", removed_channel.as_str());
                     spawned.remove(&removed_channel);
                     remrx = true;
                 },
@@ -113,7 +98,7 @@ fn main() {
             Ok(0) => {
                continue;
             },
-            Ok(n) => {},
+            Ok(_) => {},
             _ => {
                continue;
             },
@@ -133,24 +118,23 @@ fn main() {
             Ok(0) => {
                continue;
             },
-            Ok(n) => {},
+            Ok(_) => {},
             _ => {
                continue;
             },
         }
         let buf = tuple.1;
+        println!("Msgv {:?}", buf);
         let decoded_msg = messaging::message_decode(buf.as_slice());
-        if 0 == decoded_msg.message.len() {
+        if 0 == decoded_msg.channel.len() {
             continue;
         }
         socket.set_nodelay(true);
         socket.set_read_timeout(option);
-        if !spawned.contains_key(&decoded_msg.message[1]) { 
+        if !spawned.contains_key(decoded_msg.channel.as_str()) { 
             let tx = tx.clone();
             let removedtx = removedtx.clone();
-            let this_channel = decoded_msg.message[1].clone();
-            //let user = String::from_utf8_lossy(decoded_msg.message[0].clone().as_slice()).into_owned().as_str();
-            //println!("Got {}", user);
+            let this_channel = decoded_msg.channel.clone();
             thread::spawn(move|| {
                 let (thr_tx, thr_rx) = channel();
                 println!("Spawned: New channel created!");
@@ -159,20 +143,24 @@ fn main() {
                 tx.send(thr_tx.clone()).unwrap();
                 loop {
                     let mut removals = Vec::new();
-                    match thr_rx.try_recv() {
-                        Ok(val) => { 
-                            let mut thr: TcpStream = val;
-                            cnt += 1;
-                            println!("Adding {}", cnt);
-                            users.insert(cnt, thr.try_clone().unwrap());
+                    let mut newuser = true;
+                    while newuser {
+                        match thr_rx.try_recv() {
+                            Ok(val) => { 
+                                let mut thr: TcpStream = val;
+                                cnt += 1;
+                                println!("Adding {}", cnt);
+                                users.insert(cnt, thr.try_clone().unwrap());
 
-                            /* If a new user, all push messages to her */
-                            for buf in &messages {
-                                println!("Historial msg is {:?}", buf);
-                                thr.write(buf.as_slice()).unwrap();
-                            }
-                        },
-                        Err(_) => {}
+                                /* If a new user, all push messages to her */
+                                for buf in &messages {
+                                    println!("Historial msg is {:?}", buf);
+                                    thr.write(buf.as_slice()).unwrap();
+                                }
+                                newuser = true;
+                            },
+                            Err(_) => { newuser = false; }
+                        }
                     }
                     for (user, thr_socket) in &users {
                         let stream = thr_socket.try_clone().unwrap();
@@ -232,10 +220,10 @@ fn main() {
                 }
             });
             let thr_feed = rx.recv().unwrap();
-            println!("Channel {}", String::from_utf8_lossy(decoded_msg.message[1].as_slice()).into_owned().as_str());
-            spawned.insert(decoded_msg.message[1].clone(), thr_feed);
+            println!("Channel {}", decoded_msg.channel.as_str());
+            spawned.insert(decoded_msg.channel.clone(), thr_feed);
         }
-        let thr_socket = spawned.get_mut(&decoded_msg.message[1]).unwrap();
+        let thr_socket = spawned.get_mut(&decoded_msg.channel).unwrap();
         thr_socket.send(socket).unwrap();
     }
 }
