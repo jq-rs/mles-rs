@@ -2,6 +2,8 @@
 name = "mles-utils"
 version = "0.1.0"
 authors = ["jq-rs <juhamatk@gmail.com>"]
+description = "Mles-utils for Mles server and client(s)"
+license = "GPL-3.0"
 
 [dependencies]
 serde = "0.8.19"
