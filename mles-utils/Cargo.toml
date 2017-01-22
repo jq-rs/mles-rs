@@ -1,0 +1,10 @@
+[package]
+name = "mles-utils"
+version = "0.1.0"
+authors = ["jq-rs <juhamatk@gmail.com>"]
+
+[dependencies]
+serde = "0.8.19"
+serde_derive = "0.8.19"
+serde_cbor = "0.4"
+byteorder = "1.0.0"
