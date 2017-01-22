@@ -1,59 +1,16 @@
-#[macro_use]
-extern crate serde_derive;
-
-extern crate futures;
-extern crate tokio_core;
-extern crate byteorder;
+extern crate mles_utils;
 
 use std::thread;
 use std::sync::mpsc::channel;
-//use futures::stream::Stream;
-//use tokio_core::reactor::Core;
-//use tokio_core::net::TcpListener;
 use std::net::TcpStream;
 use std::net::TcpListener;
 use std::collections::HashMap;
 use std::io::Write;
 use std::time::Duration;
 use std::option::Option;
-//use std::io::Read;
-use std::io::prelude::*;
-//use futures::Future;
-use std::io::Error;
 use std::str;
-use std::io::Cursor;
-use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+use mles_utils::*;
 
-mod messaging;
-
-fn read_n<R>(reader: R, bytes_to_read: u64) -> (Result<usize, Error>, Vec<u8>)
-where R: Read,
-{
-    let mut buf = vec![];
-    let mut chunk = reader.take(bytes_to_read);
-    let status = chunk.read_to_end(&mut buf);
-    (status, buf)
- }
-
-fn read_hdr_type(hdr: &[u8]) -> u32 { 
-    let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
-    num >> 24
-}
-
-fn read_hdr_len(hdr: &[u8]) -> usize { 
-    let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
-    (num & 0xfff) as usize
-}
-
-fn write_hdr(len: usize) -> Vec<u8> {
-    let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = vec![];
-    msgv.write_u32::<BigEndian>(hdr).unwrap();
-    msgv
-}
-                              
 fn main() {
     let address = "0.0.0.0:8081";
     let listener = TcpListener::bind(&address).unwrap();
@@ -117,7 +74,7 @@ fn main() {
             },
         }
         let buf = tuple.1;
-        let decoded_msg = messaging::message_decode(buf.as_slice());
+        let decoded_msg = message_decode(buf.as_slice());
         if 0 == decoded_msg.channel.len() {
             continue;
         }
