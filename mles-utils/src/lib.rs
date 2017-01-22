@@ -3,7 +3,7 @@ extern crate serde_derive;
 extern crate serde_cbor;
 extern crate byteorder;
 
-use std::io::{Read, Cursor};
+use std::io::{Read, Cursor, Error};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -42,18 +42,14 @@ pub fn message_decode(slice: &[u8]) -> Msg {
     }
 }
 
-pub fn read_n<R>(reader: R, bytes_to_read: u64) -> Vec<u8>
+pub fn read_n<R>(reader: R, bytes_to_read: u64) -> (Result<usize, Error>, Vec<u8>)
 where R: Read,
 {
     let mut buf = vec![];
     let mut chunk = reader.take(bytes_to_read);
     let status = chunk.read_to_end(&mut buf);
-    match status {
-        Ok(n) => assert_eq!(bytes_to_read as usize, n),
-            _ => return vec![]
-    }
-    buf
- }
+    (status, buf)
+}
 
 pub fn read_hdr_type(hdr: &[u8]) -> u32 { 
     let mut buf = Cursor::new(&hdr[..]);
