@@ -1,12 +1,6 @@
-//#![feature(type_ascription)]
-#[macro_use]
-extern crate serde_derive;
-
-
+extern crate mles_utils;
 extern crate futures;
 extern crate tokio_core;
-extern crate serde_cbor;
-extern crate byteorder;
 
 use std::env;
 use std::io::{self, Read, Write};
@@ -18,81 +12,9 @@ use futures::sync::mpsc;
 use tokio_core::reactor::Core;
 use tokio_core::io::{Io, EasyBuf, Codec};
 use tokio_core::net::TcpStream;
-use std::io::Cursor;
-use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+use mles_utils::*;
 
 const HDRL: usize = 4;
-
-#[derive(Serialize, Deserialize, Debug)]
-enum KeyUser {
-    Key (u64),
-    User (String)
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Msg {
-    keyuser: KeyUser,
-    channel: String,
-    message: Vec<u8>,
-    hash: u64
-}
-
-pub fn message_encode(msg: &Msg) -> Vec<u8> {
-    let encoded = serde_cbor::to_vec(msg);
-    match encoded {
-        Ok(encoded) => encoded,
-        Err(err) => {
-            println!("Error on encode: {}", err);
-            Vec::new()
-        }
-    }
-}
-
-pub fn message_decode(slice: &[u8]) -> Msg {
-    let value = serde_cbor::from_slice(slice);
-    match value {
-        Ok(value) => value,
-        Err(err) => {
-            println!("Error on decode: {}", err);
-            Msg { keyuser: KeyUser::User("".to_string()), channel: "".to_string(), message: Vec::new(), hash: 0 } // return empty vec in case of error
-        }
-    }
-}
-
-
-fn read_n<R>(reader: R, bytes_to_read: u64) -> Vec<u8>
-where R: Read,
-{
-    let mut buf = vec![];
-    let mut chunk = reader.take(bytes_to_read);
-    let status = chunk.read_to_end(&mut buf);
-    match status {
-        Ok(n) => assert_eq!(bytes_to_read as usize, n),
-            _ => return vec![]
-    }
-    buf
- }
-
-fn read_hdr_type(hdr: &[u8]) -> u32 { 
-    let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
-    num >> 24
-}
-
-fn read_hdr_len(hdr: &[u8]) -> usize { 
-    let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
-    (num & 0xfff) as usize
-}
-
-fn write_hdr(len: usize) -> Vec<u8> {
-    let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = vec![];
-    msgv.write_u32::<BigEndian>(hdr).unwrap();
-    msgv
-}
-
-
 
 fn main() {
     // Parse what address we're going to connect to
