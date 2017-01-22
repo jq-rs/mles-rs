@@ -115,8 +115,7 @@ fn main() {
     let client = tcp.and_then(|stream| {
         let (sink, stream) = stream.framed(Bytes).split();
         let send_stdin = stdin_rx.forward(sink);
-        let write_stdout = stream.for_each(move |mut buf| {
-            println!("Got payload len {}", buf.len());
+        let write_stdout = stream.for_each(move |buf| {
             let decoded = message_decode(buf.as_slice());
             let mut msg = "".to_string();
             if 0 == decoded.message.len() {
@@ -129,7 +128,7 @@ fn main() {
                 };
                 msg.push_str(user.as_str());
                 msg.push_str(":");
-                msg.push_str(decoded.channel.as_str());
+                msg.push_str(String::from_utf8_lossy(decoded.message.as_slice()).into_owned().as_str());
             }
             stdout.write_all(&msg.into_bytes())
         });
@@ -155,19 +154,18 @@ impl Codec for Bytes {
                 buf.drain_to(len);
                 return Ok(None);   
             }
-            let mut hdr_len = read_hdr_len(buf.as_slice()); 
+            let hdr_len = read_hdr_len(buf.as_slice()); 
             if 0 == hdr_len {
                 let len = buf.len();
                 buf.drain_to(len);
                 return Ok(None);
             }
-            let mut len = buf.len();
+            let len = buf.len();
             if len < (HDRL + hdr_len) {
                 return Ok(None); 
             }
             if HDRL + hdr_len < len { 
                 buf.drain_to(HDRL);
-                println!("Hdr len {}", hdr_len);
                 return Ok(Some(buf.drain_to(hdr_len)));
             }
             buf.drain_to(HDRL);
@@ -195,7 +193,6 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
             Ok(n) => n,
     };
     buf.truncate(n-1);
-    let user = buf.clone();
     let userstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
 
     /* Set channel */
@@ -207,25 +204,24 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
             Ok(n) => n,
     };
     buf.truncate(n-1);
-    let channel = buf.clone();
     let channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
 
-    let mut msg = String::from_utf8_lossy(user.as_slice()).into_owned();
-    msg += "::";
-    let str =  String::from_utf8_lossy(channel.clone().as_slice()).into_owned();
-    msg += str.as_str();
+    /* Join channel */
+    let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: Vec::new(), hash: 0 }); 
+    let mut msgv = write_hdr(msg.len());
+    msgv.extend(msg);
+    rx = rx.send(msgv).wait().unwrap();
 
+    let mut msg = userstr.clone();
+    msg += "::";
+    msg += channelstr.as_str();
+
+    /* Say welcome */
     let mut welcome = "Welcome to ".to_string();
     welcome += msg.as_str();
     welcome += "!\n";
     stdout.write_all(welcome.as_bytes());
 
-    let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: Vec::new(), hash: 0 }); 
-    println!("Payload len {}", msg.len());
-    let mut msgv = write_hdr(msg.len());
-    msgv.extend(msg);
-    println!("Msgv {:?}", msgv);
-    rx = rx.send(msgv).wait().unwrap();
 
     loop {
         let mut buf = vec![0;80];
@@ -237,10 +233,8 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
         let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: str.into_bytes(), hash: 0 });
-        println!("Payload len {}", msg.len());
         let mut msgv = write_hdr(msg.len());
         msgv.extend(msg);
-        println!("Msgv {:?}", msgv);
         rx = rx.send(msgv).wait().unwrap();
     }
 }
