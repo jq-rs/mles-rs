@@ -17,20 +17,14 @@ use std::io::Write;
 use std::time::Duration;
 use std::option::Option;
 //use std::io::Read;
-use std::io;
 use std::io::prelude::*;
-use std::io::BufReader;
 //use futures::Future;
-use std::sync::{Arc, Mutex};
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use std::str;
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
-
-mod userchannel;
 mod messaging;
-use messaging::*;
 
 fn read_n<R>(reader: R, bytes_to_read: u64) -> (Result<usize, Error>, Vec<u8>)
 where R: Read,
@@ -90,8 +84,8 @@ fn main() {
          * 2. If it does not exist, spawn new thread 
          * 3. Send socket to thread
          */
-        let mut socket = socket.unwrap();
-        let mut stream = socket.try_clone().unwrap();
+        let socket = socket.unwrap();
+        let stream = socket.try_clone().unwrap();
         let tuple = read_n(&stream, 4);
         let status = tuple.0;
         match status {
@@ -111,7 +105,6 @@ fn main() {
             println!("Incorrect payload type");
             continue;
         }
-        println!("Payload len {}", read_hdr_len(buf.as_slice()));
         let tuple = read_n(&stream, read_hdr_len(buf.as_slice()) as u64);
         let status = tuple.0;
         match status {
@@ -124,7 +117,6 @@ fn main() {
             },
         }
         let buf = tuple.1;
-        println!("Msgv {:?}", buf);
         let decoded_msg = messaging::message_decode(buf.as_slice());
         if 0 == decoded_msg.channel.len() {
             continue;
@@ -149,12 +141,11 @@ fn main() {
                             Ok(val) => { 
                                 let mut thr: TcpStream = val;
                                 cnt += 1;
-                                println!("Adding {}", cnt);
+                                println!("Adding user {}", cnt);
                                 users.insert(cnt, thr.try_clone().unwrap());
 
                                 /* If a new user, all push messages to her */
                                 for buf in &messages {
-                                    println!("Historial msg is {:?}", buf);
                                     thr.write(buf.as_slice()).unwrap();
                                 }
                                 newuser = true;
@@ -176,13 +167,10 @@ fn main() {
                         if 0 == buf.len() {
                             continue;
                         }
-                        println!("Got buf len {}", buf.len());
                         if read_hdr_type(buf.as_slice()) != 'M' as u32 {
                             continue;
                         }
-                        println!("Ok hdr type");
                         let hdr_len = read_hdr_len(buf.as_slice()) as u64;
-                        println!("Hdr_len {}", hdr_len);
                         if 0 == hdr_len {
                             continue;
                         }
@@ -195,14 +183,12 @@ fn main() {
                             _ => {}
                         }
                         let payload = tuple.1;
-                        println!("Payload len {}", payload.len());
                         if payload.len() != (hdr_len as usize) {
                             continue;
                         }
                         buf.extend(payload);
                         for (another_user, mut thr_sock) in &users {
                             if user != another_user {
-                                println!("Msg is {:?}", buf);
                                 thr_sock.write(buf.as_slice()).unwrap();
                             }
                         }
