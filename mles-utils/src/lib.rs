@@ -17,7 +17,6 @@ pub struct Msg {
     pub keyuser: KeyUser,
     pub channel: String,
     pub message: Vec<u8>,
-    pub hash: u64
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
@@ -37,7 +36,7 @@ pub fn message_decode(slice: &[u8]) -> Msg {
         Ok(value) => value,
         Err(err) => {
             println!("Error on decode: {}", err);
-            Msg { keyuser: KeyUser::User("".to_string()), channel: "".to_string(), message: Vec::new(), hash: 0 } // return empty vec in case of error
+            Msg { keyuser: KeyUser::User("".to_string()), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
         }
     }
 }
@@ -77,12 +76,12 @@ mod tests {
 
     #[test]
     fn test_encode_decode_msg() {
-        let orig_msg = Msg { keyuser: KeyUser::User("User".to_string()), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes(), hash: 0 };
+        let orig_msg = Msg { keyuser: KeyUser::User("User".to_string()), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
         let orig_user = match orig_msg.keyuser {
             KeyUser::User(user) => user,
                 _ => "".to_string(),
         };
-        let msg = Msg { keyuser: KeyUser::User("User".to_string()), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes(), hash: 0 };
+        let msg = Msg { keyuser: KeyUser::User("User".to_string()), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
         let cbor_msg = message_encode(&msg);
         let decoded_msg = message_decode(&cbor_msg);
         let decoded_user = match decoded_msg.keyuser {
@@ -92,7 +91,6 @@ mod tests {
         assert_eq!(decoded_user, orig_user);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
-        assert_eq!(decoded_msg.hash, orig_msg.hash);
     }
 }
 
