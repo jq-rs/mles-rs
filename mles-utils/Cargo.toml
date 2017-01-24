@@ -4,6 +4,7 @@ version = "0.2.0"
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and client(s)"
 license = "GPL-3.0"
+repository = "https://github.com/jq-rs/mles-rs"
 
 [dependencies]
 serde = "0.8.19"
