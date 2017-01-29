@@ -1,0 +1,19 @@
+environment:
+    matrix:
+    - TARGET: x86_64-pc-windows-msvc
+    install:
+        - curl -sSf -o rustup-init.exe https://win.rustup.rs/
+        - rustup-init.exe -y --default-host %TARGET%
+        - set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
+        - rustc -V
+        - cargo -V
+
+    build: false
+
+    test_script:
+        - cargo build --manifest-path mles-utils/Cargo.toml
+        - cargo test --manifest-path mles-utils/Cargo.toml 
+        - cargo build --manifest-path mles/Cargo.toml
+        - cargo test --manifest-path mles/Cargo.toml 
+        - cargo build --manifest-path mles-client/Cargo.toml
+        - cargo test --manifest-path mles-client/Cargo.toml 
