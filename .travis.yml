@@ -1,0 +1,23 @@
+language: rust
+
+rust:
+    - stable
+    - beta
+    - nightly
+sudo: false
+before_script:
+    - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
+script:
+    - cargo build --manifest-path mles-utils/Cargo.toml
+    - cargo test --manifest-path mles-utils/Cargo.toml 
+    - cargo build --manifest-path mles/Cargo.toml
+    - cargo test --manifest-path mles/Cargo.toml 
+    - cargo build --manifest-path mles-client/Cargo.toml
+    - cargo test --manifest-path mles-client/Cargo.toml 
+
+notifications:
+    email:
+        on_success: never
+        os:
+            - linux
+            - osx
