@@ -81,7 +81,6 @@ fn main() {
         // frames from the socket and dispatch them while we also write any frames
         // from other sockets.
         let connections_inner = connections.clone();
-        //let reader = BufReader::new(reader);
 
         // Model the read portion of this socket by mapping an infinite
         // iterator to each frame off the socket. This "loop" is then
@@ -89,9 +88,7 @@ fn main() {
         let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
         let socket_reader = iter.fold(reader, move |reader, _| {
             // Read a off header the socket, failing if we're at EOF
-            //let frame = io::read_until(reader, b'\n', Vec::new());
-            let mut buf = vec![0,4];
-            let frame = io::read_exact(reader, &mut buf);
+            let frame = io::read_exact(reader, vec![0;4]);
             let frame = frame.and_then(|(reader, payload)| {
                 if payload.len() == 0 {
                     Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
@@ -103,15 +100,13 @@ fn main() {
                     if 0 == hdr_len {
                         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
                     }
-                    /* XXX Next read the payload of the frame */
-                    /*let mut payload = vec![0, 100]; //XXX just that it compiles
-                      let buf = io::read_exact(reader, &mut payload);
-                      let buf = buf.and_then(|(reader, buf)| {
-                      if buf.len() == 0 {
-                      return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-                      } 
-                      Ok((reader, buf))
-                      }); */
+                    let pframe = io::read_exact(reader, vec![0;hdr_len]);
+                    let pframe = pframe.and_then(|(reader, buf)| {
+                        if buf.len() == 0 {
+                            return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+                        } 
+                        Ok((reader, buf))
+                    }); 
                     Ok((reader, payload))
                 }
             });
