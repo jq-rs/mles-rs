@@ -6,7 +6,6 @@ rust:
     - nightly
 matrix:
     allow_failures:
-      - rust: stable
       - rust: nightly
 sudo: false
 before_script:

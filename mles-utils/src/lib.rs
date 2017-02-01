@@ -6,15 +6,14 @@ extern crate byteorder;
 use std::io::{Read, Cursor, Error};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum KeyUser {
-    Key (u64),
-    User (String)
+pub struct Hdr {
+    pub mlen: u32,
+    pub key: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
-    pub keyuser: KeyUser,
+    pub uid:     String,
     pub channel: String,
     pub message: Vec<u8>,
 }
@@ -36,7 +35,7 @@ pub fn message_decode(slice: &[u8]) -> Msg {
         Ok(value) => value,
         Err(err) => {
             println!("Error on decode: {}", err);
-            Msg { keyuser: KeyUser::User("".to_string()), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
+            Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
         }
     }
 }
@@ -76,19 +75,10 @@ mod tests {
 
     #[test]
     fn test_encode_decode_msg() {
-        let orig_msg = Msg { keyuser: KeyUser::User("User".to_string()), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
-        let orig_user = match orig_msg.keyuser {
-            KeyUser::User(user) => user,
-                _ => "".to_string(),
-        };
-        let msg = Msg { keyuser: KeyUser::User("User".to_string()), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
-        let cbor_msg = message_encode(&msg);
+        let orig_msg = Msg { uid: "User".to_string(), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
+        let cbor_msg = message_encode(&orig_msg);
         let decoded_msg = message_decode(&cbor_msg);
-        let decoded_user = match decoded_msg.keyuser {
-            KeyUser::User(user) => user,
-                _ => "".to_string(),
-        };
-        assert_eq!(decoded_user, orig_user);
+        assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
     }
