@@ -47,13 +47,14 @@ use tokio_core::net::TcpStream;
 use mles_utils::*;
 
 const HDRL: usize = 4;
+const KEYL: usize = 8;
 
 fn main() {
     // Parse what address we're going to connect to
     //let addr = env::args().nth(1).unwrap_or_else(|| {
     //    panic!("this program requires at least one argument")
     //});
-    let addr = "127.0.0.1:8081";
+    let addr = "127.0.0.1:8077";
     let addr = addr.parse::<SocketAddr>().unwrap();
 
     let mut core = Core::new().unwrap();
@@ -76,11 +77,7 @@ fn main() {
                 println!("Error happened");
             }
             else {
-                let user = match decoded.keyuser {
-                    KeyUser::User(user) => user,
-                    _ => "".to_string(),
-                };
-                msg.push_str(user.as_str());
+                msg.push_str(&decoded.uid);
                 msg.push_str(":");
                 msg.push_str(String::from_utf8_lossy(decoded.message.as_slice()).into_owned().as_str());
             }
@@ -115,14 +112,14 @@ impl Codec for Bytes {
                 return Ok(None);
             }
             let len = buf.len();
-            if len < (HDRL + hdr_len) {
+            if len < (HDRL + KEYL + hdr_len) {
                 return Ok(None); 
             }
-            if HDRL + hdr_len < len { 
-                buf.drain_to(HDRL);
+            if HDRL + KEYL + hdr_len < len { 
+                buf.drain_to(HDRL + KEYL);
                 return Ok(Some(buf.drain_to(hdr_len)));
             }
-            buf.drain_to(HDRL);
+            buf.drain_to(HDRL + KEYL);
             Ok(Some(buf.drain_to(hdr_len)))
         } else {
             Ok(None)
@@ -161,8 +158,10 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
 
     /* Join channel */
-    let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: Vec::new() }); 
+    let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: Vec::new() }); 
     let mut msgv = write_hdr(msg.len());
+    let keyv = write_key(0);
+    msgv.extend(keyv);
     msgv.extend(msg);
     rx = rx.send(msgv).wait().unwrap();
 
@@ -186,8 +185,10 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         };
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
-        let msg = message_encode(&Msg { keyuser: KeyUser::User(userstr.clone()), channel: channelstr.clone(), message: str.into_bytes() });
+        let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: str.into_bytes() });
         let mut msgv = write_hdr(msg.len());
+        let keyv = write_key(0);
+        msgv.extend(keyv);
         msgv.extend(msg);
         rx = rx.send(msgv).wait().unwrap();
     }

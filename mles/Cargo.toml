@@ -1,10 +1,10 @@
 [package]
 name = "mles"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["jq-rs"]
 description = "Mles - a distributed database server"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 
 [dependencies]
-mles-utils = "0.2"
+mles-utils = "0.3"
