@@ -12,6 +12,8 @@ use std::option::Option;
 use std::str;
 use mles_utils::*;
 
+const HDRL: u64 = 4;
+const KEYL: u64 = 8;
 
 fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, this_channel: String ) {
     let mut cnt = 0;
@@ -42,7 +44,7 @@ fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, thi
         }
         for (user, thr_socket) in &users {
             let stream = thr_socket.try_clone().unwrap();
-            let tuple = read_n(&stream, 4);
+            let tuple = read_n(&stream, HDRL);
             let status = tuple.0;
             match status {
                 Ok(0) => {
@@ -61,6 +63,21 @@ fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, thi
             if 0 == hdr_len {
                 continue;
             }
+            // read key
+            let tuple = read_n(&stream, KEYL);
+            let status = tuple.0;
+            match status {
+                Ok(0) => {
+                    continue;
+                },
+                    Ok(_) => {},
+                    _ => {
+                        continue;
+                    },
+            }
+            let key = tuple.1;
+            //ignore key value for now
+            buf.extend(key);
             let tuple = read_n(&stream, hdr_len);
             let status = tuple.0;
             match status {
@@ -94,7 +111,7 @@ fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, thi
 }
 
 fn main() {
-    let address = "0.0.0.0:8081";
+    let address = "0.0.0.0:8077";
     let listener = TcpListener::bind(&address).unwrap();
     let mut spawned = HashMap::new();
     let option: Option<Duration> = Some(Duration::from_millis(50));
@@ -124,7 +141,7 @@ fn main() {
          */
         let socket = socket.unwrap();
         let stream = socket.try_clone().unwrap();
-        let tuple = read_n(&stream, 4);
+        let tuple = read_n(&stream, HDRL);
         let status = tuple.0;
         match status {
             Ok(0) => {
@@ -143,6 +160,19 @@ fn main() {
             println!("Incorrect payload type");
             continue;
         }
+        // read key
+        let tuple = read_n(&stream, KEYL);
+        let status = tuple.0;
+        match status {
+            Ok(0) => {
+               continue;
+            },
+            Ok(_) => {},
+            _ => {
+               continue;
+            },
+        }
+        //ignore key for now
         let tuple = read_n(&stream, read_hdr_len(buf.as_slice()) as u64);
         let status = tuple.0;
         match status {

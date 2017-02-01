@@ -68,6 +68,13 @@ pub fn write_hdr(len: usize) -> Vec<u8> {
     msgv
 }
 
+pub fn write_key(val: u64) -> Vec<u8> {
+    let key = val;
+    let mut msgv = vec![];
+    msgv.write_u64::<BigEndian>(key).unwrap();
+    msgv
+}
+
 #[cfg(test)]
 
 mod tests {
