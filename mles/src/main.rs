@@ -325,11 +325,11 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
 use std::env;
-use std::io::{Error, ErrorKind, BufReader};
+use std::io::{Error, ErrorKind};
 
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
-use tokio_core::io::{self, Io, Read};
+use tokio_core::io::{self, Io};
 
 use futures::stream::{self, Stream};
 use futures::Future;
@@ -386,16 +386,17 @@ fn main() {
                     if 0 == hdr_len {
                         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
                     }
-                    let pframe = io::read_exact(reader, vec![0;hdr_len]);
-                    let pframe = pframe.and_then(|(reader, buf)| {
-                        if buf.len() == 0 {
-                            return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-                        } 
-                        Ok((reader, buf))
-                    }); 
                     Ok((reader, payload))
                 }
             });
+            //let pframe = frame.and_then(|reader, payload)| {
+            //        let pframe = io::read_exact(reader, vec![0;hdr_len]);
+            //        let pframe = pframe.and_then(|(reader, buf)| {
+            //            if buf.len() == 0 {
+            //                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+           //             } 
+           //             Ok((reader, buf))
+            //        });
 
             // Send frame to all other connected clients
             let connections = connections_inner.clone();
@@ -406,9 +407,10 @@ fn main() {
                 .filter(|&(&k, _)| k != cnt)
                 .map(|(_, v)| v);
                 for tx in iter {
+                    println!("Sending {}: {:?}", cnt, message);
                     tx.send(message.clone()).unwrap();
                 }
-            reader
+                reader
             })
         });
 
