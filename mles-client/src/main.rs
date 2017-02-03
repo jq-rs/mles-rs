@@ -24,6 +24,9 @@
 * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
+*
+* Mles-support (c) Mles developers
+*
 */
 
 /* 
@@ -35,6 +38,7 @@ extern crate futures;
 extern crate tokio_core;
 
 use std::env;
+use std::process;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::thread;
@@ -51,16 +55,25 @@ const KEYL: usize = 8;
 
 fn main() {
     // Parse what address we're going to connect to
-    //let addr = env::args().nth(1).unwrap_or_else(|| {
-    //    panic!("this program requires at least one argument")
-    //});
-    let addr = "127.0.0.1:8077";
-    let addr = addr.parse::<SocketAddr>().unwrap();
+    let addr = env::args().nth(1).unwrap_or_else(|| {
+        println!("Usage: mles-client <server-address>");
+        process::exit(1);
+    }
+    );
+    // add port
+    let addr = addr + ":8077";
+    let addr = match addr.parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(err) => {
+            println!("Error: {}\nUsage: mles-client <server-address>", err);
+            process::exit(1);
+        },
+    };
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let tcp = TcpStream::connect(&addr, &handle);
-
+    
     // Handle stdin in a separate thread 
     let (stdin_tx, stdin_rx) = mpsc::channel(0);
     thread::spawn(|| read_stdin(stdin_tx));
@@ -68,6 +81,7 @@ fn main() {
 
     let mut stdout = io::stdout();
     let client = tcp.and_then(|stream| {
+        stream.set_nodelay(true);
         let (sink, stream) = stream.framed(Bytes).split();
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
@@ -144,7 +158,11 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
             Ok(n) => n,
     };
     buf.truncate(n-1);
-    let userstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
+    let mut userstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
+    if userstr.ends_with("\r") {
+        let len = userstr.len();
+        userstr.truncate(len - 1);
+    }
 
     /* Set channel */
     stdout.write_all(b"Channel?\n");
@@ -155,7 +173,11 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
             Ok(n) => n,
     };
     buf.truncate(n-1);
-    let channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
+    let mut channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
+    if channelstr.ends_with("\r") {
+        let len = channelstr.len();
+        channelstr.truncate(len - 1);
+    }
 
     /* Join channel */
     let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: Vec::new() }); 
@@ -166,11 +188,11 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     rx = rx.send(msgv).wait().unwrap();
 
     let mut msg = userstr.clone();
-    msg += "::";
+    msg += " to ";
     msg += channelstr.as_str();
 
     /* Say welcome */
-    let mut welcome = "Welcome to ".to_string();
+    let mut welcome = "Welcome ".to_string();
     welcome += msg.as_str();
     welcome += "!\n";
     stdout.write_all(welcome.as_bytes());
