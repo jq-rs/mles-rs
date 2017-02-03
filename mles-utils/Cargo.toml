@@ -1,6 +1,6 @@
 [package]
 name = "mles-utils"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and client(s)"
 license = "GPL-3.0"

@@ -1,3 +1,20 @@
+/**
+ *   Mles-utils to be used with Mles client or server.
+ *   Copyright (C) 2017  Mles developers
+ *
+ *   This program is free software: you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation, either version 3 of the License, or
+ *   (at your option) any later version.
+ *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU General Public License for more details.
+ *
+ *   You should have received a copy of the GNU General Public License
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 extern crate mles_utils;
 
 use std::thread;
@@ -14,101 +31,6 @@ use mles_utils::*;
 
 const HDRL: u64 = 4;
 const KEYL: u64 = 8;
-
-fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, this_channel: String ) {
-    let mut cnt = 0;
-    let (thr_tx, thr_rx): (Sender<TcpStream>, Receiver<TcpStream>) = channel();
-    println!("Spawned: New channel created!");
-    let mut users = HashMap::new();
-    let mut messages: Vec<Vec<u8>> = Vec::new();
-    tx.send(thr_tx.clone()).unwrap();
-    loop {
-        let mut removals = Vec::new();
-        let mut newuser = true;
-        while newuser {
-            match thr_rx.try_recv() {
-                Ok(val) => { 
-                    let mut thr: TcpStream = val;
-                    cnt += 1;
-                    println!("Adding user {}", cnt);
-                    users.insert(cnt, thr.try_clone().unwrap());
-
-                    /* If a new user, all push messages to her */
-                    for buf in &messages {
-                        thr.write(buf.as_slice()).unwrap();
-                    }
-                    newuser = true;
-                },
-                    Err(_) => { newuser = false; }
-            }
-        }
-        for (user, thr_socket) in &users {
-            let stream = thr_socket.try_clone().unwrap();
-            let tuple = read_n(&stream, HDRL);
-            let status = tuple.0;
-            match status {
-                Ok(0) => {
-                    removals.push(user.clone());
-                },
-                    _ => {}
-            }
-            let mut buf = tuple.1;
-            if 0 == buf.len() {
-                continue;
-            }
-            if read_hdr_type(buf.as_slice()) != 'M' as u32 {
-                continue;
-            }
-            let hdr_len = read_hdr_len(buf.as_slice()) as u64;
-            if 0 == hdr_len {
-                continue;
-            }
-            // read key
-            let tuple = read_n(&stream, KEYL);
-            let status = tuple.0;
-            match status {
-                Ok(0) => {
-                    continue;
-                },
-                    Ok(_) => {},
-                    _ => {
-                        continue;
-                    },
-            }
-            let key = tuple.1;
-            //ignore key value for now
-            buf.extend(key);
-            let tuple = read_n(&stream, hdr_len);
-            let status = tuple.0;
-            match status {
-                Ok(0) => {
-                    removals.push(user.clone());
-                },
-                    _ => {}
-            }
-            let payload = tuple.1;
-            if payload.len() != (hdr_len as usize) {
-                continue;
-            }
-            buf.extend(payload);
-            for (another_user, mut thr_sock) in &users {
-                if user != another_user {
-                    thr_sock.write(buf.as_slice()).unwrap();
-                }
-            }
-            /* Add to local db */
-            messages.push(buf);
-        }
-        for removal in &removals {
-            println!("Removing user {}", removal);
-            users.remove(removal);
-        }
-        if cnt > 0 && users.is_empty() {
-            removedtx.send(this_channel).unwrap();
-            break;
-        }
-    }
-}
 
 fn main() {
     let address = "0.0.0.0:8077";
@@ -205,3 +127,99 @@ fn main() {
         thr_socket.send(socket).unwrap();
     }
 }
+
+fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, this_channel: String ) {
+    let mut cnt = 0;
+    let (thr_tx, thr_rx): (Sender<TcpStream>, Receiver<TcpStream>) = channel();
+    println!("Spawned: New channel created!");
+    let mut users = HashMap::new();
+    let mut messages: Vec<Vec<u8>> = Vec::new();
+    tx.send(thr_tx.clone()).unwrap();
+    loop {
+        let mut removals = Vec::new();
+        let mut newuser = true;
+        while newuser {
+            match thr_rx.try_recv() {
+                Ok(val) => { 
+                    let mut thr: TcpStream = val;
+                    cnt += 1;
+                    println!("Adding user {}", cnt);
+                    users.insert(cnt, thr.try_clone().unwrap());
+
+                    /* If a new user, all push messages to her */
+                    for buf in &messages {
+                        thr.write(buf.as_slice()).unwrap();
+                    }
+                    newuser = true;
+                },
+                    Err(_) => { newuser = false; }
+            }
+        }
+        for (user, thr_socket) in &users {
+            let stream = thr_socket.try_clone().unwrap();
+            let tuple = read_n(&stream, HDRL);
+            let status = tuple.0;
+            match status {
+                Ok(0) => {
+                    removals.push(user.clone());
+                },
+                    _ => {}
+            }
+            let mut buf = tuple.1;
+            if 0 == buf.len() {
+                continue;
+            }
+            if read_hdr_type(buf.as_slice()) != 'M' as u32 {
+                continue;
+            }
+            let hdr_len = read_hdr_len(buf.as_slice()) as u64;
+            if 0 == hdr_len {
+                continue;
+            }
+            // read key
+            let tuple = read_n(&stream, KEYL);
+            let status = tuple.0;
+            match status {
+                Ok(0) => {
+                    continue;
+                },
+                    Ok(_) => {},
+                    _ => {
+                        continue;
+                    },
+            }
+            let key = tuple.1;
+            //ignore key value for now
+            buf.extend(key);
+            let tuple = read_n(&stream, hdr_len);
+            let status = tuple.0;
+            match status {
+                Ok(0) => {
+                    removals.push(user.clone());
+                },
+                    _ => {}
+            }
+            let payload = tuple.1;
+            if payload.len() != (hdr_len as usize) {
+                continue;
+            }
+            buf.extend(payload);
+            for (another_user, mut thr_sock) in &users {
+                if user != another_user {
+                    thr_sock.write(buf.as_slice()).unwrap();
+                }
+            }
+            /* Add to local db */
+            messages.push(buf);
+        }
+        for removal in &removals {
+            println!("Removing user {}", removal);
+            users.remove(removal);
+        }
+        if cnt > 0 && users.is_empty() {
+            removedtx.send(this_channel).unwrap();
+            break;
+        }
+    }
+}
+
