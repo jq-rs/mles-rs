@@ -17,10 +17,11 @@
  */
 extern crate mles_utils;
 
-use std::thread;
+use std::{thread, process};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 use std::net::TcpStream;
+use std::net::SocketAddr;
 use std::net::TcpListener;
 use std::collections::HashMap;
 use std::io::Write;
@@ -34,10 +35,15 @@ const KEYL: u64 = 8;
 
 fn main() {
     let address = "0.0.0.0:8077";
-    let listener = TcpListener::bind(&address).unwrap();
+    let listener = match TcpListener::bind(&address) {
+        Ok(listener) => listener,
+        Err(err) => {
+            println!("Error: {}\n", err);
+            process::exit(1);
+        },
+    };
     let mut spawned = HashMap::new();
     let option: Option<Duration> = Some(Duration::from_millis(50));
-
     let addr = listener.local_addr().unwrap();
     println!("Listening for connections on {}", addr);
     let (tx, rx) = channel();
@@ -63,6 +69,14 @@ fn main() {
          */
         let socket = socket.unwrap();
         let stream = socket.try_clone().unwrap();
+        let paddr = match stream.peer_addr() {
+            Ok(addr) => addr,
+            Err(_) => {
+                let addr = "0.0.0.0:0";
+                let addr = addr.parse::<SocketAddr>().unwrap();
+                addr
+            },
+        };
         let tuple = read_n(&stream, HDRL);
         let status = tuple.0;
         match status {
@@ -94,7 +108,13 @@ fn main() {
                continue;
             },
         }
-        //ignore key for now
+        // verify key
+        let key = read_key(tuple.1);
+        let hkey = do_hash(&paddr);
+        if hkey != key {
+            println!("Incorrect remote key");
+            continue;
+        }
         let tuple = read_n(&stream, read_hdr_len(buf.as_slice()) as u64);
         let status = tuple.0;
         match status {
@@ -111,8 +131,8 @@ fn main() {
         if 0 == decoded_msg.channel.len() {
             continue;
         }
-        socket.set_nodelay(true);
-        socket.set_read_timeout(option);
+        let _val = socket.set_nodelay(true);
+        let _val = socket.set_read_timeout(option);
         if !spawned.contains_key(decoded_msg.channel.as_str()) { 
             let tx = tx.clone();
             let removedtx = removedtx.clone();

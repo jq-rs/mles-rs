@@ -25,7 +25,7 @@
 * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 *
-* Mles-support (c) Mles developers
+* Mles-support Copyright (c) 2017 Mles developers
 *
 */
 
@@ -37,8 +37,7 @@ extern crate mles_utils;
 extern crate futures;
 extern crate tokio_core;
 
-use std::env;
-use std::process;
+use std::{env, process};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::thread;
@@ -50,8 +49,8 @@ use tokio_core::io::{Io, EasyBuf, Codec};
 use tokio_core::net::TcpStream;
 use mles_utils::*;
 
-const HDRL: usize = 4;
-const KEYL: usize = 8;
+const KEYL: usize = 8; //key len
+const HDRL: usize = 4 + KEYL; //hdr + key len
 
 fn main() {
     // Parse what address we're going to connect to
@@ -73,6 +72,7 @@ fn main() {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let tcp = TcpStream::connect(&addr, &handle);
+    let mut key = 0;
     
     // Handle stdin in a separate thread 
     let (stdin_tx, stdin_rx) = mpsc::channel(0);
@@ -81,14 +81,27 @@ fn main() {
 
     let mut stdout = io::stdout();
     let client = tcp.and_then(|stream| {
-        stream.set_nodelay(true);
+        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
+        let laddr = match stream.local_addr() {
+            Ok(laddr) => laddr,
+            Err(_) => {
+                panic!("Cannot get local address");
+            },
+        };
         let (sink, stream) = stream.framed(Bytes).split();
+        /* Set key */
+        key = do_hash(&laddr);
+        let stdin_rx = stdin_rx.and_then(|buf| {
+            let mut keyv = write_key(key);
+            keyv.extend(buf);
+            Ok(keyv)
+        });
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
             let decoded = message_decode(buf.as_slice());
             let mut msg = "".to_string();
             if 0 == decoded.message.len() {
-                println!("Error happened");
+                println!("Error: Incorrect message length");
             }
             else {
                 msg.push_str(&decoded.uid);
@@ -103,7 +116,13 @@ fn main() {
         .then(|_| Ok(()))
     });
 
-    core.run(client).unwrap();
+    let _run = match core.run(client) {
+        Ok(run) => run,
+        Err(err) => {
+            println!("Error: {}", err);
+            process::exit(1);
+        }
+    };
 }
 
 struct Bytes;
@@ -126,14 +145,14 @@ impl Codec for Bytes {
                 return Ok(None);
             }
             let len = buf.len();
-            if len < (HDRL + KEYL + hdr_len) {
+            if len < (HDRL + hdr_len) {
                 return Ok(None); 
             }
-            if HDRL + KEYL + hdr_len < len { 
-                buf.drain_to(HDRL + KEYL);
+            if HDRL + hdr_len < len { 
+                buf.drain_to(HDRL);
                 return Ok(Some(buf.drain_to(hdr_len)));
             }
-            buf.drain_to(HDRL + KEYL);
+            buf.drain_to(HDRL);
             Ok(Some(buf.drain_to(hdr_len)))
         } else {
             Ok(None)
@@ -141,7 +160,9 @@ impl Codec for Bytes {
     }
 
     fn encode(&mut self, data: Vec<u8>, buf: &mut Vec<u8>) -> io::Result<()> {
-        buf.extend(data);
+        let mut msgv = write_hdr(data.len()-KEYL);
+        msgv.extend(data);
+        buf.extend(msgv);
         Ok(())
     }
 }
@@ -150,7 +171,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
     /* Set user */
-    stdout.write_all(b"User name?\n");
+    let _val = stdout.write_all(b"User name?\n");
     let mut buf = vec![0; 80];
     let n = match stdin.read(&mut buf) {
         Err(_) |
@@ -165,7 +186,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     }
 
     /* Set channel */
-    stdout.write_all(b"Channel?\n");
+    let _val = stdout.write_all(b"Channel?\n");
     let mut buf = vec![0; 80];
     let n = match stdin.read(&mut buf) {
         Err(_) |
@@ -181,11 +202,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
 
     /* Join channel */
     let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: Vec::new() }); 
-    let mut msgv = write_hdr(msg.len());
-    let keyv = write_key(0);
-    msgv.extend(keyv);
-    msgv.extend(msg);
-    rx = rx.send(msgv).wait().unwrap();
+    rx = rx.send(msg).wait().unwrap();
 
     let mut msg = userstr.clone();
     msg += " to ";
@@ -195,8 +212,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let mut welcome = "Welcome ".to_string();
     welcome += msg.as_str();
     welcome += "!\n";
-    stdout.write_all(welcome.as_bytes());
-
+    let _val = stdout.write_all(welcome.as_bytes());
 
     loop {
         let mut buf = vec![0;80];
@@ -208,11 +224,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
         let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: str.into_bytes() });
-        let mut msgv = write_hdr(msg.len());
-        let keyv = write_key(0);
-        msgv.extend(keyv);
-        msgv.extend(msg);
-        rx = rx.send(msgv).wait().unwrap();
+        rx = rx.send(msg).wait().unwrap();
     }
 }
 
