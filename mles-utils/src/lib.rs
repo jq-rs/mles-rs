@@ -19,9 +19,12 @@
 extern crate serde_derive;
 extern crate serde_cbor;
 extern crate byteorder;
+extern crate siphasher;
 
 use std::io::{Read, Cursor, Error};
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+use siphasher::sip::SipHasher;
+use std::hash::{Hash, Hasher};
 
 pub struct Hdr {
     pub mlen: u32,
@@ -92,9 +95,16 @@ pub fn write_key(val: u64) -> Vec<u8> {
     msgv
 }
 
+pub fn do_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = SipHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
+
 #[cfg(test)]
 
 mod tests {
+    use std::net::SocketAddr;
     use super::*;
 
     #[test]
@@ -105,6 +115,14 @@ mod tests {
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
+    }
+
+    #[test]
+    fn test_hash() {
+        let addr = "127.0.0.1:8077";
+        let addr = addr.parse::<SocketAddr>().unwrap();
+        let key = do_hash(&addr);
+        assert_eq!(0x4CFAB5BFDFC87494, key);
     }
 }
 
