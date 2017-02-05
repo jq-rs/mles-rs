@@ -21,15 +21,10 @@ extern crate serde_cbor;
 extern crate byteorder;
 extern crate siphasher;
 
-use std::io::{Read, Cursor, Error};
+use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
-
-pub struct Hdr {
-    pub mlen: u32,
-    pub key: u64,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Msg {
@@ -58,15 +53,6 @@ pub fn message_decode(slice: &[u8]) -> Msg {
             Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
         }
     }
-}
-
-pub fn read_n<R>(reader: R, bytes_to_read: u64) -> (Result<usize, Error>, Vec<u8>)
-where R: Read,
-{
-    let mut buf = vec![];
-    let mut chunk = reader.take(bytes_to_read);
-    let status = chunk.read_to_end(&mut buf);
-    (status, buf)
 }
 
 pub fn read_hdr_type(hdr: &[u8]) -> u32 { 
