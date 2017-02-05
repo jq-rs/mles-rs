@@ -24,6 +24,7 @@ use std::net::TcpStream;
 use std::net::SocketAddr;
 use std::net::TcpListener;
 use std::collections::HashMap;
+use std::io::{Read, Error};
 use std::io::Write;
 use std::time::Duration;
 use std::option::Option;
@@ -242,4 +243,14 @@ fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, thi
         }
     }
 }
+
+fn read_n<R>(reader: R, bytes_to_read: u64) -> (Result<usize, Error>, Vec<u8>)
+where R: Read,
+{
+    let mut buf = vec![];
+    let mut chunk = reader.take(bytes_to_read);
+    let status = chunk.read_to_end(&mut buf);
+    (status, buf)
+}
+
 
