@@ -1,15 +1,15 @@
 [package]
 name = "mles-utils"
-version = "0.3.4"
+version = "0.4.0"
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and client(s)"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 
 [dependencies]
-serde = "0.8.19"
-serde_derive = "0.8.19"
-serde_cbor = "0.4"
+serde = "0.9"
+serde_derive = "0.9"
+serde_cbor = "0.5"
 byteorder = "1.0.0"
 siphasher = "0.2"
  
