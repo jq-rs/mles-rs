@@ -17,7 +17,7 @@
  */
 extern crate mles_utils;
 
-use std::{thread, process};
+use std::{thread, process, env};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 use std::net::TcpStream;
@@ -43,6 +43,12 @@ fn main() {
             process::exit(1);
         },
     };
+
+    let keyval =match env::var("MLES_KEY") {
+        Ok(val) => val,
+        Err(_) => "".to_string(),
+    };
+
     let mut spawned = HashMap::new();
     let option: Option<Duration> = Some(Duration::from_millis(50));
     let addr = listener.local_addr().unwrap();
@@ -70,14 +76,6 @@ fn main() {
          */
         let socket = socket.unwrap();
         let stream = socket.try_clone().unwrap();
-        let paddr = match stream.peer_addr() {
-            Ok(addr) => addr,
-            Err(_) => {
-                let addr = "0.0.0.0:0";
-                let addr = addr.parse::<SocketAddr>().unwrap();
-                addr
-            },
-        };
         let tuple = read_n(&stream, HDRL);
         let status = tuple.0;
         match status {
@@ -110,8 +108,22 @@ fn main() {
             },
         }
         // verify key
+        let hkey;
         let key = read_key(tuple.1);
-        let hkey = do_hash(&paddr);
+        if 0 == keyval.len() {
+            let paddr = match stream.peer_addr() {
+                Ok(paddr) => paddr,
+                Err(_) => {
+                    let addr = "0.0.0.0:0";
+                    let addr = addr.parse::<SocketAddr>().unwrap();
+                    addr
+                }
+            };
+            hkey = do_hash(&paddr);
+        }
+        else {
+            hkey = do_hash(&keyval);
+        }
         if hkey != key {
             println!("Incorrect remote key");
             continue;

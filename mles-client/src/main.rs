@@ -69,6 +69,11 @@ fn main() {
         },
     };
 
+    let keyval =match env::var("MLES_KEY") {
+        Ok(val) => val,
+        Err(_) => "".to_string(),
+    };
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let tcp = TcpStream::connect(&addr, &handle);
@@ -82,15 +87,19 @@ fn main() {
     let mut stdout = io::stdout();
     let client = tcp.and_then(|stream| {
         let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
-        let laddr = match stream.local_addr() {
-            Ok(laddr) => laddr,
-            Err(_) => {
-                panic!("Cannot get local address");
-            },
-        };
-        let (sink, stream) = stream.framed(Bytes).split();
         /* Set key */
-        key = do_hash(&laddr);
+        if 0 == keyval.len() {
+            key = match stream.local_addr() {
+                Ok(laddr) => do_hash(&laddr),
+                Err(_) => {
+                    panic!("Cannot get local address");
+                },
+            };
+        }
+        else {
+            key = do_hash(&keyval);
+        }
+        let (sink, stream) = stream.framed(Bytes).split();
         let stdin_rx = stdin_rx.and_then(|buf| {
             let mut keyv = write_key(key);
             keyv.extend(buf);
