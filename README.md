@@ -11,9 +11,9 @@ Mles clients connect to an Mles server using Mles protocol header and (uid, chan
 
 An Mles server may save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels; thus a TCP connection per channel is always used. If an Mles client wants to depart from a channel, it just closes the TCP session.
 
-An Mles server may contact to an Mles peer server. The Mles peer server sees this connection as another client connection. This allows Mles servers to share and distribute value triple data in an organized and powerful, but yet simple, manner between other Mles servers.
-
 Every session between Mles server and client is authenticated using 64-bit SipHash [2]. This allows Mles server to verify that connecting Mles client is really connecting from the endpoint where it claims to be connecting. Additionally, a shared secret key can be used as part of SipHash calculation between Mles server and Mles client which allows only those Mles clients to connect which know the shared key. Sessions behind Network Address Translation (NAT) may only use a shared key without session authentication. After Mles server has authenticated the session and moved the connected Mles client to its channel context, SipHash key is ignored by the Mles server. After context change, SipHash key may be used to Mles clients within the channel context.
+
+An Mles server may contact to an Mles peer server. The Mles peer server sees this connection as another client connection. This allows Mles servers to share and distribute value triple data in an organized and powerful, but yet simple, manner between other Mles servers.
 
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server may be configured to use IP anycast.
 
