@@ -33,6 +33,7 @@ use mles_utils::*;
 
 const HDRL: u64 = 4;
 const KEYL: u64 = 8;
+const DELAY: u64 = 50;
 
 fn main() {
     let mut peer = "".to_string();
@@ -62,7 +63,7 @@ fn main() {
     };
 
     let mut spawned = HashMap::new();
-    let option: Option<Duration> = Some(Duration::from_millis(50));
+    let option: Option<Duration> = Some(Duration::from_millis(DELAY));
     let addr = listener.local_addr().unwrap();
     println!("Listening for connections on {}", addr);
     let (tx, rx) = channel();
@@ -184,9 +185,10 @@ fn process_channel(peer: SocketAddr, tx: Sender<Sender<TcpStream>>, removedtx: S
     if 0 != peer.port() {
         match TcpStream::connect(peer) {
             Ok(sock) => {
-                let option: Option<Duration> = Some(Duration::from_millis(50));
+                let option: Option<Duration> = Some(Duration::from_millis(DELAY));
                 let _val = sock.set_nodelay(true);
                 let _val = sock.set_read_timeout(option);
+                //TODO join the channel on the peer
                 cnt += 1;
                 println!("Adding peer {}", cnt);
                 users.insert(cnt, sock);
