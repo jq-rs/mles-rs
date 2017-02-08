@@ -21,7 +21,7 @@ use std::{thread, process, env};
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::channel;
 use std::net::TcpStream;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::net::TcpListener;
 use std::collections::HashMap;
 use std::io::{Read, Error};
@@ -35,6 +35,18 @@ const HDRL: u64 = 4;
 const KEYL: u64 = 8;
 
 fn main() {
+    let mut peer = "".to_string();
+    for arg in env::args() {
+        peer = arg;
+        peer += ":8077";
+    }
+    let peer = match peer.parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(_) => {
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
+        },
+    };
+
     let address = "0.0.0.0:8077";
     let listener = match TcpListener::bind(&address) {
         Ok(listener) => listener,
@@ -150,7 +162,7 @@ fn main() {
             let tx = tx.clone();
             let removedtx = removedtx.clone();
             let this_channel = decoded_msg.channel.clone();
-            thread::spawn(move|| process_channel(tx, removedtx, this_channel));
+            thread::spawn(move|| process_channel(peer, tx, removedtx, this_channel));
 
             let thr_feed = rx.recv().unwrap();
             println!("Channel {}", decoded_msg.channel.as_str());
@@ -161,13 +173,30 @@ fn main() {
     }
 }
 
-fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, this_channel: String ) {
+fn process_channel(peer: SocketAddr, tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, this_channel: String ) {
     let mut cnt = 0;
     let (thr_tx, thr_rx): (Sender<TcpStream>, Receiver<TcpStream>) = channel();
     println!("Spawned: New channel created!");
     let mut users = HashMap::new();
     let mut messages: Vec<Vec<u8>> = Vec::new();
     tx.send(thr_tx.clone()).unwrap();
+
+    if 0 != peer.port() {
+        match TcpStream::connect(peer) {
+            Ok(sock) => {
+                let option: Option<Duration> = Some(Duration::from_millis(50));
+                let _val = sock.set_nodelay(true);
+                let _val = sock.set_read_timeout(option);
+                cnt += 1;
+                println!("Adding peer {}", cnt);
+                users.insert(cnt, sock);
+            },
+            Err(_) => {
+                println!("Could not connect to peer {}", peer);
+            },
+        }
+    }
+
     loop {
         let mut removals = Vec::new();
         let mut newuser = true;
@@ -185,7 +214,7 @@ fn process_channel(tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, thi
                     }
                     newuser = true;
                 },
-                    Err(_) => { newuser = false; }
+                Err(_) => { newuser = false; }
             }
         }
         for (user, thr_socket) in &users {
@@ -264,5 +293,4 @@ where R: Read,
     let status = chunk.read_to_end(&mut buf);
     (status, buf)
 }
-
 
