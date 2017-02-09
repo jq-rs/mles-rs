@@ -26,7 +26,7 @@ use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Msg {
     pub uid:     String,
     pub channel: String,
