@@ -46,7 +46,7 @@ fn main() {
             match peer.parse::<SocketAddr>() {
                 Ok(_) => {},
                     Err(err) => {
-                        println!("Error: {}\nUsage: mles [peer-address]");
+                        println!("Error: {}\nUsage: mles [peer-address]", err);
                         process::exit(1);
                     },
             }
