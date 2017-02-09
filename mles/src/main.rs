@@ -37,9 +37,24 @@ const DELAY: u64 = 50;
 
 fn main() {
     let mut peer = "".to_string();
+    let mut argcnt = 0;
     for arg in env::args() {
-        peer = arg;
-        peer += ":8077";
+        argcnt += 1;
+        if 2 == argcnt {
+            peer = arg;
+            peer += ":8077";
+            match peer.parse::<SocketAddr>() {
+                Ok(_) => {},
+                    Err(err) => {
+                        println!("Error: {}\nUsage: mles [peer-address]");
+                        process::exit(1);
+                    },
+            }
+        }
+        if argcnt > 2 {
+            println!("Usage: mles [peer-address]");
+            process::exit(1);
+        }
     }
     let peer = match peer.parse::<SocketAddr>() {
         Ok(addr) => addr,
@@ -52,7 +67,7 @@ fn main() {
     let listener = match TcpListener::bind(&address) {
         Ok(listener) => listener,
         Err(err) => {
-            println!("Error: {}\n", err);
+            println!("Error: {}", err);
             process::exit(1);
         },
     };
