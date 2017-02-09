@@ -162,11 +162,10 @@ fn main() {
         if !spawned.contains_key(decoded_msg.channel.as_str()) { 
             let tx = tx.clone();
             let removedtx = removedtx.clone();
-            let this_channel = decoded_msg.channel.clone();
-            thread::spawn(move|| process_channel(peer, tx, removedtx, this_channel));
+            let msg = decoded_msg.clone();
+            thread::spawn(move|| process_channel(peer, key, tx, removedtx, msg));
 
             let thr_feed = rx.recv().unwrap();
-            println!("Channel {}", decoded_msg.channel.as_str());
             spawned.insert(decoded_msg.channel.clone(), thr_feed);
         }
         let thr_socket = spawned.get_mut(&decoded_msg.channel).unwrap();
@@ -174,21 +173,28 @@ fn main() {
     }
 }
 
-fn process_channel(peer: SocketAddr, tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, this_channel: String ) {
+fn process_channel(peer: SocketAddr, key: u64, tx: Sender<Sender<TcpStream>>, removedtx: Sender<String>, msg: Msg ) {
     let mut cnt = 0;
     let (thr_tx, thr_rx): (Sender<TcpStream>, Receiver<TcpStream>) = channel();
-    println!("Spawned: New channel created!");
+    println!("Spawned: New channel {} created!", msg.channel);
     let mut users = HashMap::new();
     let mut messages: Vec<Vec<u8>> = Vec::new();
     tx.send(thr_tx.clone()).unwrap();
 
+    // just try once during channel creation
     if 0 != peer.port() {
         match TcpStream::connect(peer) {
-            Ok(sock) => {
+            Ok(mut sock) => {
                 let option: Option<Duration> = Some(Duration::from_millis(DELAY));
                 let _val = sock.set_nodelay(true);
                 let _val = sock.set_read_timeout(option);
-                //TODO join the channel on the peer
+                let encoded_msg = message_encode(&msg);
+                let keyv = write_key(key);
+                let mut msgv = write_hdr(encoded_msg.len());
+                msgv.extend(keyv);
+                msgv.extend(encoded_msg);
+                sock.write(msgv.as_slice()).unwrap();
+
                 cnt += 1;
                 println!("Adding peer {}", cnt);
                 users.insert(cnt, sock);
@@ -253,7 +259,7 @@ fn process_channel(peer: SocketAddr, tx: Sender<Sender<TcpStream>>, removedtx: S
                     },
             }
             let key = tuple.1;
-            //ignore key value for now
+            //ignore key 
             buf.extend(key);
             let tuple = read_n(&stream, hdr_len);
             let status = tuple.0;
@@ -281,7 +287,7 @@ fn process_channel(peer: SocketAddr, tx: Sender<Sender<TcpStream>>, removedtx: S
             users.remove(removal);
         }
         if cnt > 0 && users.is_empty() {
-            removedtx.send(this_channel).unwrap();
+            removedtx.send(msg.channel).unwrap();
             break;
         }
     }
