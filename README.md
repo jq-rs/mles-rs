@@ -11,7 +11,7 @@ Mles clients connect to an Mles server using Mles protocol header and (uid, chan
 
 An Mles server may save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels; therefore a TCP session per channel is always used.
 
-Every session between Mles server and client is authenticated using 64-bit SipHash [2]. This allows Mles server to verify that connecting Mles client is really connecting from the endpoint where it claims to be connecting. Additionally, a shared secret key may be used as part of SipHash calculation between Mles server and Mles client. The shared key allows only those Mles clients to connect to Mles server which know the shared key. Mles client sessions behind Network Address Translation (NAT) may only use a shared key without session authentication. After Mles server has authenticated the session and moved the connected Mles client to its channel context, SipHash key is ignored by the Mles server. After context change, SipHash key may be changed and used by Mles clients within the channel context.
+Every session between Mles server and client is authenticated using 64-bit SipHash [2]. This allows Mles server to verify that connecting Mles client is really connecting from the endpoint where it claims to be connecting. Additionally, a shared secret key may be used as part of SipHash calculation between Mles server and Mles client. The shared key allows only those Mles clients to connect to Mles server which know the shared key. Mles client sessions behind Network Address Translation (NAT) may only use a shared key without session authentication. After Mles server has authenticated the session and moved the connected Mles client to its channel context, SipHash key should be ignored by the Mles server. After context change, SipHash key may be changed and used by Mles clients within the channel context.
 
 An Mles server may contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triple data in an organized and powerful, but yet simple, manner between other Mles servers.
 
@@ -42,7 +42,7 @@ message: Major type 2, bytestring
 ```
 With Rust the above looks as follows:
 ```
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Msg {
     pub uid:     String,
     pub channel: String,
@@ -51,7 +51,7 @@ pub struct Msg {
 ```
 ##References:
 
- 1. Concise Binary Object Representation (CBOR), RFC 7049
+ 1. Concise Binary Object Representation (CBOR), https://tools.ietf.org/html/rfc7049
  2. SipHash: a fast short-input PRF, https://131002.net/siphash/, referenced 4.2.2017
  
 
