@@ -375,7 +375,7 @@ fn main() {
         let socket_reader = iter.fold(reader, move |reader, _| {
             // Read a off header the socket, failing if we're at EOF
             let frame = io::read_exact(reader, vec![0;4]);
-            let frame = frame.and_then(|(reader, payload)| {
+            let frame = frame.and_then(move |(reader, payload)| {
                 if payload.len() == 0 {
                     Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
                 } else {
@@ -386,22 +386,26 @@ fn main() {
                     if 0 == hdr_len {
                         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
                     }
-                    Ok((reader, payload))
+                    Ok((reader, hdr_len))
                 }
             });
-            //let pframe = frame.and_then(|reader, payload)| {
-            //        let pframe = io::read_exact(reader, vec![0;hdr_len]);
-            //        let pframe = pframe.and_then(|(reader, buf)| {
-            //            if buf.len() == 0 {
-            //                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-           //             } 
-           //             Ok((reader, buf))
-            //        });
 
+            let frame = frame.and_then(move |(reader, hdr_len)| {
+                println!("Hdrlen {}", hdr_len);
+                let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                let tframe = tframe.and_then(move |(reader, payload)| {
+                    let decoded_message = message_decode(payload.as_slice());
+                    println!("Message {:?}", decoded_message);
+                    Ok((reader, message_encode(&decoded_message)))
+                });
+                tframe
+            });
+
+            println!("Next to send ");
             // Send frame to all other connected clients
             let connections = connections_inner.clone();
             frame.map(move |(reader, message)| {
-                println!("{}: {:?}", cnt, message);
+                println!("Message {}: {:?}", cnt, message);
                 let mut conns = connections.borrow_mut();
                 let iter = conns.iter_mut()
                 .filter(|&(&k, _)| k != cnt)
