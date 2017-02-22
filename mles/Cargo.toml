@@ -9,4 +9,4 @@ repository = "https://github.com/jq-rs/mles-rs"
 [dependencies]
 futures = "0.1"
 tokio-core = "0.1"
-mles-utils = "0.2"
+mles-utils = "0.4"

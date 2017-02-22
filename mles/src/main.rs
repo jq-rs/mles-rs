@@ -1,35 +1,3 @@
-/*
-* Copyright (c) 2016 Alex Crichton
-*
-* Permission is hereby granted, free of charge, to any
-* person obtaining a copy of this software and associated
-* documentation files (the "Software"), to deal in the
-* Software without restriction, including without
-* limitation the rights to use, copy, modify, merge,
-* publish, distribute, sublicense, and/or sell copies of
-* the Software, and to permit persons to whom the Software
-* is furnished to do so, subject to the following
-* conditions:
-*
-* The above copyright notice and this permission notice
-* shall be included in all copies or substantial portions
-* of the Software.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-* ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-* TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-* PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-* SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-* OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-* IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-* DEALINGS IN THE SOFTWARE.
-*/
-
-/* 
- * Mles asynchnoroues server based on Tokio core example.
- */
-
 extern crate tokio_core;
 extern crate futures;
 extern crate mles_utils;
@@ -89,7 +57,7 @@ fn main() {
         let socket_reader = iter.fold(reader, move |reader, _| {
             // Read a off header the socket, failing if we're at EOF
             let frame = io::read_exact(reader, vec![0;4]);
-            let frame = frame.and_then(|(reader, payload)| {
+            let frame = frame.and_then(move |(reader, payload)| {
                 if payload.len() == 0 {
                     Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
                 } else {
@@ -100,22 +68,26 @@ fn main() {
                     if 0 == hdr_len {
                         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
                     }
-                    Ok((reader, payload))
+                    Ok((reader, hdr_len))
                 }
             });
-            //let pframe = frame.and_then(|reader, payload)| {
-            //        let pframe = io::read_exact(reader, vec![0;hdr_len]);
-            //        let pframe = pframe.and_then(|(reader, buf)| {
-            //            if buf.len() == 0 {
-            //                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-           //             } 
-           //             Ok((reader, buf))
-            //        });
 
+            let frame = frame.and_then(move |(reader, hdr_len)| {
+                println!("Hdrlen {}", hdr_len);
+                let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                let tframe = tframe.and_then(move |(reader, payload)| {
+                    let decoded_message = message_decode(payload.as_slice());
+                    println!("Message {:?}", decoded_message);
+                    Ok((reader, message_encode(&decoded_message)))
+                });
+                tframe
+            });
+
+            println!("Next to send ");
             // Send frame to all other connected clients
             let connections = connections_inner.clone();
             frame.map(move |(reader, message)| {
-                println!("{}: {:?}", cnt, message);
+                println!("Message {}: {:?}", cnt, message);
                 let mut conns = connections.borrow_mut();
                 let iter = conns.iter_mut()
                 .filter(|&(&k, _)| k != cnt)
