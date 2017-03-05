@@ -1,5 +1,5 @@
 /**
- *   Mles-utils to be used with Mles client or server.
+ *   Mles asynchronous server
  *   Copyright (C) 2017  Mles developers
  *
  *   This program is free software: you can redistribute it and/or modify
@@ -326,6 +326,7 @@ use std::cell::RefCell;
 use std::iter;
 use std::env;
 use std::io::{Error, ErrorKind};
+use std::thread;
 
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
@@ -351,6 +352,9 @@ fn main() {
     // This is a single-threaded server, so we can just use Rc and RefCell to
     // store the map of all connections we know about.
     let connections = Rc::new(RefCell::new(HashMap::new()));
+    let spawned = Rc::new(RefCell::new(HashMap::new()));  
+    //let (sockettx, socketrx) = futures::sync::mpsc::unbounded();
+    //let (remtx, remrx) = futures::sync::mpsc::unbounded();
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
@@ -367,6 +371,7 @@ fn main() {
         // frames from the socket and dispatch them while we also write any frames
         // from other sockets.
         let connections_inner = connections.clone();
+        let spawned_inner = spawned.clone();
 
         // Model the read portion of this socket by mapping an infinite
         // iterator to each frame off the socket. This "loop" is then
@@ -410,11 +415,24 @@ fn main() {
                 tframe
             });
 
-            println!("Next to send ");
             // Send frame to all other connected clients
             let connections = connections_inner.clone();
+            let spawned = spawned_inner.clone();
+            //spawned.insert("channel", 1);
             frame.map(move |(reader, message)| {
-                println!("Message {}: {:?}", cnt, message);
+                let decoded_message = message_decode(message.as_slice());
+                println!("User {}, Channel {}", cnt, decoded_message.channel);
+                let mut spawned = spawned.borrow_mut();
+                if !spawned.contains_key(decoded_message.channel.as_str()) { 
+                    //let sockettx = sockettx.clone();
+                    //let remtx = remtx.clone();
+                    let msg = decoded_message.clone();
+                    thread::spawn(move|| process_tokio_channel(msg));
+                    //let _tresp = socketrx.and_then(|thr_feed| {
+                    spawned.insert(decoded_message.channel.clone(), cnt);
+                    //    Ok(())
+                    //});
+                }
                 let mut conns = connections.borrow_mut();
                 let iter = conns.iter_mut()
                 .filter(|&(&k, _)| k != cnt)
@@ -452,4 +470,9 @@ fn main() {
 
     // execute server
     core.run(srv).unwrap();
+}
+
+fn process_tokio_channel( msg: Msg ) {
+    println!("Here we are at new channel {}", msg.channel);
+    //tx.send(1).wait();
 }
