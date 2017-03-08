@@ -351,7 +351,6 @@ fn main() {
     println!("Listening on: {}", addr);
 
     let spawned = Rc::new(RefCell::new(HashMap::new()));  
-    //let (tx, rx) = channel(0);
     //let (remtx, remrx) = futures::sync::mpsc::unbounded();
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
@@ -359,6 +358,8 @@ fn main() {
         let (reader, _) = stream.split();
 
         let spawned_inner = spawned.clone();
+        let (tx, rx) = channel(0);
+        //let tx_inner = tx.clone();
 
         // Read a off header the socket, failing if we're at EOF
         let frame = io::read_exact(reader, vec![0;4]);
@@ -402,18 +403,20 @@ fn main() {
             println!("User {}, Channel {}", decoded_message.uid, decoded_message.channel);
             let mut spawned = spawned.borrow_mut();
             if !spawned.contains_key(decoded_message.channel.as_str()) { 
-                //let tx = tx.clone();
+                let tx = tx.clone();
                 //let remtx = remtx.clone();
                 let msg = decoded_message.clone();
-                thread::spawn(move|| process_tokio_channel(msg));
-                //let thr_feed = rx.and_then(|thr_feed| {
-                //    spawned.insert(decoded_message.channel.clone(), thr_feed);
-                //    Ok(())
-                //});
-                spawned.insert(decoded_message.channel.clone(), 1);
+                thread::spawn(move|| process_tokio_channel(tx, msg));
+                let thr_feed = rx.and_then(|thr_feed| {
+                    spawned.insert(decoded_message.channel.clone(), thr_feed);
+                    println!("Here");
+                    Ok(())
+                });
+                //spawned.insert(decoded_message.channel.clone(), 1);
             }
             ()
         });
+
 
         socket_reader.then(move |_| {
             println!("Connection {} closed.", addr);
@@ -425,15 +428,15 @@ fn main() {
     core.run(srv).unwrap();
 }
 
-//fn process_tokio_channel( tx: futures::sync::mpsc::Sender<futures::sync::mpsc::Sender<TcpStream>>, msg: Msg ) {
-fn process_tokio_channel( msg: Msg ) {
+fn process_tokio_channel( tx: futures::sync::mpsc::Sender<futures::sync::mpsc::Sender<TcpStream>>, msg: Msg ) {
+//fn process_tokio_channel( msg: Msg ) {
     // Create the event loop 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let mut cnt = 0;
-    //let (thr_tx, thr_rx): (Sender<TcpStream>, Receiver<TcpStream>) = channel(0);
+    let (thr_tx, thr_rx): (Sender<TcpStream>, Receiver<TcpStream>) = channel(0);
     println!("Here we are at new channel {}", msg.channel);
-    //tx.send(thr_tx.clone()).wait().unwrap();
+    tx.send(thr_tx.clone()).wait().unwrap();
 
     // This is a single-threaded server, so we can just use Rc and RefCell to
     // store the map of all connections we know about.
