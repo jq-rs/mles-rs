@@ -358,15 +358,61 @@ fn main() {
         //let spawned_inner = spawned.clone();
         let (tx, rx) = unbounded();
         cnt += 1;
-        let mut is_channel_set = false;
-        //let mut channel = "".to_string();
-        //let mut socket_once;
-        //let mut socket_next;
 
-        //if !is_channel_set {
-            //let tx_new = tx.clone();
-            //let iter = stream::iter(iter::once(()).map(Ok::<(), Error>));
-            //let socket_once = iter.fold(reader, move |reader, _| {
+        let frame = io::read_exact(reader, vec![0;4]);
+        let frame = frame.and_then(move |(reader, payload)| {
+            if payload.len() == 0 {
+                Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+            } else {
+                if read_hdr_type(payload.as_slice()) != 'M' as u32 {
+                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+                }
+                let hdr_len = read_hdr_len(payload.as_slice());
+                if 0 == hdr_len {
+                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+                }
+                Ok((reader, payload, hdr_len))
+            }
+        });
+
+        let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
+            //dummy read key
+            let tframe = io::read_exact(reader, vec![0;8]);
+            let tframe = tframe.and_then(move |(reader, key)| {
+                Ok((reader, hdr, key, hdr_len))
+            });
+            tframe
+        });
+
+        //let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+        let tx_once = tx.clone();
+        let spawned_inner = spawned.clone();
+        let socket_once = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+            println!("Hdrlen {}", hdr_len);
+            let tframe = io::read_exact(reader, vec![0;hdr_len]);
+            let tframe = tframe.and_then(move |(reader, message)| {
+                if 0 == message.len() { 
+                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
+                }
+                else {
+                    let mut spawned_once = spawned_inner.borrow_mut();
+                    let decoded_message = message_decode(message.as_slice());
+                    spawned_once.insert(decoded_message.channel.clone(), (cnt, tx_once));
+                    println!("User {}, Channel {} join done", decoded_message.uid, decoded_message.channel);
+                    let channel = decoded_message.channel.clone();
+                    Ok((reader, channel))
+                }
+            });
+            tframe
+        });
+
+        let tx_next = tx.clone();
+        let spawned_inner = spawned.clone();
+        let socket_next = socket_once.and_then(move |(reader, channel)| {
+            println!("Channel {}", channel);
+            let channel_next = channel.clone();
+            let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
+            iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, vec![0;4]);
                 let frame = frame.and_then(move |(reader, payload)| {
                     if payload.len() == 0 {
@@ -392,10 +438,7 @@ fn main() {
                     tframe
                 });
 
-                //let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
-                let tx_once = tx.clone();
-                let spawned_inner = spawned.clone();
-                let socket_once = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+                let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
                     println!("Hdrlen {}", hdr_len);
                     let tframe = io::read_exact(reader, vec![0;hdr_len]);
                     let tframe = tframe.and_then(move |(reader, message)| {
@@ -403,104 +446,32 @@ fn main() {
                             return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
                         }
                         else {
-                            let mut spawned_once = spawned_inner.borrow_mut();
-                            let decoded_message = message_decode(message.as_slice());
-                            spawned_once.insert(decoded_message.channel.clone(), (cnt, tx_once));
-                            println!("User {}, Channel {} join done", decoded_message.uid, decoded_message.channel);
-                            let channel = decoded_message.channel.clone();
-                            Ok((reader, channel))
+                            Ok((reader, hdr, key, message))
                         }
                     });
                     tframe
                 });
 
-                //let spawned_inner = spawned.clone();
-                //let tx_once = tx.clone();
-                //frame.map(move |(reader, mut hdr, mut key, message)| {
-                //let socket_once = frame.map(move |(reader, mut hdr, mut key, message)| {
-                //    let mut spawned_once = spawned.borrow_mut();
-                //    let decoded_message = message_decode(message.as_slice());
-                //    spawned_once.insert(decoded_message.channel.clone(), (cnt, tx_once));
-                //    println!("User {}, Channel {} join done", decoded_message.uid, decoded_message.channel);
-                //    //is_channel_set = true;
-                //    let channel = decoded_message.channel.clone();
-                //    reader
-                //}); 
-            //});  
-        //}
-        //else {  
-            let tx_next = tx.clone();
-            let spawned_inner = spawned.clone();
-            //let channel_next = channel.clone();
-            let socket_next = socket_once.and_then(move |(reader, channel)| {
-                println!("Chnnel {}", channel);
-                let channel_next = channel.clone();
-                let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
-                iter.fold(reader, move |reader, _| {
-                    let frame = io::read_exact(reader, vec![0;4]);
-                    let frame = frame.and_then(move |(reader, payload)| {
-                        if payload.len() == 0 {
-                            Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-                        } else {
-                            if read_hdr_type(payload.as_slice()) != 'M' as u32 {
-                                return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-                            }
-                            let hdr_len = read_hdr_len(payload.as_slice());
-                            if 0 == hdr_len {
-                                return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-                            }
-                            Ok((reader, payload, hdr_len))
-                        }
-                    });
-
-                    let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
-                        //dummy read key
-                        let tframe = io::read_exact(reader, vec![0;8]);
-                        let tframe = tframe.and_then(move |(reader, key)| {
-                            Ok((reader, hdr, key, hdr_len))
-                        });
-                        tframe
-                    });
-
-                    let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
-                        println!("Hdrlen {}", hdr_len);
-                        let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                        let tframe = tframe.and_then(move |(reader, message)| {
-                            if 0 == message.len() { 
-                                return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                            }
-                            else {
-                                Ok((reader, hdr, key, message))
-                            }
-                        });
-                        tframe
-                    });
-
-                    let spawned = spawned_inner.clone();
-                    let tx = tx_next.clone();
-                    let channel = channel_next.clone();
-                    frame.map(move |(reader, mut hdr, mut key, message)| {
-                        let spawned = spawned.borrow();
-                        //let spawned_new = spawned.borrow();
-                        //let decoded_message = message_decode(message.as_slice());
-                        //spawned.insert(decoded_message.channel.clone(), (cnt, tx.clone()));
-                        key.extend(message);
-                        hdr.extend(key);
-                        //let iter = spawned.iter_mut()
-                        let iter = spawned.iter()
-                        .filter(|&(ref k, _)| { println!("Comparing {} to {}", k.to_string(), channel); k.to_string() == channel})
-                        .map(|(_,  v)| v);
+                let spawned = spawned_inner.clone();
+                let tx = tx_next.clone();
+                let channel = channel_next.clone();
+                frame.map(move |(reader, mut hdr, mut key, message)| {
+                    let spawned = spawned.borrow();
+                    key.extend(message);
+                    hdr.extend(key);
+                    let iter = spawned.iter()
+                                      .filter(|&(ref k, _)| { println!("Comparing {} to {}", k.to_string(), channel); k.to_string() == channel})
+                                      .map(|(_,  v)| v);
                     for &(ocnt, ref tx) in iter {
                         if ocnt != cnt {
-                            println!("Sending..");
-                            tx.send(hdr.clone()).unwrap();
+                             println!("Sending..");
+                             tx.send(hdr.clone()).unwrap();
                         }
-                    }
-                    reader
-                    })
+                     }
+                     reader
                 })
-            });
-        //}
+            })
+        });
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let amt = io::write_all(writer, msg);
