@@ -335,11 +335,10 @@ use tokio_core::io::{self, Io};
 
 use futures::{Sink, Future};
 use futures::stream::{self, Stream};
-use futures::sync::mpsc::{channel, Sender, Receiver};
+use futures::sync::mpsc::unbounded;
 use mles_utils::*;
 
 //static mut BUF: Vec<u8> = vec![0,4];
-
 fn main() {
     let addr = env::args().nth(1).unwrap_or("0.0.0.0:8077".to_string());
     let addr = addr.parse().unwrap();
@@ -351,75 +350,157 @@ fn main() {
     let mut cnt = 0;
 
     let spawned = Rc::new(RefCell::new(HashMap::new()));  
-    //let (remtx, remrx) = futures::sync::mpsc::unbounded();
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
         let (reader, writer) = stream.split();
 
-        let spawned_inner = spawned.clone();
+        //let spawned_inner = spawned.clone();
+        let (tx, rx) = unbounded();
         cnt += 1;
-        let (tx, rx) = futures::sync::mpsc::unbounded();
-        spawned.borrow_mut().insert(cnt, tx);
+        let mut is_channel_set = false;
+        //let mut channel = "".to_string();
+        //let mut socket_once;
+        //let mut socket_next;
 
-        let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
-        let socket_reader = iter.fold(reader, move |reader, _| {
-            let frame = io::read_exact(reader, vec![0;4]);
-            let frame = frame.and_then(move |(reader, payload)| {
-                if payload.len() == 0 {
-                    Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-                } else {
-                    if read_hdr_type(payload.as_slice()) != 'M' as u32 {
-                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-                    }
-                    let hdr_len = read_hdr_len(payload.as_slice());
-                    if 0 == hdr_len {
-                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-                    }
-                    Ok((reader, payload, hdr_len))
-                }
-            });
-
-            let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
-                //dummy read key
-                let tframe = io::read_exact(reader, vec![0;8]);
-                let tframe = tframe.and_then(move |(reader, key)| {
-                    Ok((reader, hdr, key, hdr_len))
-                });
-                tframe
-            });
-
-            let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
-                println!("Hdrlen {}", hdr_len);
-                let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                let tframe = tframe.and_then(move |(reader, message)| {
-                    if 0 == message.len() { 
-                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                    }
-                    else {
-                        Ok((reader, hdr, key, message))
+        //if !is_channel_set {
+            //let tx_new = tx.clone();
+            //let iter = stream::iter(iter::once(()).map(Ok::<(), Error>));
+            //let socket_once = iter.fold(reader, move |reader, _| {
+                let frame = io::read_exact(reader, vec![0;4]);
+                let frame = frame.and_then(move |(reader, payload)| {
+                    if payload.len() == 0 {
+                        Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+                    } else {
+                        if read_hdr_type(payload.as_slice()) != 'M' as u32 {
+                            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+                        }
+                        let hdr_len = read_hdr_len(payload.as_slice());
+                        if 0 == hdr_len {
+                            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+                        }
+                        Ok((reader, payload, hdr_len))
                     }
                 });
-                tframe
-            });
 
-            let spawned = spawned_inner.clone();
-            frame.map(move |(reader, mut hdr, mut key, message)| {
-                let mut spawned = spawned.borrow_mut();
-                let decoded_message = message_decode(message.as_slice());
-                println!("User {}, Channel {}", decoded_message.uid, decoded_message.channel);
-                key.extend(message);
-                hdr.extend(key);
-                let iter = spawned.iter_mut()
-                           .filter(|&(&k, _)| k != cnt)
-                           .map(|(_, v)| v);
-                for tx in iter {
-                     println!("Sending {}: {:?}", cnt, decoded_message);
-                     tx.send(hdr.clone()).wait().unwrap();
-                }
-                reader
-            })
-        });
+                let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
+                    //dummy read key
+                    let tframe = io::read_exact(reader, vec![0;8]);
+                    let tframe = tframe.and_then(move |(reader, key)| {
+                        Ok((reader, hdr, key, hdr_len))
+                    });
+                    tframe
+                });
+
+                //let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+                let tx_once = tx.clone();
+                let spawned_inner = spawned.clone();
+                let socket_once = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+                    println!("Hdrlen {}", hdr_len);
+                    let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                    let tframe = tframe.and_then(move |(reader, message)| {
+                        if 0 == message.len() { 
+                            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
+                        }
+                        else {
+                            let mut spawned_once = spawned_inner.borrow_mut();
+                            let decoded_message = message_decode(message.as_slice());
+                            spawned_once.insert(decoded_message.channel.clone(), (cnt, tx_once));
+                            println!("User {}, Channel {} join done", decoded_message.uid, decoded_message.channel);
+                            let channel = decoded_message.channel.clone();
+                            Ok((reader, channel))
+                        }
+                    });
+                    tframe
+                });
+
+                //let spawned_inner = spawned.clone();
+                //let tx_once = tx.clone();
+                //frame.map(move |(reader, mut hdr, mut key, message)| {
+                //let socket_once = frame.map(move |(reader, mut hdr, mut key, message)| {
+                //    let mut spawned_once = spawned.borrow_mut();
+                //    let decoded_message = message_decode(message.as_slice());
+                //    spawned_once.insert(decoded_message.channel.clone(), (cnt, tx_once));
+                //    println!("User {}, Channel {} join done", decoded_message.uid, decoded_message.channel);
+                //    //is_channel_set = true;
+                //    let channel = decoded_message.channel.clone();
+                //    reader
+                //}); 
+            //});  
+        //}
+        //else {  
+            let tx_next = tx.clone();
+            let spawned_inner = spawned.clone();
+            //let channel_next = channel.clone();
+            let socket_next = socket_once.and_then(move |(reader, channel)| {
+                println!("Chnnel {}", channel);
+                let channel_next = channel.clone();
+                let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
+                iter.fold(reader, move |reader, _| {
+                    let frame = io::read_exact(reader, vec![0;4]);
+                    let frame = frame.and_then(move |(reader, payload)| {
+                        if payload.len() == 0 {
+                            Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+                        } else {
+                            if read_hdr_type(payload.as_slice()) != 'M' as u32 {
+                                return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+                            }
+                            let hdr_len = read_hdr_len(payload.as_slice());
+                            if 0 == hdr_len {
+                                return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+                            }
+                            Ok((reader, payload, hdr_len))
+                        }
+                    });
+
+                    let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
+                        //dummy read key
+                        let tframe = io::read_exact(reader, vec![0;8]);
+                        let tframe = tframe.and_then(move |(reader, key)| {
+                            Ok((reader, hdr, key, hdr_len))
+                        });
+                        tframe
+                    });
+
+                    let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+                        println!("Hdrlen {}", hdr_len);
+                        let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                        let tframe = tframe.and_then(move |(reader, message)| {
+                            if 0 == message.len() { 
+                                return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
+                            }
+                            else {
+                                Ok((reader, hdr, key, message))
+                            }
+                        });
+                        tframe
+                    });
+
+                    let spawned = spawned_inner.clone();
+                    let tx = tx_next.clone();
+                    let channel = channel_next.clone();
+                    frame.map(move |(reader, mut hdr, mut key, message)| {
+                        let spawned = spawned.borrow();
+                        //let spawned_new = spawned.borrow();
+                        //let decoded_message = message_decode(message.as_slice());
+                        //spawned.insert(decoded_message.channel.clone(), (cnt, tx.clone()));
+                        key.extend(message);
+                        hdr.extend(key);
+                        //let iter = spawned.iter_mut()
+                        let iter = spawned.iter()
+                        .filter(|&(ref k, _)| { println!("Comparing {} to {}", k.to_string(), channel); k.to_string() == channel})
+                        .map(|(_,  v)| v);
+                    for &(ocnt, ref tx) in iter {
+                        if ocnt != cnt {
+                            println!("Sending..");
+                            tx.send(hdr.clone()).unwrap();
+                        }
+                    }
+                    reader
+                    })
+                })
+            });
+        //}
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let amt = io::write_all(writer, msg);
@@ -431,10 +512,11 @@ fn main() {
         //// use the `select` combinator to wait for either half to be done to
         //// tear down the other. Then we spawn off the result.
         let connections = spawned.clone();
-        let socket_reader = socket_reader.map_err(|_| ());
+        let socket_reader = socket_next.map_err(|_| ());
+        //let socket_inf = socket_inf.map_err(|_| ());
         let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
-            connections.borrow_mut().remove(&cnt);
+            //connections.borrow_mut().remove(&cnt);
             println!("Connection {} closed.", addr);
             Ok(())
         }));
