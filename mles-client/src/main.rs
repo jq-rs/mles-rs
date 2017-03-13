@@ -30,7 +30,7 @@
 */
 
 /* 
- * Mles-example client based on Tokio core-connect example.
+ * Mles Client example based on Tokio core-connect example.
  */
 
 extern crate mles_utils;
