@@ -273,8 +273,6 @@ fn main() {
                     if 0 == channel.len() {
                         let mut channelmsgs = chanmsgs.borrow_mut();
                         channelmsgs.remove(cname);
-                    }
-                    if 0 == channel.len() {
                         println!("Channel {} dropped.", cname);
                         drop(channel);
                     }
