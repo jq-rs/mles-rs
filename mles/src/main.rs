@@ -38,6 +38,7 @@ use futures::stream::{self, Stream};
 use futures::sync::mpsc::unbounded;
 use mles_utils::*;
 
+
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
 
@@ -63,16 +64,12 @@ fn main() {
         }
     }
 
-    /* TODO: add peer connection */
     let _peer = match peer.parse::<SocketAddr>() {
         Ok(addr) => addr,
         Err(_) => {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
         },
     };
-
-    let address = "0.0.0.0:8077";
-    let address = address.parse().unwrap();
 
     let keyval = match env::var("MLES_KEY") {
         Ok(val) => val,
@@ -81,6 +78,7 @@ fn main() {
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
+    let address = "0.0.0.0:8077".parse().unwrap();
     let socket = match TcpListener::bind(&address, &handle) {
         Ok(listener) => listener,
         Err(err) => {
@@ -94,6 +92,14 @@ fn main() {
     let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
     let mut cnt = 0;
 
+    //connect to peer
+    //let tcp = TcpStream::connect(&peer, &handle);
+    //let client = tcp.map_err(|_| ()).and_then(|pstream| {
+    //    let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
+    //    println!("Adding peer {}", cnt);
+    //    Ok((pstream))
+    //});
+
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
         let paddr = match stream.peer_addr() {
@@ -104,10 +110,12 @@ fn main() {
                     addr
                 }
         };
+        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));;
 
         let (reader, writer) = stream.split();
 
         let (tx, rx) = unbounded();
+
         cnt += 1;
 
         let frame = io::read_exact(reader, vec![0;HDRL]);
@@ -177,9 +185,9 @@ fn main() {
                         for msg in chanmsgs {
                             tx.send(msg.clone()).unwrap();
                         }
+                        //TODO try to connect to peer
                     }
                     println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
-                    /* TODO: add peer connection */
                     Ok((reader, channel))
                 }
             });
