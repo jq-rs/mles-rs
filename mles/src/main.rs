@@ -24,12 +24,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
-use std::io::{Error, ErrorKind};
+use std::io::{Write, Error, ErrorKind};
 use std::{process, env};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::thread;
 
 use tokio_core::net::TcpListener;
-//use tokio_core::net::TcpStream;
+use tokio_core::net::TcpStream;
 use tokio_core::reactor::Core;
 use tokio_core::io::{self, Io};
 
@@ -64,7 +65,7 @@ fn main() {
         }
     }
 
-    let _peer = match peer.parse::<SocketAddr>() {
+    let peer = match peer.parse::<SocketAddr>() {
         Ok(addr) => addr,
         Err(_) => {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
@@ -92,13 +93,10 @@ fn main() {
     let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
     let mut cnt = 0;
 
-    //connect to peer
-    //let tcp = TcpStream::connect(&peer, &handle);
-    //let client = tcp.map_err(|_| ()).and_then(|pstream| {
-    //    let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
-    //    println!("Adding peer {}", cnt);
-    //    Ok((pstream))
-    //});
+    // peer handling
+    let (peer_tx, peer_rx) = unbounded();
+    let (peer_tx_stream, peer_rx_stream) = unbounded();
+    thread::spawn(move || peer_conn(peer, peer_rx, peer_rx_stream));
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
@@ -157,6 +155,8 @@ fn main() {
         });
 
         let tx_once = tx.clone();
+        let peer_tx_once = peer_tx.clone();
+        let peer_tx_stream_once = peer_tx_stream.clone();
         let spawned_inner = spawned.clone();
         let chanmsgs_inner = channelmsgs.clone();
         let socket_once = frame.and_then(move |(reader, hdr_len)| {
@@ -177,6 +177,8 @@ fn main() {
 
                         let messages: Vec<Vec<u8>> = Vec::new();
                         chanmsgs_once.insert(channel.clone(), messages);
+                        //try to connect to peer
+                        peer_tx_stream_once.send(tx.clone()).unwrap();
                     }
                     else {
                         let mut channel_entry = spawned_once.get_mut(&channel).unwrap();
@@ -185,9 +187,10 @@ fn main() {
                         for msg in chanmsgs {
                             tx.send(msg.clone()).unwrap();
                         }
-                        //TODO try to connect to peer
                     }
                     println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
+                    // forward to peer
+                    peer_tx_once.send(message).unwrap();
                     Ok((reader, channel))
                 }
             });
@@ -196,6 +199,7 @@ fn main() {
 
         let spawned_inner = spawned.clone();
         let chanmsgs_inner = channelmsgs.clone();
+        let peer_tx_inner = peer_tx.clone();
         let socket_next = socket_once.and_then(move |(reader, channel)| {
             let channel_next = channel.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
@@ -241,6 +245,7 @@ fn main() {
                 let spawned = spawned_inner.clone();
                 let chanmsgs = chanmsgs_inner.clone();
                 let channel = channel_next.clone();
+                let peer_tx = peer_tx_inner.clone();
                 frame.map(move |(reader, mut hdr, mut key, message)| {
                     key.extend(message);
                     hdr.extend(key);
@@ -258,6 +263,7 @@ fn main() {
                             tx.send(hdr.clone()).unwrap();
                         }
                     }
+                    peer_tx.send(hdr.clone()).unwrap();
                     reader
                 })
             })
@@ -294,6 +300,80 @@ fn main() {
     });
 
     // execute server
+    core.run(srv).unwrap();
+}
+
+fn peer_conn(peer: SocketAddr, rx: futures::sync::mpsc::UnboundedReceiver<Vec<u8>>, tx: futures::sync::mpsc::UnboundedReceiver<futures::sync::mpsc::UnboundedSender<Vec<u8>>>) {
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
+
+    let srv = tx.for_each(|sink| {
+        
+        let tcp = TcpStream::connect(&peer, &handle);
+        /*let client = rx.and_then(|msg| {
+            let decoded_message = message_decode(msg.as_slice());
+            let channel = decoded_message.channel.clone();
+            println!("Peer connection {}", channel);
+            //writer.write_all(&msg.clone()).unwrap();
+            Ok(())
+        }); */
+        
+        let client = tcp.and_then(|pstream| {
+            let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
+            println!("Adding peer {}", 0);
+
+            let (reader, mut writer) = pstream.split();
+          
+            let frame = io::read_exact(reader, vec![0;HDRL]);
+            let frame = frame.and_then(move |(reader, payload)| {
+                if payload.len() == 0 {
+                    Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+                } else {
+                    if read_hdr_type(payload.as_slice()) != 'M' as u32 {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+                    }
+                    let hdr_len = read_hdr_len(payload.as_slice());
+                    if 0 == hdr_len {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+                    }
+                    Ok((reader, payload, hdr_len))
+                }
+            });
+
+            let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
+                //dummy read key
+                let tframe = io::read_exact(reader, vec![0;KEYL]);
+                let tframe = tframe.and_then(move |(reader, key)| {
+                    Ok((reader, hdr, key, hdr_len))
+                });
+                tframe
+            });
+
+            let frame = frame.and_then(move |(reader, mut hdr, mut key, hdr_len)| {
+                let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                let tframe = tframe.and_then(move |(_, message)| {
+                    if 0 == message.len() { 
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
+                    }
+                    else {
+                        key.extend(message);
+                        hdr.extend(key);
+                        sink.send(hdr.clone()).unwrap();
+                        //writer.write_all(&hdr.clone()).unwrap();
+                        Ok(())
+                    }
+                });
+                tframe
+            }); 
+
+            frame.map(|_| ())
+        });
+
+        let client = client.map_err(|_| ()); 
+        handle.spawn(client);
+        Ok(())
+    });
+    
     core.run(srv).unwrap();
 }
 
