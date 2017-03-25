@@ -5,7 +5,7 @@
 
 Mles is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe database service. It consists of _Mles-utils_, _Mles-client_ and _Mles_ server implementations.
 
-##Mles protocol overview
+## Mles protocol overview
 
 Mles clients connect to an Mles server using Mles protocol header and (uid, channel, message) value triple on TCP session where the triple is Concise Binary Object Representation (CBOR) [1] encapsulated. An Mles client first subscribes to a channel by sending correct Mles protocol header and value triple (uid, channel, msg) where _channel_ is the channel to publish/subscribe. The _msg_ should be empty. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. After joining, the Mles server distributes the value triple between all clients on the same channel. If an Mles client wants to depart from a channel, it just closes the TCP session.
 
@@ -17,7 +17,9 @@ An Mles server may contact to an Mles peer server. The Mles peer server sees thi
 
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server may be configured to use IP anycast.
 
-##Mles protocol details
+Mles protocol has Internet Assigned Number Authority (IANA) **port 8077** [3] registered for its use.
+
+## Mles protocol details
 
 The protocol header for Mles is as follows:
 ```
@@ -49,9 +51,10 @@ pub struct Msg {
     pub message: Vec<u8>,
 }
 ```
-##References:
+## References:
 
  1. Concise Binary Object Representation (CBOR), https://tools.ietf.org/html/rfc7049
  2. SipHash: a fast short-input PRF, https://131002.net/siphash/, referenced 4.2.2017
+ 3. http://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=8077
  
 
