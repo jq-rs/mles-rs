@@ -1,7 +1,7 @@
 /**
- *   Mles Asynchronous Server
+ *   Mles server
  *
- *   Copyright (C) 2017  Mles developers
+ *   Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
  *
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 extern crate tokio_core;
+extern crate tokio_io;
 extern crate futures;
 extern crate mles_utils;
 
@@ -29,9 +30,9 @@ use std::{process, env};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use tokio_core::net::TcpListener;
-//use tokio_core::net::TcpStream;
 use tokio_core::reactor::Core;
-use tokio_core::io::{self, Io};
+use tokio_io::io;
+use tokio_io::AsyncRead;
 
 use futures::Future;
 use futures::stream::{self, Stream};
@@ -91,14 +92,6 @@ fn main() {
     let spawned = Rc::new(RefCell::new(HashMap::new()));  
     let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
     let mut cnt = 0;
-
-    //connect to peer
-    //let tcp = TcpStream::connect(&peer, &handle);
-    //let client = tcp.map_err(|_| ()).and_then(|pstream| {
-    //    let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
-    //    println!("Adding peer {}", cnt);
-    //    Ok((pstream))
-    //});
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
