@@ -95,7 +95,6 @@ fn main() {
     let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
     let mut cnt = 0;
 
-
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
         let paddr = match stream.peer_addr() {
@@ -179,7 +178,6 @@ fn main() {
 
                         let messages: Vec<Vec<u8>> = Vec::new();
                         chanmsgs_once.insert(channel.clone(), messages);
-
                     }
                     else {
                         let mut channel_entry = spawned_once.get_mut(&channel).unwrap();
