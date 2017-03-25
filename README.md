@@ -55,6 +55,6 @@ pub struct Msg {
 
  1. Concise Binary Object Representation (CBOR), https://tools.ietf.org/html/rfc7049
  2. SipHash: a fast short-input PRF, https://131002.net/siphash/, referenced 4.2.2017
- 3. http://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=8077
+ 3. Mles registered port #8077, http://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=8077
  
 
