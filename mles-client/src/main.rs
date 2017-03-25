@@ -36,17 +36,21 @@
 extern crate mles_utils;
 extern crate futures;
 extern crate tokio_core;
+extern crate tokio_io;
+extern crate bytes;
 
 use std::{env, process};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::thread;
 
+use bytes::{BufMut, BytesMut};
 use futures::{Sink, Future, Stream};
 use futures::sync::mpsc;
 use tokio_core::reactor::Core;
-use tokio_core::io::{Io, EasyBuf, Codec};
 use tokio_core::net::TcpStream;
+use tokio_io::AsyncRead;
+use tokio_io::codec::{Encoder, Decoder};
 use mles_utils::*;
 
 const KEYL: usize = 8; //key len
@@ -107,7 +111,7 @@ fn main() {
         });
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
-            let decoded = message_decode(buf.as_slice());
+            let decoded = message_decode(buf.to_vec().as_slice());
             let mut msg = "".to_string();
             if 0 == decoded.message.len() {
                 println!("Error: Incorrect message length");
@@ -136,21 +140,21 @@ fn main() {
 
 struct Bytes;
 
-impl Codec for Bytes {
-    type In = EasyBuf;
-    type Out = Vec<u8>;
+impl Decoder for Bytes {
+    type Item = BytesMut;
+    type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut EasyBuf) -> io::Result<Option<EasyBuf>> {
+    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
         if buf.len() >= HDRL { // HDRL is header min size
-            if read_hdr_type(buf.as_slice()) != 'M' as u32 {
+            if read_hdr_type(buf.to_vec().as_slice()) != 'M' as u32 {
                 let len = buf.len();
-                buf.drain_to(len);
+                buf.split_to(len);
                 return Ok(None);   
             }
-            let hdr_len = read_hdr_len(buf.as_slice()); 
+            let hdr_len = read_hdr_len(buf); 
             if 0 == hdr_len {
                 let len = buf.len();
-                buf.drain_to(len);
+                buf.split_to(len);
                 return Ok(None);
             }
             let len = buf.len();
@@ -158,20 +162,29 @@ impl Codec for Bytes {
                 return Ok(None); 
             }
             if HDRL + hdr_len < len { 
-                buf.drain_to(HDRL);
-                return Ok(Some(buf.drain_to(hdr_len)));
+                buf.split_to(HDRL);
+                return Ok(Some(buf.split_to(hdr_len)));
             }
-            buf.drain_to(HDRL);
-            Ok(Some(buf.drain_to(hdr_len)))
+            buf.split_to(HDRL);
+            Ok(Some(buf.split_to(hdr_len)))
         } else {
             Ok(None)
         }
     }
 
-    fn encode(&mut self, data: Vec<u8>, buf: &mut Vec<u8>) -> io::Result<()> {
+    fn decode_eof(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
+        self.decode(buf)
+    }
+}
+
+impl Encoder for Bytes {
+    type Item = Vec<u8>;
+    type Error = io::Error;
+
+    fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
         let mut msgv = write_hdr(data.len()-KEYL);
         msgv.extend(data);
-        buf.extend(msgv);
+        buf.put(&msgv[..]);
         Ok(())
     }
 }
