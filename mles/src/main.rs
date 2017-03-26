@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
-use std::io::{Write, Error, ErrorKind};
+use std::io::{Error, ErrorKind};
 use std::{process, env};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::thread;
@@ -153,7 +153,6 @@ fn main() {
         });
 
         let tx_once = tx.clone();
-        let tx_peer_once = tx_peer.clone();
         let spawned_inner = spawned.clone();
         let chanmsgs_inner = channelmsgs.clone();
         let socket_once = frame.and_then(move |(reader, hdr_len)| {
@@ -261,18 +260,18 @@ fn main() {
                             tx.send(hdr.clone()).unwrap();
                         }
                     }
-                    //tx_peer.send(hdr.clone()).unwrap();
                     reader
                 })
             })
         });
 
         //try to get tx to peer
-        let peer_writer = rx_peer.for_each(|peer_tx| {
+        let peer_writer = rx_peer.and_then(|peer_tx| {
             println!("reading peer_tx");
             Ok(())
         });
-        let peer_writer = peer_writer.map_err(|_| ());
+
+        let peer_writer = peer_writer.map(|_| ());
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let amt = io::write_all(writer, msg);
@@ -280,12 +279,13 @@ fn main() {
             amt.map_err(|_| ())
         });
 
-        //let socket_writer = socket_writer.map_err(|_| { println!("got an error"); () });
+        //let socket_writer = socket_writer.select2(peer_writer);
 
         let channels = spawned.clone();
         let chanmsgs = channelmsgs.clone();
         let socket_reader = socket_next.map_err(|_| ());
-        let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
+        let connection = socket_reader.map(|_| ()).select2(socket_writer.map(|_| ()));
+        //let connection = socket_reader.map(|_| ()).select(peer_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
             let mut chans = channels.borrow_mut();
             for (cname, channel) in chans.iter_mut() {
@@ -308,28 +308,32 @@ fn main() {
 
     // execute server
     core.run(srv).unwrap();
+
+    println!("Stopping server");
 }
 
 fn peer_conn(peer: SocketAddr, tx_peer_for_rcv: futures::sync::mpsc::UnboundedSender<futures::sync::mpsc::UnboundedSender<Vec<u8>>>, tx_peer: futures::sync::mpsc::UnboundedSender<Vec<u8>>) {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
-    //let peer_rx =  Rc::new(RefCell::new(peer_rx));  
+    let tcp = TcpStream::connect(&peer, &handle);
+    let tx_peer = Rc::new(RefCell::new(tx_peer));  
 
-    //let srv = peer_rx_stream.for_each(|(msg, sink)| {
-        let tcp = TcpStream::connect(&peer, &handle);
+    let client = tcp.and_then(move |pstream| {
+        let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
+        println!("Successfully connected to peer");
 
+        //save writes to db
+        let (reader, writer) = pstream.split();
+        let (tx, rx) = unbounded();
+        match tx_peer_for_rcv.send(tx) {
+            Ok(_) => {},
+            Err(err) => { println!("Cannot send: {}", err) },
+        };
 
-        //let sink_tcp = sink.clone();
-        let client = tcp.and_then(move |pstream| {
-            let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
-            println!("Adding peer {}", 0);
-
-            //save writes to db
-            let (reader, mut writer) = pstream.split();
-            let (tx, rx) = unbounded();
-            tx_peer_for_rcv.send(tx).unwrap();
-          
+        let tx_peer_inner = tx_peer.clone();
+        let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
+        let iter = iter.fold(reader, move |reader, _| {
             let frame = io::read_exact(reader, vec![0;HDRL]);
             let frame = frame.and_then(move |(reader, payload)| {
                 if payload.len() == 0 {
@@ -355,45 +359,54 @@ fn peer_conn(peer: SocketAddr, tx_peer_for_rcv: futures::sync::mpsc::UnboundedSe
                 tframe
             });
 
-            let frame = frame.and_then(move |(reader, mut hdr, mut key, hdr_len)| {
+            let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
                 let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                let tframe = tframe.and_then(move |(_, message)| {
+                let tframe = tframe.and_then(move |(reader, message)| {
                     if 0 == message.len() { 
                         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
                     }
                     else {
-                        key.extend(message);
-                        hdr.extend(key);
-                        tx_peer.send(hdr.clone()).unwrap();
-                        Ok(())
+                        Ok((reader, hdr, key, message))
                     }
                 });
                 tframe
             }); 
-            
-            let frame = frame.map_err(|_| ());
 
-            //somehow get this one running
-            let socket_writer = rx.fold(writer, |writer, msg| {
-                let amt = io::write_all(writer, msg);
-                let amt = amt.map(|(writer, _)| writer);
-                amt.map_err(|_| ())
-            });
+            let tx_peer = tx_peer_inner.clone();
+            frame.map(move |(reader, mut hdr, mut key, message)| {
+                let tx_peer = tx_peer.borrow();
+                key.extend(message);
+                hdr.extend(key);
+                println!("Writing to tx");
+                tx_peer.send(hdr.clone()).unwrap();
+                reader
+            })
+        });
+        //let iter = iter.map_err(|_| ());
 
-            let connection = frame.map(|_| ()).select(socket_writer.map(|_| ()));
-            handle.spawn(connection.then(|_| {
-                println!("Peer connection closed");
-                Ok(())
-            }));
-            Ok(())
+        //somehow get this one running
+        let psocket_writer = rx.fold(writer, |writer, msg| {
+            let amt = io::write_all(writer, msg);
+            let amt = amt.map(|(writer, _)| writer);
+            println!("Writing to rx");
+            amt.map_err(|_| ())
         });
 
+        //////////////let connection = iter.map(|_| ()).select(socket_writer.map(|_| ()));
+        //let connection = socket_writer.map(|_| ());
+        iter.map(|_| ()).then(|_| Ok(()))
+        //iter.map(|_| ()).select2(psocket_writer.map(|_| ())).then(|_| Ok(()))
+        //iter.map(|_| ()).select(socket_writer.map(|_| ())).then(|_| Ok(()))
+        /*handle.spawn(connection.then(|_| {
+            println!("Peer connection closed");
+            Ok(())
+        })); 
+        Ok(()) */
+    });
 
-        //let client = client.map_err(|_| ()); 
-        //Ok(())
-    //});
-    
     core.run(client).unwrap();
+
+    println!("Leaving peer channel");
 }
 
 
