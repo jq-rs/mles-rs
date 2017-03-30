@@ -168,8 +168,9 @@ fn main() {
                     let channel = decoded_message.channel.clone();
 
                     if !spawned_once.contains_key(&channel) {
+                        let chancp = channel.clone();
                         println!("Spawning peer channel thread");
-                        thread::spawn(move || peer_conn(peer, tx_peer, tx));
+                        thread::spawn(move || peer_conn(peer, chancp, tx_peer, tx));
 
                         let mut channel_entry = HashMap::new();
                         channel_entry.insert(cnt, tx_once.clone());
@@ -318,7 +319,7 @@ fn main() {
     println!("Stopping server");
 }
 
-fn peer_conn(peer: SocketAddr, tx_peer_for_rcv: futures::sync::mpsc::UnboundedSender<(String, futures::sync::mpsc::UnboundedSender<Vec<u8>>)>, tx_peer: futures::sync::mpsc::UnboundedSender<Vec<u8>>) {
+fn peer_conn(peer: SocketAddr, channel: String, tx_peer_for_rcv: futures::sync::mpsc::UnboundedSender<(String, futures::sync::mpsc::UnboundedSender<Vec<u8>>)>, tx_peer: futures::sync::mpsc::UnboundedSender<Vec<u8>>) {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
@@ -332,7 +333,7 @@ fn peer_conn(peer: SocketAddr, tx_peer_for_rcv: futures::sync::mpsc::UnboundedSe
         //save writes to db
         let (reader, writer) = pstream.split();
         let (tx, rx) = unbounded();
-        match tx_peer_for_rcv.send(("Kanava".to_string(), tx)) {
+        match tx_peer_for_rcv.send((channel, tx)) {
             Ok(_) => {},
             Err(err) => { println!("Cannot send: {}", err); },
         };
