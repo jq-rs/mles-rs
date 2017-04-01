@@ -38,7 +38,7 @@ use tokio_io::AsyncRead;
 
 use futures::Future;
 use futures::stream::{self, Stream};
-use futures::sync::mpsc::unbounded;
+use futures::sync::mpsc::{unbounded, UnboundedSender};
 use mles_utils::*;
 
 
@@ -94,6 +94,7 @@ fn main() {
     let spawned = Rc::new(RefCell::new(HashMap::new()));  
     let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
     let mut cnt = 0;
+    let mut peer_cnt = 0;
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         println!("New Connection: {}", addr);
@@ -109,47 +110,20 @@ fn main() {
 
         let (reader, writer) = stream.split();
         let (tx, rx) = unbounded();
-        cnt += 1;
+        cnt = mles_get_cnt(cnt);
 
         let (tx_peer, rx_peer) = unbounded();
-
+        peer_cnt = mles_get_peer_cnt(cnt);
 
         let frame = io::read_exact(reader, vec![0;HDRL]);
-        let frame = frame.and_then(move |(reader, payload)| {
-            if payload.len() == 0 {
-                Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-            } else {
-                if read_hdr_type(payload.as_slice()) != 'M' as u32 {
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-                }
-                let hdr_len = read_hdr_len(payload.as_slice());
-                if 0 == hdr_len {
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-                }
-                Ok((reader, payload, hdr_len))
-            }
-        });
+        let frame = frame.and_then(move |(reader, payload)| mles_process_hdr(reader, payload));
 
         let paddr_inner = paddr.clone();
         let keyval_inner = keyval.clone();
         let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;KEYL]);
             // verify key
-            let tframe = tframe.and_then(move |(reader, key)| {
-                let hkey;
-                let keyx = read_key(key.clone());
-                if 0 == keyval_inner.len() {
-                    hkey = do_hash(&paddr_inner);
-                }
-                else {
-                    hkey = do_hash(&keyval_inner);
-                }
-                if hkey != keyx {
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
-                }
-                Ok((reader, hdr, key, hdr_len))
-            });
-            tframe
+            tframe.and_then(move |(reader, key)| mles_process_key(reader, hdr, key, hdr_len, keyval_inner, paddr_inner))
         });
 
         let tx_once = tx.clone();
@@ -157,22 +131,20 @@ fn main() {
         let chanmsgs_inner = channelmsgs.clone();
         let socket_once = frame.and_then(move |(reader, mut hdr, key, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;hdr_len]);
-            let tframe = tframe.and_then(move |(reader, message)| {
-                if 0 == message.len() { 
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                }
-                else {
+            tframe.and_then(move |(reader, message)| {
+                if message.len() > 0 {  
                     let mut spawned_once = spawned_inner.borrow_mut();
                     let mut chanmsgs_once = chanmsgs_inner.borrow_mut();
                     let decoded_message = message_decode(message.as_slice());
                     let channel = decoded_message.channel.clone();
 
                     if !spawned_once.contains_key(&channel) {
+                        let chan = channel.clone();
                         hdr.extend(key);
                         hdr.extend(message);
-                        let chan = channel.clone();
+
                         println!("Spawning peer channel thread");
-                        thread::spawn(move || peer_conn(peer, chan, hdr, tx_peer, tx));
+                        thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr, tx_peer, tx));
 
                         let mut channel_entry = HashMap::new();
                         channel_entry.insert(cnt, tx_once.clone());
@@ -192,11 +164,10 @@ fn main() {
                     }
                     // todo: add empty message to history list too
                     println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
-                    // forward to peer
-                    Ok((reader, channel))
+                    return Ok((reader, channel));
                 }
-            });
-            tframe
+                Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"))
+            })
         });
 
         let spawned_inner = spawned.clone();
@@ -206,50 +177,26 @@ fn main() {
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, vec![0;HDRL]);
-                let frame = frame.and_then(move |(reader, payload)| {
-                    if payload.len() == 0 {
-                        Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-                    } else {
-                        if read_hdr_type(payload.as_slice()) != 'M' as u32 {
-                            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-                        }
-                        let hdr_len = read_hdr_len(payload.as_slice());
-                        if 0 == hdr_len {
-                            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-                        }
-                        Ok((reader, payload, hdr_len))
-                    }
-                });
+                let frame = frame.and_then(move |(reader, payload)| mles_process_hdr(reader, payload));
 
                 //todo: optimize, read hdr and key with one pass
                 let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
                     //dummy read key
                     let tframe = io::read_exact(reader, vec![0;KEYL]);
-                    let tframe = tframe.and_then(move |(reader, key)| {
-                        Ok((reader, hdr, key, hdr_len))
-                    });
-                    tframe
+                    tframe.and_then(move |(reader, key)| mles_process_dummy_key(reader, hdr, key, hdr_len))
                 });
 
                 let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
                     let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                    let tframe = tframe.and_then(move |(reader, message)| {
-                        if 0 == message.len() { 
-                            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                        }
-                        else {
-                            Ok((reader, hdr, key, message))
-                        }
-                    });
-                    tframe
+                    tframe.and_then(move |(reader, message)| mles_process_msg(reader, hdr, key, message)) 
                 });
 
                 let spawned = spawned_inner.clone();
                 let chanmsgs = chanmsgs_inner.clone();
                 let channel = channel_next.clone();
-                frame.map(move |(reader, mut hdr, mut key, message)| {
-                    key.extend(message);
+                frame.map(move |(reader, mut hdr, key, message)| {
                     hdr.extend(key);
+                    hdr.extend(message);
 
                     // add to history
                     let mut channel_msgs = chanmsgs.borrow_mut();
@@ -261,6 +208,8 @@ fn main() {
                     let channels = spawned.get(&channel).unwrap();
                     for (ocnt, tx) in channels {
                         if *ocnt != cnt {
+                            //todo remove failed channels
+                            println!("Sending to {}", *ocnt);
                             let _res = tx.send(hdr.clone()).map_err(|err| { println!("Failed to send to channel: {}", err); () });
                         }
                     }
@@ -271,15 +220,12 @@ fn main() {
 
         //try to get tx to peer
         let spawned_inner = spawned.clone();   
-        let peer_writer = rx_peer.for_each(move |(channel, peer_tx)| {
+        let peer_writer = rx_peer.for_each(move |(peer_cnt, channel, peer_tx)| {
             let mut spawned_once = spawned_inner.borrow_mut();
             let mut channel_entry = spawned_once.get_mut(&channel).unwrap();  
-            //todo fix cnt
-            channel_entry.insert(0, peer_tx);  
+            channel_entry.insert(peer_cnt, peer_tx);  
             Ok(())
         });
-
-        //let peer_writer = peer_writer.map_err(|_| ());
         let peer_writer = peer_writer.map(|_| ());
 
         handle.spawn(peer_writer.then(|_| {
@@ -320,14 +266,15 @@ fn main() {
     core.run(srv).unwrap();
 }
 
-fn peer_conn(peer: SocketAddr, channel: String, msg: Vec<u8>, 
-             tx_peer_for_rcv: futures::sync::mpsc::UnboundedSender<(String, futures::sync::mpsc::UnboundedSender<Vec<u8>>)>, 
-             tx_peer: futures::sync::mpsc::UnboundedSender<Vec<u8>>) 
+fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>, 
+             tx_peer_for_rcv: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>)>, 
+             tx_peer: UnboundedSender<Vec<u8>>) 
 {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
     let tcp = TcpStream::connect(&peer, &handle);
+    //todo: tx_peer handling
     let tx_peer = Rc::new(RefCell::new(tx_peer));  
 
     let client = tcp.and_then(move |pstream| {
@@ -337,7 +284,7 @@ fn peer_conn(peer: SocketAddr, channel: String, msg: Vec<u8>,
         //save writes to db
         let (reader, writer) = pstream.split();
         let (tx, rx) = unbounded();
-        let _res = tx_peer_for_rcv.send((channel, tx.clone())).map_err(|err| { println!("Cannot send: {}", err); () });
+        let _res = tx_peer_for_rcv.send((peer_cnt, channel, tx.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
         let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
         let psocket_writer = rx.fold(writer, |writer, msg| {
@@ -345,7 +292,6 @@ fn peer_conn(peer: SocketAddr, channel: String, msg: Vec<u8>,
             let amt = amt.map(|(writer, _)| writer);
             amt.map_err(|_| ())
         });
-        let psocket_writer = psocket_writer.map_err(|_| ());
         let psocket_writer = psocket_writer.map(|_| ());
 
         handle.spawn(psocket_writer.then(|_| {
@@ -359,53 +305,83 @@ fn peer_conn(peer: SocketAddr, channel: String, msg: Vec<u8>,
 
             //todo: read hdr and key with one pass
             let frame = io::read_exact(reader, vec![0;HDRL]);
-            let frame = frame.and_then(move |(reader, payload)| {
-                if payload.len() == 0 {
-                    Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-                } else {
-                    if read_hdr_type(payload.as_slice()) != 'M' as u32 {
-                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-                    }
-                    let hdr_len = read_hdr_len(payload.as_slice());
-                    if 0 == hdr_len {
-                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-                    }
-                    Ok((reader, payload, hdr_len))
-                }
-            });
+            let frame = frame.and_then(move |(reader, hdr)| mles_process_hdr(reader, hdr));
 
             let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
-                //dummy read key
                 let tframe = io::read_exact(reader, vec![0;KEYL]);
-                let tframe = tframe.and_then(move |(reader, key)| {
-                    Ok((reader, hdr, key, hdr_len))
-                });
-                tframe
+                tframe.and_then(move |(reader, key)| mles_process_dummy_key(reader, hdr, key, hdr_len))
             });
 
             let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
                 let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                let tframe = tframe.and_then(move |(reader, message)| {
-                    if 0 == message.len() { 
-                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                    }
-                    Ok((reader, hdr, key, message))
-                });
-                tframe
+                tframe.and_then(move |(reader, message)| mles_process_msg(reader, hdr, key, message)) 
             }); 
 
             let tx_peer_frame = tx_peer_inner.clone();
-            frame.map(move |(reader, mut hdr, mut key, message)| {
+            frame.map(move |(reader, mut hdr, key, message)| {
                 let tx_peer = tx_peer_frame.borrow();
-                key.extend(message);
                 hdr.extend(key);
-                tx_peer.send(hdr.clone()).unwrap();
+                hdr.extend(message);
+                let _res = tx_peer.send(hdr).map_err(|err| { println!("Failed to send from peer: {}", err); () });
                 reader
             })
         })
     });
 
+    // execute server
     core.run(client).unwrap();
 }
 
+fn mles_get_cnt(cnt: u64) -> u64 {
+    let mut val = cnt as u32;
+    val += 1;
+    val as u64 
+}
 
+fn mles_get_peer_cnt(cnt: u64) -> u64 {
+    let mut val = cnt;
+    val = val >> 32;
+    val += 1;
+    val << 32
+}
+
+fn mles_process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), std::io::Error> {
+    if hdr.len() == 0 {
+        Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+    } else {
+        if read_hdr_type(hdr.as_slice()) != 'M' as u32 {
+            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+        }
+        let hdr_len = read_hdr_len(hdr.as_slice());
+        if 0 == hdr_len {
+            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+        }
+        Ok((reader, hdr, hdr_len))
+    }
+}
+
+fn mles_process_dummy_key(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>, key: Vec<u8>, hdr_len: usize) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, usize), std::io::Error> {
+    Ok((reader, hdr, key, hdr_len))
+}
+
+fn mles_process_msg(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>, key: Vec<u8>, message: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, Vec<u8>), std::io::Error> { 
+    if message.len() > 0 { 
+        return Ok((reader, hdr, key, message));
+    }
+    Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"))
+}
+
+fn mles_process_key(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>, key: Vec<u8>, hdr_len: usize, keyval: String, peer_addr: SocketAddr) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, usize), std::io::Error> { 
+    let hkey;
+    let keyx = read_key(key.clone());
+    if 0 == keyval.len() {
+        hkey = do_hash(&peer_addr);
+    }
+    else {
+        hkey = do_hash(&keyval);
+    }
+    if hkey != keyx {
+        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
+    }
+    Ok((reader, hdr, key, hdr_len))
+}
