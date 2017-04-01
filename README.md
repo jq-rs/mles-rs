@@ -7,7 +7,7 @@ Mles is a client-server data distribution protocol targeted to serve as a lightw
 
 ## Mles protocol overview
 
-Mles clients connect to an Mles server using Mles protocol header and (uid, channel, message) value triple on TCP session where the triple is Concise Binary Object Representation (CBOR) [1] encapsulated. An Mles client first subscribes to a channel by sending correct Mles protocol header and value triple (uid, channel, msg) where _channel_ is the channel to publish/subscribe. The _msg_ should be empty. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. After joining, the Mles server distributes the value triple between all clients on the same channel. If an Mles client wants to depart from a channel, it just closes the TCP session.
+Mles clients connect to an Mles server using Mles protocol header and (uid, channel, message) value triple on a TCP session where the triple is Concise Binary Object Representation (CBOR) [1] encapsulated. An Mles client first subscribes to a channel by sending correct Mles protocol header and value triple (uid, channel, msg) where _channel_ is the channel to publish/subscribe. The _msg_ should be empty. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. After joining, the Mles server distributes the value triple between all clients on the same channel. If an Mles client wants to depart from a channel, it just closes the TCP session.
 
 An Mles server may save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels; therefore a TCP session per channel is always used.
 
