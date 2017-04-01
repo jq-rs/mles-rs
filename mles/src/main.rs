@@ -28,8 +28,10 @@ use std::iter;
 use std::io::{Error, ErrorKind};
 use std::{process, env};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::thread;
 
 use tokio_core::net::TcpListener;
+use tokio_core::net::TcpStream;
 use tokio_core::reactor::Core;
 use tokio_io::io;
 use tokio_io::AsyncRead;
@@ -65,7 +67,7 @@ fn main() {
         }
     }
 
-    let _peer = match peer.parse::<SocketAddr>() {
+    let peer = match peer.parse::<SocketAddr>() {
         Ok(addr) => addr,
         Err(_) => {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
@@ -106,10 +108,11 @@ fn main() {
         let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));;
 
         let (reader, writer) = stream.split();
-
         let (tx, rx) = unbounded();
-
         cnt += 1;
+
+        let (tx_peer, rx_peer) = unbounded();
+
 
         let frame = io::read_exact(reader, vec![0;HDRL]);
         let frame = frame.and_then(move |(reader, payload)| {
@@ -123,28 +126,28 @@ fn main() {
                 if 0 == hdr_len {
                     return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
                 }
-                Ok((reader, hdr_len))
+                Ok((reader, payload, hdr_len))
             }
         });
 
         let paddr_inner = paddr.clone();
         let keyval_inner = keyval.clone();
-        let frame = frame.and_then(move |(reader, hdr_len)| {
+        let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;KEYL]);
             // verify key
             let tframe = tframe.and_then(move |(reader, key)| {
                 let hkey;
-                let key = read_key(key);
+                let keyx = read_key(key.clone());
                 if 0 == keyval_inner.len() {
                     hkey = do_hash(&paddr_inner);
                 }
                 else {
                     hkey = do_hash(&keyval_inner);
                 }
-                if hkey != key {
+                if hkey != keyx {
                     return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
                 }
-                Ok((reader, hdr_len))
+                Ok((reader, hdr, key, hdr_len))
             });
             tframe
         });
@@ -152,7 +155,7 @@ fn main() {
         let tx_once = tx.clone();
         let spawned_inner = spawned.clone();
         let chanmsgs_inner = channelmsgs.clone();
-        let socket_once = frame.and_then(move |(reader, hdr_len)| {
+        let socket_once = frame.and_then(move |(reader, mut hdr, key, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;hdr_len]);
             let tframe = tframe.and_then(move |(reader, message)| {
                 if 0 == message.len() { 
@@ -163,9 +166,16 @@ fn main() {
                     let mut chanmsgs_once = chanmsgs_inner.borrow_mut();
                     let decoded_message = message_decode(message.as_slice());
                     let channel = decoded_message.channel.clone();
+
                     if !spawned_once.contains_key(&channel) {
+                        hdr.extend(key);
+                        hdr.extend(message);
+                        let chan = channel.clone();
+                        println!("Spawning peer channel thread");
+                        thread::spawn(move || peer_conn(peer, chan, hdr, tx_peer, tx));
+
                         let mut channel_entry = HashMap::new();
-                        channel_entry.insert(cnt, tx_once);
+                        channel_entry.insert(cnt, tx_once.clone());
                         spawned_once.insert(channel.clone(), channel_entry);
 
                         let messages: Vec<Vec<u8>> = Vec::new();
@@ -173,14 +183,16 @@ fn main() {
                     }
                     else {
                         let mut channel_entry = spawned_once.get_mut(&channel).unwrap();
-                        channel_entry.insert(cnt, tx_once);
+                        channel_entry.insert(cnt, tx_once.clone());
                         let chanmsgs = chanmsgs_once.get(&channel).unwrap();
+                        // send history to client
                         for msg in chanmsgs {
-                            tx.send(msg.clone()).unwrap();
+                            tx_once.send(msg.clone()).unwrap();
                         }
-                        //TODO try to connect to peer
                     }
+                    // todo: add empty message to history list too
                     println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
+                    // forward to peer
                     Ok((reader, channel))
                 }
             });
@@ -209,6 +221,7 @@ fn main() {
                     }
                 });
 
+                //todo: optimize, read hdr and key with one pass
                 let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
                     //dummy read key
                     let tframe = io::read_exact(reader, vec![0;KEYL]);
@@ -248,13 +261,30 @@ fn main() {
                     let channels = spawned.get(&channel).unwrap();
                     for (ocnt, tx) in channels {
                         if *ocnt != cnt {
-                            tx.send(hdr.clone()).unwrap();
+                            let _res = tx.send(hdr.clone()).map_err(|err| { println!("Failed to send to channel: {}", err); () });
                         }
                     }
                     reader
                 })
             })
         });
+
+        //try to get tx to peer
+        let spawned_inner = spawned.clone();   
+        let peer_writer = rx_peer.for_each(move |(channel, peer_tx)| {
+            let mut spawned_once = spawned_inner.borrow_mut();
+            let mut channel_entry = spawned_once.get_mut(&channel).unwrap();  
+            //todo fix cnt
+            channel_entry.insert(0, peer_tx);  
+            Ok(())
+        });
+
+        //let peer_writer = peer_writer.map_err(|_| ());
+        let peer_writer = peer_writer.map(|_| ());
+
+        handle.spawn(peer_writer.then(|_| {
+            Ok(())
+        }));
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let amt = io::write_all(writer, msg);
@@ -265,7 +295,7 @@ fn main() {
         let channels = spawned.clone();
         let chanmsgs = channelmsgs.clone();
         let socket_reader = socket_next.map_err(|_| ());
-        let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
+        let connection = socket_reader.map(|_| ()).select2(socket_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
             let mut chans = channels.borrow_mut();
             for (cname, channel) in chans.iter_mut() {
@@ -288,6 +318,94 @@ fn main() {
 
     // execute server
     core.run(srv).unwrap();
+}
+
+fn peer_conn(peer: SocketAddr, channel: String, msg: Vec<u8>, 
+             tx_peer_for_rcv: futures::sync::mpsc::UnboundedSender<(String, futures::sync::mpsc::UnboundedSender<Vec<u8>>)>, 
+             tx_peer: futures::sync::mpsc::UnboundedSender<Vec<u8>>) 
+{
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
+
+    let tcp = TcpStream::connect(&peer, &handle);
+    let tx_peer = Rc::new(RefCell::new(tx_peer));  
+
+    let client = tcp.and_then(move |pstream| {
+        let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
+        println!("Successfully connected to peer");
+
+        //save writes to db
+        let (reader, writer) = pstream.split();
+        let (tx, rx) = unbounded();
+        let _res = tx_peer_for_rcv.send((channel, tx.clone())).map_err(|err| { println!("Cannot send: {}", err); () });
+        let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+
+        let psocket_writer = rx.fold(writer, |writer, msg| {
+            let amt = io::write_all(writer, msg);
+            let amt = amt.map(|(writer, _)| writer);
+            amt.map_err(|_| ())
+        });
+        let psocket_writer = psocket_writer.map_err(|_| ());
+        let psocket_writer = psocket_writer.map(|_| ());
+
+        handle.spawn(psocket_writer.then(|_| {
+            println!("Peer socket writer closed");
+            Ok(())
+        }));
+
+        let tx_peer_inner = tx_peer.clone();
+        let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
+        iter.fold(reader, move |reader, _| {
+
+            //todo: read hdr and key with one pass
+            let frame = io::read_exact(reader, vec![0;HDRL]);
+            let frame = frame.and_then(move |(reader, payload)| {
+                if payload.len() == 0 {
+                    Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+                } else {
+                    if read_hdr_type(payload.as_slice()) != 'M' as u32 {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+                    }
+                    let hdr_len = read_hdr_len(payload.as_slice());
+                    if 0 == hdr_len {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+                    }
+                    Ok((reader, payload, hdr_len))
+                }
+            });
+
+            let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
+                //dummy read key
+                let tframe = io::read_exact(reader, vec![0;KEYL]);
+                let tframe = tframe.and_then(move |(reader, key)| {
+                    Ok((reader, hdr, key, hdr_len))
+                });
+                tframe
+            });
+
+            let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+                let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                let tframe = tframe.and_then(move |(reader, message)| {
+                    if 0 == message.len() { 
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
+                    }
+                    Ok((reader, hdr, key, message))
+                });
+                tframe
+            }); 
+
+            let tx_peer_frame = tx_peer_inner.clone();
+            frame.map(move |(reader, mut hdr, mut key, message)| {
+                let tx_peer = tx_peer_frame.borrow();
+                key.extend(message);
+                hdr.extend(key);
+                tx_peer.send(hdr.clone()).unwrap();
+                reader
+            })
+        })
+    });
+
+    core.run(client).unwrap();
 }
 
 
