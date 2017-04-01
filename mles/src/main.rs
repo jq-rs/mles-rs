@@ -219,6 +219,7 @@ fn main() {
                     }
                 });
 
+                //todo: optimize, read hdr and key with one pass
                 let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
                     //dummy read key
                     let tframe = io::read_exact(reader, vec![0;KEYL]);
@@ -258,7 +259,7 @@ fn main() {
                     let channels = spawned.get(&channel).unwrap();
                     for (ocnt, tx) in channels {
                         if *ocnt != cnt {
-                            tx.send(hdr.clone()).unwrap();
+                            tx.send(hdr.clone()).map_err(|err| { println!("Failed to send to channel: {}", err); () });
                         }
                     }
                     reader
@@ -271,6 +272,7 @@ fn main() {
         let peer_writer = rx_peer.for_each(move |(channel, peer_tx)| {
             let mut spawned_once = spawned_inner.borrow_mut();
             let mut channel_entry = spawned_once.get_mut(&channel).unwrap();  
+            //todo fix cnt
             channel_entry.insert(0, peer_tx);  
             Ok(())
         });
@@ -278,7 +280,10 @@ fn main() {
         //let peer_writer = peer_writer.map_err(|_| ());
         let peer_writer = peer_writer.map(|_| ());
 
-        handle.spawn(peer_writer);
+        handle.spawn(peer_writer.then(|_| {
+            println!("Got tx peer");
+            Ok(())
+        }));
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let amt = io::write_all(writer, msg);
@@ -315,8 +320,6 @@ fn main() {
 
     // execute server
     core.run(srv).unwrap();
-
-    println!("Stopping server");
 }
 
 fn peer_conn(peer: SocketAddr, channel: String, tx_peer_for_rcv: futures::sync::mpsc::UnboundedSender<(String, futures::sync::mpsc::UnboundedSender<Vec<u8>>)>, tx_peer: futures::sync::mpsc::UnboundedSender<Vec<u8>>) {
@@ -324,7 +327,7 @@ fn peer_conn(peer: SocketAddr, channel: String, tx_peer_for_rcv: futures::sync::
     let handle = core.handle();
 
     let tcp = TcpStream::connect(&peer, &handle);
-    //let tx_peer = Rc::new(RefCell::new(tx_peer));  
+    let tx_peer = Rc::new(RefCell::new(tx_peer));  
 
     let client = tcp.and_then(move |pstream| {
         let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
@@ -333,85 +336,74 @@ fn peer_conn(peer: SocketAddr, channel: String, tx_peer_for_rcv: futures::sync::
         //save writes to db
         let (reader, writer) = pstream.split();
         let (tx, rx) = unbounded();
-        match tx_peer_for_rcv.send((channel, tx)) {
-            Ok(_) => {},
-            Err(err) => { println!("Cannot send: {}", err); },
-        };
+        tx_peer_for_rcv.send((channel, tx)).map_err(|err| { println!("Cannot send: {}", err); () });
 
-        let frame = io::read_exact(reader, vec![0;HDRL]);
-        let frame = frame.and_then(move |(reader, payload)| {
-            if payload.len() == 0 {
-                Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-            } else {
-                if read_hdr_type(payload.as_slice()) != 'M' as u32 {
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-                }
-                let hdr_len = read_hdr_len(payload.as_slice());
-                if 0 == hdr_len {
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-                }
-                Ok((reader, payload, hdr_len))
-            }
-        });
-
-        let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
-            //dummy read key
-            let tframe = io::read_exact(reader, vec![0;KEYL]);
-            let tframe = tframe.and_then(move |(reader, key)| {
-                Ok((reader, hdr, key, hdr_len))
-            });
-            tframe
-        });
-
-        let frame = frame.and_then(move |(reader, mut hdr, key, hdr_len)| {
-            let tframe = io::read_exact(reader, vec![0;hdr_len]);
-            let tframe = tframe.and_then(move |(reader, message)| {
-                if 0 == message.len() { 
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                }
-                else {
-                    hdr.extend(key);
-                    hdr.extend(message);
-                    println!("Writing to tx");
-                    tx_peer.send(hdr.clone()).unwrap();
-                    Ok(())
-                }
-            });
-            tframe
-        }); 
-
-        let frame = frame.map_err(|_| ());
-        //let frame = frame.map(|_| ());
-
-        //somehow get this one running
         let psocket_writer = rx.fold(writer, |writer, msg| {
-            println!("Writing to rx");
             let amt = io::write_all(writer, msg);
-            let amt = amt.map_err(|_| ());
-            amt.map(|(writer, _)| writer)
-            //amt
+            let amt = amt.map(|(writer, _)| writer);
+            amt.map_err(|_| ())
         });
+        let psocket_writer = psocket_writer.map_err(|_| ());
         let psocket_writer = psocket_writer.map(|_| ());
 
-        handle.spawn(psocket_writer);
-        //let frame = frame.map_err(|_| ());
-
-        //let frame = frame.join(psocket_writer);
-        //////////////let connection = iter.map(|_| ()).select(socket_writer.map(|_| ()));
-        //let connection = socket_writer.map(|_| ());
-        frame.map(|_| ()).then(|_| Ok(()))
-        //iter.map(|_| ()).select2(psocket_writer.map(|_| ())).then(|_| Ok(()))
-        //iter.map(|_| ()).select(socket_writer.map(|_| ())).then(|_| Ok(()))
-        /*handle.spawn(connection.then(|_| {
-            println!("Peer connection closed");
+        handle.spawn(psocket_writer.then(|_| {
+            println!("Peer socket writer closed");
             Ok(())
-        })); 
-        Ok(()) */
+        }));
+
+        let tx_peer_inner = tx_peer.clone();
+        let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
+        iter.fold(reader, move |reader, _| {
+
+            //todo: read hdr and key with one pass
+            let frame = io::read_exact(reader, vec![0;HDRL]);
+            let frame = frame.and_then(move |(reader, payload)| {
+                if payload.len() == 0 {
+                    Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+                } else {
+                    if read_hdr_type(payload.as_slice()) != 'M' as u32 {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+                    }
+                    let hdr_len = read_hdr_len(payload.as_slice());
+                    if 0 == hdr_len {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+                    }
+                    Ok((reader, payload, hdr_len))
+                }
+            });
+
+            let frame = frame.and_then(move |(reader, hdr, hdr_len)| {
+                //dummy read key
+                let tframe = io::read_exact(reader, vec![0;KEYL]);
+                let tframe = tframe.and_then(move |(reader, key)| {
+                    Ok((reader, hdr, key, hdr_len))
+                });
+                tframe
+            });
+
+            let frame = frame.and_then(move |(reader, hdr, key, hdr_len)| {
+                let tframe = io::read_exact(reader, vec![0;hdr_len]);
+                let tframe = tframe.and_then(move |(reader, message)| {
+                    if 0 == message.len() { 
+                        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
+                    }
+                    Ok((reader, hdr, key, message))
+                });
+                tframe
+            }); 
+
+            let tx_peer_frame = tx_peer_inner.clone();
+            frame.map(move |(reader, mut hdr, mut key, message)| {
+                let tx_peer = tx_peer_frame.borrow();
+                key.extend(message);
+                hdr.extend(key);
+                tx_peer.send(hdr.clone()).unwrap();
+                reader
+            })
+        })
     });
 
     core.run(client).unwrap();
-
-    println!("Leaving peer channel");
 }
 
 
