@@ -113,7 +113,6 @@ fn main() {
         cnt = mles_get_cnt(cnt);
 
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
-        peer_cnt = mles_get_peer_cnt(cnt);
 
         let frame = io::read_exact(reader, vec![0;HDRL]);
         let frame = frame.and_then(move |(reader, payload)| mles_process_hdr(reader, payload));
@@ -148,6 +147,7 @@ fn main() {
                     //if peer is set, create peer channel thread
                     if mles_has_peer(&peer) {
                         println!("Spawning peer channel thread");
+                        peer_cnt = mles_get_peer_cnt(cnt);
                         thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr, tx_peer_for_msgs));
                     }
 
@@ -302,17 +302,17 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             Ok(())
         }));
 
+        //todo tx_origs reader should be left to read, now bails out after first msg
         let tx_origs_inner = tx_origs.clone();
         let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
             let mut tx_origs_once = tx_origs_inner.borrow_mut();
-            println!("Adding originator");
             tx_origs_once.push(tx_orig);  
             Ok(())
         });
         let tx_origs_reader = tx_origs_reader.map_err(|_| ());
 
         handle.spawn(tx_origs_reader.then(|_| {
-            println!("Tx origs reader out");
+            println!("Tx origs reader bail out");
             Ok(())
         }));
 
@@ -372,17 +372,16 @@ fn mles_process_hdr_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Re
 
 fn mles_process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), std::io::Error> {
     if hdr.len() == 0 {
-        Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
-    } else {
-        if read_hdr_type(hdr.as_slice()) != 'M' as u32 {
-            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-        }
-        let hdr_len = read_hdr_len(hdr.as_slice());
-        if 0 == hdr_len {
-            return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-        }
-        Ok((reader, hdr, hdr_len))
+        return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
     }
+    if read_hdr_type(hdr.as_slice()) != 'M' as u32 {
+        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
+    }
+    let hdr_len = read_hdr_len(hdr.as_slice());
+    if 0 == hdr_len {
+        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
+    }
+    Ok((reader, hdr, hdr_len))
 }
 
 fn mles_process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>), std::io::Error> { 
