@@ -170,8 +170,6 @@ fn main() {
                         }
                     }
                 }
-                if mles_has_peer(&peer) {
-                }
                 println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
                 Ok((reader, channel))
             })
@@ -245,7 +243,7 @@ fn main() {
         let channels = spawned.clone();
         let chanmsgs = channelmsgs.clone();
         let socket_reader = socket_next.map_err(|_| ());
-        let connection = socket_reader.map(|_| ()).select2(socket_writer.map(|_| ()));
+        let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
             let mut chans = channels.borrow_mut();
             for (cname, channel) in chans.iter_mut() {
@@ -309,10 +307,10 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             tx_origs_once.push(tx_orig);  
             Ok(())
         });
-        let tx_origs_reader = tx_origs_reader.map_err(|_| ());
+        let tx_origs_reader = tx_origs_reader.map_err(|err| {println!("Error {:?}", err); () });
 
-        handle.spawn(tx_origs_reader.then(|_| {
-            println!("Tx origs reader bail out");
+        handle.spawn(tx_origs_reader.then(|err| {
+            println!("Tx origs reader bail out {:?}", err);
             Ok(())
         }));
 
@@ -341,6 +339,7 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
 
     // execute server
     let _res = core.run(client).map_err(|err| { println!("Main: {}", err); () });
+    println!("Peer thread end");
 }
 
 fn mles_get_cnt(cnt: u64) -> u64 {
