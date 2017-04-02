@@ -171,9 +171,9 @@ fn main() {
                         }
                     }
                 }
-                //if mles_has_peer(&peer) {
+                if mles_has_peer(&peer) {
                     let _res = peer_tx.send(tx_once.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
-                //}
+                }
                 println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
                 Ok((reader, channel))
             })
