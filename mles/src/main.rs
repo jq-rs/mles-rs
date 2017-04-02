@@ -38,7 +38,7 @@ use tokio_io::AsyncRead;
 
 use futures::Future;
 use futures::stream::{self, Stream};
-use futures::sync::mpsc::{unbounded, UnboundedSender, UnboundedReceiver};
+use futures::sync::mpsc::{unbounded, UnboundedSender};
 use mles_utils::*;
 
 
@@ -113,7 +113,6 @@ fn main() {
         cnt = mles_get_cnt(cnt);
 
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
-        let (peer_tx, peer_rx) = unbounded();
         peer_cnt = mles_get_peer_cnt(cnt);
 
         let frame = io::read_exact(reader, vec![0;HDRL]);
@@ -149,7 +148,7 @@ fn main() {
                     //if peer is set, create peer channel thread
                     if mles_has_peer(&peer) {
                         println!("Spawning peer channel thread");
-                        thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr, tx_peer_for_msgs, peer_rx));
+                        thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr, tx_peer_for_msgs));
                     }
 
                     let mut channel_entry = HashMap::new();
@@ -172,7 +171,6 @@ fn main() {
                     }
                 }
                 if mles_has_peer(&peer) {
-                    let _res = peer_tx.send(tx_once.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                 }
                 println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
                 Ok((reader, channel))
@@ -222,11 +220,13 @@ fn main() {
 
         //try to get tx to peer
         let spawned_inner = spawned.clone();   
-        let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cnt, channel, peer_tx)| {
+        let tx_chan = tx.clone();
+        let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cnt, channel, peer_tx, tx_orig_chan)| {
             let mut spawned_once = spawned_inner.borrow_mut();
             let mut channel_entry = spawned_once.get_mut(&channel).unwrap();  
             println!("Adding peer {}", peer_cnt);
             channel_entry.insert(peer_cnt, peer_tx);  
+            let _res = tx_orig_chan.send(tx_chan.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
             Ok(())
         });
         let peer_writer = peer_writer.map(|_| ());
@@ -271,14 +271,13 @@ fn main() {
 }
 
 fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>, 
-             tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>)>, 
-             rx_origs: UnboundedReceiver<UnboundedSender<Vec<u8>>>) 
+             tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
     let tcp = TcpStream::connect(&peer, &handle);
-    //todo: tx_peer handling
+    let (tx_orig_chan, rx_orig_chan) = unbounded();
     let tx_origs = Rc::new(RefCell::new(Vec::new()));  
 
     let client = tcp.and_then(move |pstream| {
@@ -288,7 +287,7 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
         //save writes to db
         let (reader, writer) = pstream.split();
         let (tx, rx) = unbounded();
-        let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
+        let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
         let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
         let psocket_writer = rx.fold(writer, |writer, msg| {
@@ -304,7 +303,7 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
         }));
 
         let tx_origs_inner = tx_origs.clone();
-        let tx_origs_reader = rx_origs.for_each(move |tx_orig| {
+        let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
             let mut tx_origs_once = tx_origs_inner.borrow_mut();
             println!("Adding originator");
             tx_origs_once.push(tx_orig);  
