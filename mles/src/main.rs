@@ -296,8 +296,6 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             let amt = amt.map(|(writer, _)| writer);
             amt.map_err(|_| ())
         });
-        let psocket_writer = psocket_writer.map(|_| ());
-
         handle.spawn(psocket_writer.then(|_| {
             println!("Peer socket writer closed");
             Ok(())
@@ -320,7 +318,6 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             }
             Ok(())
         });
-        let tx_origs_reader = tx_origs_reader.map_err(|err| {println!("Error {:?}", err); () });
         handle.spawn(tx_origs_reader.then(|err| {
             println!("Tx origs reader bail out {:?}", err);
             Ok(())
