@@ -273,6 +273,7 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
 {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
+    let channelmsgs = Rc::new(RefCell::new(Vec::new()));  
 
     let tcp = TcpStream::connect(&peer, &handle);
     let (tx_orig_chan, rx_orig_chan) = unbounded();
@@ -288,7 +289,13 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
         let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
         let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
-        let psocket_writer = rx.fold(writer, |writer, msg| {
+        let chanmsgs_inner = channelmsgs.clone();
+        let psocket_writer = rx.fold(writer, move |writer, msg| {
+            //push message to history
+            let mut channel_msgs = chanmsgs_inner.borrow_mut();
+            channel_msgs.push(msg.clone());
+            
+            //send message forward
             let amt = io::write_all(writer, msg);
             let amt = amt.map(|(writer, _)| writer);
             amt.map_err(|_| ())
@@ -302,19 +309,39 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
 
         //todo tx_origs reader should be left to read, now bails out after first msg
         let tx_origs_inner = tx_origs.clone();
+        let chanmsgs_inner = channelmsgs.clone();
         let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
+            //save receiver side tx to db
             let mut tx_origs_once = tx_origs_inner.borrow_mut();
-            tx_origs_once.push(tx_orig);  
+            tx_origs_once.push(tx_orig.clone());  
+
+            //push history to client if not the first one (as peer will send the history then)
+            if tx_origs_once.len() > 1 {
+                let channel_msgs = chanmsgs_inner.borrow();
+                for msg in channel_msgs.iter() {
+                    let _res = tx_orig.send(msg.clone()).map_err(|err| { println!("Failed to send history from peer: {}", err); () });
+                }
+            }
             Ok(())
         });
         let tx_origs_reader = tx_origs_reader.map_err(|err| {println!("Error {:?}", err); () });
-
         handle.spawn(tx_origs_reader.then(|err| {
             println!("Tx origs reader bail out {:?}", err);
             Ok(())
         }));
 
+        /*
         let tx_origs_inner = tx_origs.clone();
+        handle.spawn_fn(|| {
+            rx_orig_chan.for_each(move |tx_orig| {
+                let mut tx_origs_once = tx_origs_inner.borrow_mut();
+                tx_origs_once.push(tx_orig);  
+                Ok(())
+            }).map(|_| {println!("Got ok for tx origs"); ()})
+        });*/
+
+        let tx_origs_inner = tx_origs.clone();
+        let chanmsgs_inner = channelmsgs.clone();
         let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
         iter.fold(reader, move |reader, _| {
             let frame = io::read_exact(reader, vec![0;HDRL+KEYL]);
@@ -326,12 +353,20 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             }); 
 
             let tx_origs_frame = tx_origs_inner.clone();
+            let chanmsgs_frame = chanmsgs_inner.clone();
             frame.map(move |(reader, mut hdr_key, message)| {
                 hdr_key.extend(message);
+
+                //send message forward
                 let tx_origs = tx_origs_frame.borrow();
                 for tx_orig in tx_origs.iter() {
                     let _res = tx_orig.send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
                 }
+
+                //push message to history
+                let mut channel_msgs = chanmsgs_frame.borrow_mut();
+                channel_msgs.push(hdr_key);
+                
                 reader
             })
         })
