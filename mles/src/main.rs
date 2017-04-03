@@ -146,7 +146,6 @@ fn main() {
 
                     //if peer is set, create peer channel thread
                     if mles_has_peer(&peer) {
-                        println!("Spawning peer channel thread");
                         peer_cnt = mles_get_peer_cnt(cnt);
                         thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr, tx_peer_for_msgs));
                     }
@@ -279,6 +278,8 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
     let (tx_orig_chan, rx_orig_chan) = unbounded();
     let tx_origs = Rc::new(RefCell::new(Vec::new()));  
 
+    let orig_channel = channel.clone();
+    println!("Peer channel thread for channel {}", orig_channel);
     let client = tcp.and_then(move |pstream| {
         let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
         println!("Successfully connected to peer");
@@ -374,7 +375,7 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
 
     // execute server
     let _res = core.run(client).map_err(|err| { println!("Main: {}", err); () });
-    println!("Peer thread end");
+    println!("Peer channel thread {} out", orig_channel);
 }
 
 fn mles_get_cnt(cnt: u64) -> u64 {
