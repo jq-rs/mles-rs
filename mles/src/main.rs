@@ -264,7 +264,7 @@ fn main() {
     });
 
     // execute server
-    let _res = core.run(srv).map_err(|err| { println!("Peer: {}", err); ()});
+    let _res = core.run(srv).map_err(|err| { println!("Main: {}", err); ()});
 }
 
 fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>, 
@@ -374,7 +374,7 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
     });
 
     // execute server
-    let _res = core.run(client).map_err(|err| { println!("Main: {}", err); () });
+    let _res = core.run(client).map_err(|err| { println!("Peer: {}", err); () });
     println!("Peer channel thread {} out", orig_channel);
 }
 
