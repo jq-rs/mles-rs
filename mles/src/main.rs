@@ -323,16 +323,6 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             Ok(())
         }));
 
-        /*
-        let tx_origs_inner = tx_origs.clone();
-        handle.spawn_fn(|| {
-            rx_orig_chan.for_each(move |tx_orig| {
-                let mut tx_origs_once = tx_origs_inner.borrow_mut();
-                tx_origs_once.push(tx_orig);  
-                Ok(())
-            }).map(|_| {println!("Got ok for tx origs"); ()})
-        });*/
-
         let tx_origs_inner = tx_origs.clone();
         let chanmsgs_inner = channelmsgs.clone();
         let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
