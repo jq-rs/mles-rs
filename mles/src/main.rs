@@ -373,7 +373,7 @@ fn mles_process_msg(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>, key: Vec<u8>,
 
 fn mles_process_key(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>, key: Vec<u8>, hdr_len: usize, keyval: String, peer_addr: SocketAddr) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, usize), std::io::Error> { 
     let hkey;
-    let keyx = read_key(key.clone());
+    let keyx = read_key(&key);
     if 0 == keyval.len() {
         hkey = do_hash(&peer_addr);
     }
