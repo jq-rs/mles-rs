@@ -81,7 +81,7 @@ pub fn write_key(val: u64) -> Vec<u8> {
     msgv
 }
 
-pub fn read_key(keyv: Vec<u8>) -> u64 {
+pub fn read_key(keyv: &Vec<u8>) -> u64 {
     let mut buf = Cursor::new(&keyv[..]);
     let num = buf.read_u64::<BigEndian>().unwrap();
     num
@@ -115,7 +115,7 @@ mod tests {
         let addr = addr.parse::<SocketAddr>().unwrap();
         let orig_key = do_hash(&addr);
         let keyv = write_key(orig_key);
-        let key = read_key(keyv);
+        let key = read_key(&keyv);
         assert_eq!(orig_key, key);
     }
 }
