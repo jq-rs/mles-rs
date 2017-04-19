@@ -93,6 +93,8 @@ fn main() {
 
     let spawned = Rc::new(RefCell::new(HashMap::new()));  
     let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
+    let vec: Vec<UnboundedSender<UnboundedSender<Vec<u8>>>> = Vec::new();
+    let tx_orig_chan_vec = Rc::new(RefCell::new(vec));  
     let mut cnt = 0;
     let mut peer_cnt = 0;
 
@@ -125,6 +127,7 @@ fn main() {
         let tx_once = tx.clone();
         let spawned_inner = spawned.clone();
         let chanmsgs_inner = channelmsgs.clone();
+        let tx_orig_chan_db = tx_orig_chan_vec.clone();
         let socket_once = frame.and_then(move |(reader, mut hdr_key, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;hdr_len]);
             tframe.and_then(move |(reader, message)| {
@@ -157,6 +160,11 @@ fn main() {
                     let mut channel_entry = spawned_once.get_mut(&channel).unwrap();
                     channel_entry.insert(cnt, tx_once.clone());
                     let chanmsgs = chanmsgs_once.get(&channel).unwrap();
+                    let tx_orig_db = tx_orig_chan_db.borrow();
+                    //todo this does not need really iteration, we know here is only one channel
+                    for tx_orig in tx_orig_db.iter() {
+                        let _res = tx_orig.send(tx_once.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                    }
 
                     // send history to client if peer is not set
                     if !mles_has_peer(&peer) {
@@ -216,13 +224,18 @@ fn main() {
             })
         });
 
-        //try to get tx to peer
+        //todo: needed by first client only. worth optimizing? guaranteed to be done always in time? 
         let spawned_inner = spawned.clone();   
         let tx_chan = tx.clone();
+        let tx_orig_chan_db = tx_orig_chan_vec.clone();
         let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cnt, channel, peer_tx, tx_orig_chan)| {
             let mut spawned_once = spawned_inner.borrow_mut();
+            let mut tx_orig_once = tx_orig_chan_db.borrow_mut();
             let mut channel_entry = spawned_once.get_mut(&channel).unwrap();  
             channel_entry.insert(peer_cnt, peer_tx);  
+            //println!("Pushing tx orig vec");
+            tx_orig_once.push(tx_orig_chan.clone());
+            //println!("Sending first tx to peer writer");
             let _res = tx_orig_chan.send(tx_chan.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
             Ok(())
         });
@@ -318,11 +331,8 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             }
             Ok(())
         });
-        handle.spawn(tx_origs_reader.then(|err| {
-            println!("Tx origs reader bail out {:?}", err);
-            Ok(())
-        }));
-
+        handle.spawn(tx_origs_reader);
+        
         let tx_origs_inner = tx_origs.clone();
         let chanmsgs_inner = channelmsgs.clone();
         let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
