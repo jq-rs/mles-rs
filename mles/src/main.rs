@@ -314,7 +314,6 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             Ok(())
         }));
 
-        //todo tx_origs reader should be left to read, now bails out after first msg
         let tx_origs_inner = tx_origs.clone();
         let chanmsgs_inner = channelmsgs.clone();
         let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
