@@ -167,24 +167,25 @@ fn main() {
                         return Err(Error::new(ErrorKind::BrokenPipe, "internal error"));
                     }
 
-                    let channel_peer = channelpeer_inner.borrow();
-                    if let Some(channelpeer_entry) = channel_peer.get(&channel) {
-                        let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                    if mles_has_peer(&peer) {
+                        let channel_peer = channelpeer_inner.borrow();
+                        if let Some(channelpeer_entry) = channel_peer.get(&channel) {
+                            let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                        }
+                        else {
+                            println!("Cannot find channel peer for channel {}", channel);
+                        }
                     }
                     else {
-                        println!("Cannot find channel peer for channel {}", channel);
-                    }
-
-                    // send history to client if peer is not set
-                    if !mles_has_peer(&peer) {
+                        // send history to client if peer is not set
                         if let Some(chanmsgs) = chanmsgs_once.get(&channel) {
                             for msg in chanmsgs {
                                 let _res = tx_inner.send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
                             }
                         }
-                    }
-                    else {
-                        println!("Cannot send history of channel {}", channel);
+                        else {
+                            println!("Cannot send history of channel {}", channel);
+                        }
                     }
                 }
                 println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
