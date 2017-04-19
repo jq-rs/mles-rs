@@ -54,7 +54,7 @@ use tokio_io::codec::{Encoder, Decoder};
 use mles_utils::*;
 
 const KEYL: usize = 8; //key len
-const HDRL: usize = 4 + KEYL; //hdr + key len
+const HDRKEYL: usize = 4 + KEYL; //hdr + key len
 
 fn main() {
     // Parse what address we're going to connect to
@@ -113,10 +113,7 @@ fn main() {
         let write_stdout = stream.for_each(move |buf| {
             let decoded = message_decode(buf.to_vec().as_slice());
             let mut msg = "".to_string();
-            if 0 == decoded.message.len() {
-                println!("Error: Incorrect message length");
-            }
-            else {
+            if  decoded.message.len() > 0 {
                 msg.push_str(&decoded.uid);
                 msg.push_str(":");
                 msg.push_str(String::from_utf8_lossy(decoded.message.as_slice()).into_owned().as_str());
@@ -145,7 +142,7 @@ impl Decoder for Bytes {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
-        if buf.len() >= HDRL { // HDRL is header min size
+        if buf.len() >= HDRKEYL { // HDRKEYL is header min size
             if read_hdr_type(buf.to_vec().as_slice()) != 'M' as u32 {
                 let len = buf.len();
                 buf.split_to(len);
@@ -158,14 +155,14 @@ impl Decoder for Bytes {
                 return Ok(None);
             }
             let len = buf.len();
-            if len < (HDRL + hdr_len) {
+            if len < (HDRKEYL + hdr_len) {
                 return Ok(None); 
             }
-            if HDRL + hdr_len < len { 
-                buf.split_to(HDRL);
+            if HDRKEYL + hdr_len < len { 
+                buf.split_to(HDRKEYL);
                 return Ok(Some(buf.split_to(hdr_len)));
             }
-            buf.split_to(HDRL);
+            buf.split_to(HDRKEYL);
             Ok(Some(buf.split_to(hdr_len)))
         } else {
             Ok(None)
