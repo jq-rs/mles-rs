@@ -331,7 +331,10 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             }
             Ok(())
         });
-        handle.spawn(tx_origs_reader);
+        handle.spawn(tx_origs_reader.then(|_| {
+            println!("Tx origs reader closed");
+            Ok(())
+        }));
         
         let tx_origs_inner = tx_origs.clone();
         let chanmsgs_inner = channelmsgs.clone();
