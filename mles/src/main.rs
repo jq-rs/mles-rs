@@ -21,6 +21,9 @@ extern crate tokio_io;
 extern crate futures;
 extern crate mles_utils;
 
+mod local_db;
+mod frame;
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -41,11 +44,12 @@ use futures::stream::{self, Stream};
 use futures::sync::mpsc::{unbounded, UnboundedSender};
 use mles_utils::*;
 
+use local_db::*;
+use frame::*;
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = HDRL + KEYL;
-//const MLES_PORT: u16 = 8077;
 
 fn main() {
     let mut peer = "".to_string();
@@ -93,10 +97,8 @@ fn main() {
     };
     println!("Listening on: {}", address);
 
-    let channels = Rc::new(RefCell::new(HashMap::new()));  
-    let channelmsgs = Rc::new(RefCell::new(HashMap::new()));  
-    let cpeer: HashMap<String, UnboundedSender<UnboundedSender<Vec<u8>>>> = HashMap::new();
-    let channel_peer = Rc::new(RefCell::new(cpeer));
+    let mles_db_hash: HashMap<String, MlesDb> = HashMap::new();
+    let mles_db = Rc::new(RefCell::new(mles_db_hash));
     let mut cnt = 0;
     let mut peer_cnt = 0;
 
@@ -114,78 +116,66 @@ fn main() {
 
         let (reader, writer) = stream.split();
         let (tx, rx) = unbounded();
-        cnt = mles_get_cnt(cnt);
+        cnt = get_cnt(cnt);
 
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
 
         let frame = io::read_exact(reader, vec![0;HDRKEYL]);
-        let frame = frame.and_then(move |(reader, hdr_key)| mles_process_hdr(reader, hdr_key));
+        let frame = frame.and_then(move |(reader, hdr_key)| process_hdr(reader, hdr_key));
 
         let paddr_inner = paddr.clone();
         let keyval_inner = keyval.clone();
         // verify key
-        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| mles_process_key(reader, hdr_key, hdr_len, keyval_inner, paddr_inner));
+        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| process_key(reader, hdr_key, hdr_len, keyval_inner, paddr_inner));
 
         let tx_inner = tx.clone();
-        let channels_inner = channels.clone();
-        let chanmsgs_inner = channelmsgs.clone();
-        let channelpeer_inner = channel_peer.clone();
+        let mles_db_inner = mles_db.clone();
         let socket_once = frame.and_then(move |(reader, mut hdr_key, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;hdr_len]);
             tframe.and_then(move |(reader, message)| {
                 if 0 == message.len() {  
                     return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
                 }
-                let mut channels_once = channels_inner.borrow_mut();
-                let mut chanmsgs_once = chanmsgs_inner.borrow_mut();
                 let decoded_message = message_decode(message.as_slice());
                 let channel = decoded_message.get_channel().clone();
+                let mut mles_db_once = mles_db_inner.borrow_mut();
 
-                if !channels_once.contains_key(&channel) {
+                if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
                     hdr_key.extend(message);
 
                     //if peer is set, create peer channel thread
-                    if mles_has_peer(&peer) {
-                        peer_cnt = mles_get_peer_cnt(cnt);
+                    if has_peer(&peer) {
+                        peer_cnt = get_peer_cnt(cnt);
                         thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr_key, tx_peer_for_msgs));
                     }
 
-                    let mut channel_entry = HashMap::new();
-                    channel_entry.insert(cnt, tx_inner.clone());
-                    channels_once.insert(channel.clone(), channel_entry);
+                    let mut mles_db_entry = MlesDb::new();
+                    mles_db_entry.add_channel(cnt, tx_inner.clone());
+                    mles_db_once.insert(channel.clone(), mles_db_entry);
 
-                    let messages: Vec<Vec<u8>> = Vec::new();
-                    chanmsgs_once.insert(channel.clone(), messages);
                 }
                 else {
-                    if let Some(channel_entry) = channels_once.get_mut(&channel) {
-                        channel_entry.insert(cnt, tx_inner.clone());
+                    if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
+                        mles_db_entry.add_channel(cnt, tx_inner.clone());
+                        if has_peer(&peer) {
+                            if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
+                                let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                            }
+                            else {
+                                println!("Cannot find channel peer for channel {}", channel);
+                            }
+                        }
+                        else {
+                            // send history to client if peer is not set
+                            for msg in mles_db_entry.get_messages() {
+                                let _res = tx_inner.send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
+                            }
+                        }
                     }
                     else {
                         println!("Channel {} not found", channel);
                         return Err(Error::new(ErrorKind::BrokenPipe, "internal error"));
-                    }
-
-                    if mles_has_peer(&peer) {
-                        let channel_peer = channelpeer_inner.borrow();
-                        if let Some(channelpeer_entry) = channel_peer.get(&channel) {
-                            let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
-                        }
-                        else {
-                            println!("Cannot find channel peer for channel {}", channel);
-                        }
-                    }
-                    else {
-                        // send history to client if peer is not set
-                        if let Some(chanmsgs) = chanmsgs_once.get(&channel) {
-                            for msg in chanmsgs {
-                                let _res = tx_inner.send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
-                            }
-                        }
-                        else {
-                            println!("Cannot send history of channel {}", channel);
-                        }
                     }
                 }
                 println!("User {}:{} joined channel {}", cnt, decoded_message.get_uid(), channel);
@@ -193,47 +183,39 @@ fn main() {
             })
         });
 
-        let channels_inner = channels.clone();
-        let chanmsgs_inner = channelmsgs.clone();
+        let mles_db_inner = mles_db.clone();
         let socket_next = socket_once.and_then(move |(reader, channel)| {
             let channel_next = channel.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, vec![0;HDRKEYL]);
-                let frame = frame.and_then(move |(reader, hdr_key)| mles_process_hdr_dummy_key(reader, hdr_key));
+                let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
                     let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                    tframe.and_then(move |(reader, message)| mles_process_msg(reader, hdr_key, message)) 
+                    tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message)) 
                 });
 
-                let channels = channels_inner.clone();
-                let chanmsgs = chanmsgs_inner.clone();
+                let mles_db = mles_db_inner.clone();
                 let channel = channel_next.clone();
                 frame.map(move |(reader, mut hdr_key, message)| {
                     hdr_key.extend(message);
 
-                    // add to history if no peer
-                    if !mles_has_peer(&peer) {
-                        let mut channel_msgs = chanmsgs.borrow_mut();
-                        if let Some(mut channel_msg) = channel_msgs.get_mut(&channel) {
-                            channel_msg.push(hdr_key.clone());
+                    let mut mles_db_borrow = mles_db.borrow_mut();
+                    if let Some(mles_db_entry) = mles_db_borrow.get_mut(&channel) {
+                        // add to history if no peer
+                        if !has_peer(&peer) {
+                            mles_db_entry.add_message(hdr_key.clone());
                         }
-                        else {
-                            println!("Cannot add to history of channel {}", channel);
-                        }
-                    }
 
-                    //distribute
-                    let mut channels_inner = channels.borrow_mut();
-                    if let Some(mut chans) = channels_inner.get_mut(&channel) {
-                        for (ocnt, tx) in chans.iter_mut() {
-                            if *ocnt != cnt {
-                                //todo remove failed channels
-                                let _res = tx.send(hdr_key.clone()).map_err(|_| { 
-                                    //just ignore failures for now
-                                    () 
-                                });
+                        if let Some(channels) = mles_db_entry.get_channels() {
+                            for (ocnt, tx) in channels.iter() {
+                                if *ocnt != cnt {
+                                    let _res = tx.send(hdr_key.clone()).map_err(|_| { 
+                                        //just ignore failures for now
+                                        () 
+                                    });
+                                }
                             }
                         }
                     }
@@ -247,19 +229,17 @@ fn main() {
         });
 
         let tx_inner = tx.clone();
-        let channels_inner = channels.clone();   
-        let channelpeer_inner = channel_peer.clone();
+        let mles_db_inner = mles_db.clone();
         let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cnt, channel, peer_tx, tx_orig_chan)| {
-            let mut channels_once = channels_inner.borrow_mut();
-            if let Some(mut channel_entry) = channels_once.get_mut(&channel) {  
-                channel_entry.insert(peer_cnt, peer_tx);  
+            let mut mles_db_once = mles_db_inner.borrow_mut();
+            if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
+                mles_db_entry.add_channel(peer_cnt, peer_tx);  
+                mles_db_entry.set_peer_tx(tx_orig_chan.clone());
+                let _res = tx_orig_chan.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
             }
             else {
                 println!("Cannot find peer channel {}", channel);
             }
-            let mut channel_peer = channelpeer_inner.borrow_mut();
-            channel_peer.insert(channel, tx_orig_chan.clone());
-            let _res = tx_orig_chan.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
             Ok(())
         });
         handle.spawn(peer_writer.then(|_| {
@@ -272,20 +252,23 @@ fn main() {
             amt.map_err(|_| ())
         });
 
-        let channels = channels.clone();
-        let chanmsgs = channelmsgs.clone();
+        let mles_db_conn = mles_db.clone();
         let socket_reader = socket_next.map_err(|_| ());
         let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
-            let mut chans = channels.borrow_mut();
-            for (cname, channel) in chans.iter_mut() {
-                if channel.contains_key(&cnt) {
-                    channel.remove(&cnt);
-                    if 0 == channel.len() {
-                        let mut channelmsgs = chanmsgs.borrow_mut();
-                        channelmsgs.remove(cname);
+            let mut mles_db = mles_db_conn.borrow_mut();
+            let mut to_remove: Option<u64> = None;
+            for (cname, mles_db_entry) in mles_db.iter_mut() {
+                if let Some(mles_channel) = mles_db_entry.get_channels() {
+                    if mles_channel.contains_key(&cnt) {
+                           to_remove = Some(cnt);
+                    }
+                }
+                if let Some(cnt) = to_remove {
+                    mles_db_entry.rem_channel(cnt);
+                    if 0 == mles_db_entry.get_channels_len() {
                         println!("Channel {} dropped.", cname);
-                        drop(channel);
+                        drop(mles_db_entry);
                     }
                     break;
                 }
@@ -305,11 +288,11 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
 {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
-    let channelmsgs = Rc::new(RefCell::new(Vec::new()));  
+    let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new()));
 
     let tcp = TcpStream::connect(&peer, &handle);
+
     let (tx_orig_chan, rx_orig_chan) = unbounded();
-    let tx_origs = Rc::new(RefCell::new(Vec::new()));  
 
     let orig_channel = channel.clone();
     println!("Peer channel thread for channel {}", orig_channel);
@@ -323,11 +306,11 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
         let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
         let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
-        let chanmsgs_inner = channelmsgs.clone();
+        let mles_peer_db_inner = mles_peer_db.clone();
         let psocket_writer = rx.fold(writer, move |writer, msg| {
             //push message to history
-            let mut channel_msgs = chanmsgs_inner.borrow_mut();
-            channel_msgs.push(msg.clone());
+            let mut mles_peer_db = mles_peer_db_inner.borrow_mut();
+            mles_peer_db.add_message(msg.clone());
             
             //send message forward
             let amt = io::write_all(writer, msg);
@@ -339,17 +322,15 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             Ok(())
         }));
 
-        let tx_origs_inner = tx_origs.clone();
-        let chanmsgs_inner = channelmsgs.clone();
+        let mles_peer_db_inner = mles_peer_db.clone();
         let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
             //save receiver side tx to db
-            let mut tx_origs_once = tx_origs_inner.borrow_mut();
-            tx_origs_once.push(tx_orig.clone());  
+            let mut mles_peer_db_once = mles_peer_db_inner.borrow_mut();
+            mles_peer_db_once.add_channel(tx_orig.clone());  
 
             //push history to client if not the first one (as peer will send the history then)
-            if tx_origs_once.len() > 1 {
-                let channel_msgs = chanmsgs_inner.borrow();
-                for msg in channel_msgs.iter() {
+            if mles_peer_db_once.get_messages_len() > 1 {
+                for msg in mles_peer_db_once.get_messages().iter() {
                     let _res = tx_orig.send(msg.clone()).map_err(|err| { println!("Failed to send history from peer: {}", err); () });
                 }
             }
@@ -360,32 +341,28 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
             Ok(())
         }));
         
-        let tx_origs_inner = tx_origs.clone();
-        let chanmsgs_inner = channelmsgs.clone();
+        let mles_peer_db_inner = mles_peer_db.clone();
         let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
         iter.fold(reader, move |reader, _| {
             let frame = io::read_exact(reader, vec![0;HDRKEYL]);
-            let frame = frame.and_then(move |(reader, hdr_key)| mles_process_hdr_dummy_key(reader, hdr_key));
+            let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
             let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
                 let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                tframe.and_then(move |(reader, message)| mles_process_msg(reader, hdr_key, message)) 
+                tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message)) 
             }); 
 
-            let tx_origs_frame = tx_origs_inner.clone();
-            let chanmsgs_frame = chanmsgs_inner.clone();
+            let mles_peer_db_frame = mles_peer_db_inner.clone();
             frame.map(move |(reader, mut hdr_key, message)| {
                 hdr_key.extend(message);
 
                 //send message forward
-                let tx_origs = tx_origs_frame.borrow();
-                for tx_orig in tx_origs.iter() {
+                let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
+                for tx_orig in mles_peer_db.get_channels().iter() {
                     let _res = tx_orig.send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
                 }
-
                 //push message to history
-                let mut channel_msgs = chanmsgs_frame.borrow_mut();
-                channel_msgs.push(hdr_key);
+                mles_peer_db.add_message(hdr_key);
                 
                 reader
             })
@@ -397,62 +374,19 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
     println!("Peer channel thread {} out", orig_channel);
 }
 
-fn mles_get_cnt(cnt: u64) -> u64 {
+fn get_cnt(cnt: u64) -> u64 {
     let mut val = cnt as u32;
     val += 1;
     val as u64 
 }
 
-fn mles_get_peer_cnt(cnt: u64) -> u64 {
+fn get_peer_cnt(cnt: u64) -> u64 {
     let mut val = cnt;
     val = val >> 32;
     val += 1;
     val << 32
 }
 
-fn mles_process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), std::io::Error> {
-    mles_process_hdr(reader, hdr_key)
-}
-
-fn mles_process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), std::io::Error> {
-    if hdr.len() == 0 {
-        return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-    }
-    if read_hdr_type(hdr.as_slice()) != 'M' as u32 {
-        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
-    }
-    let hdr_len = read_hdr_len(hdr.as_slice());
-    if 0 == hdr_len {
-        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
-    }
-    Ok((reader, hdr, hdr_len))
-}
-
-fn mles_process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>), std::io::Error> { 
-    if 0 == message.len() { 
-        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-    }
-    Ok((reader, hdr_key, message))
-}
-
-fn mles_process_key(reader: io::ReadHalf<TcpStream>, mut hdr_key: Vec<u8>, hdr_len: usize, keyval: String, peer_addr: SocketAddr) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), std::io::Error> { 
-    let hkey;
-    let key = hdr_key.split_off(HDRL);
-    let keyx = read_key(&key);
-    if 0 == keyval.len() {
-        hkey = do_hash(&peer_addr);
-    }
-    else {
-        hkey = do_hash(&keyval);
-    }
-    if hkey != keyx {
-        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
-    }
-    hdr_key.extend(key);
-    Ok((reader, hdr_key, hdr_len))
-}
-
-fn mles_has_peer(peer: &SocketAddr) -> bool {
+fn has_peer(peer: &SocketAddr) -> bool {
     0 != peer.port() 
 }
-
