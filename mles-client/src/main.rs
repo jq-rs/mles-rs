@@ -113,10 +113,10 @@ fn main() {
         let write_stdout = stream.for_each(move |buf| {
             let decoded = message_decode(buf.to_vec().as_slice());
             let mut msg = "".to_string();
-            if  decoded.message.len() > 0 {
-                msg.push_str(&decoded.uid);
+            if  decoded.get_message().len() > 0 {
+                msg.push_str(decoded.get_uid());
                 msg.push_str(":");
-                msg.push_str(String::from_utf8_lossy(decoded.message.as_slice()).into_owned().as_str());
+                msg.push_str(String::from_utf8_lossy(decoded.get_message().as_slice()).into_owned().as_str());
             }
             stdout.write_all(&msg.into_bytes())
         });
@@ -220,7 +220,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     }
 
     /* Join channel */
-    let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: Vec::new() }); 
+    let msg = message_encode(&Msg::new(userstr.clone(), channelstr.clone(), Vec::new())); 
     rx = rx.send(msg).wait().unwrap();
 
     let mut msg = userstr.clone();
@@ -242,7 +242,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         };
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
-        let msg = message_encode(&Msg { uid: userstr.clone(), channel: channelstr.clone(), message: str.into_bytes() });
+        let msg = message_encode(&Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes()));
         rx = rx.send(msg).wait().unwrap();
     }
 }

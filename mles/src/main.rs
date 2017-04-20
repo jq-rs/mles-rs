@@ -139,7 +139,7 @@ fn main() {
                 let mut channels_once = channels_inner.borrow_mut();
                 let mut chanmsgs_once = chanmsgs_inner.borrow_mut();
                 let decoded_message = message_decode(message.as_slice());
-                let channel = decoded_message.channel.clone();
+                let channel = decoded_message.get_channel().clone();
 
                 if !channels_once.contains_key(&channel) {
                     let chan = channel.clone();
@@ -188,7 +188,7 @@ fn main() {
                         }
                     }
                 }
-                println!("User {}:{} joined channel {}", cnt, decoded_message.uid, channel);
+                println!("User {}:{} joined channel {}", cnt, decoded_message.get_uid(), channel);
                 Ok((reader, channel))
             })
         });
