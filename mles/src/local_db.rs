@@ -111,3 +111,29 @@ impl MlesPeerDb {
     }
 
 }
+
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_db() {
+        let msg = "Message".to_string().into_bytes();
+        let mut mles_db = MlesDb::new();
+        mles_db.add_message(msg);
+        assert_eq!(1, mles_db.get_messages().len());
+        assert_eq!(0, mles_db.get_channels_len());
+        let channel = mles_db.get_channels();
+        assert_eq!(true, channel.is_none());
+    }
+
+    #[test]
+    fn test_new_peer_db() {
+        let msg = "Message".to_string().into_bytes();
+        let mut mles_peer = MlesPeerDb::new();
+        assert_eq!(0, mles_peer.get_messages_len());
+        mles_peer.add_message(msg);
+        assert_eq!(1, mles_peer.get_messages_len());
+    }
+}

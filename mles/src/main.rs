@@ -116,7 +116,7 @@ fn main() {
 
         let (reader, writer) = stream.split();
         let (tx, rx) = unbounded();
-        cnt = get_cnt(cnt);
+        cnt = inc_cnt(cnt);
 
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
 
@@ -146,7 +146,7 @@ fn main() {
 
                     //if peer is set, create peer channel thread
                     if has_peer(&peer) {
-                        peer_cnt = get_peer_cnt(cnt);
+                        peer_cnt = inc_peer_cnt(cnt);
                         thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr_key, tx_peer_for_msgs));
                     }
 
@@ -374,13 +374,13 @@ fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
     println!("Peer channel thread {} out", orig_channel);
 }
 
-fn get_cnt(cnt: u64) -> u64 {
+fn inc_cnt(cnt: u64) -> u64 {
     let mut val = cnt as u32;
     val += 1;
     val as u64 
 }
 
-fn get_peer_cnt(cnt: u64) -> u64 {
+fn inc_peer_cnt(cnt: u64) -> u64 {
     let mut val = cnt;
     val = val >> 32;
     val += 1;
@@ -389,4 +389,27 @@ fn get_peer_cnt(cnt: u64) -> u64 {
 
 fn has_peer(peer: &SocketAddr) -> bool {
     0 != peer.port() 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inc_cnt() {
+        let val: u64 = 1;
+        assert_eq!(val + 1, inc_cnt(val));
+    }
+
+    #[test]
+    fn test_peer_inc_cnt() {
+        let val: u64 = 1 << 32;
+        assert_eq!(2 << 32, inc_peer_cnt(val));
+    }
+
+    #[test]
+    fn test_has_peer() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+        assert_eq!(false, has_peer(&addr));
+    }
 }
