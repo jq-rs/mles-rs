@@ -28,9 +28,19 @@ use std::hash::{Hash, Hasher};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Msg {
-    pub uid:     String,
-    pub channel: String,
-    pub message: Vec<u8>,
+    uid:     String,
+    channel: String,
+    message: Vec<u8>,
+}
+
+impl Msg {
+    pub fn new(uid: String, channel: String, message: Vec<u8>) -> Msg {
+        Msg {
+            uid: uid,
+            channel: channel,
+            message: message
+        }
+    }
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
@@ -101,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_encode_decode_msg() {
-        let orig_msg = Msg { uid: "User".to_string(), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
+        let orig_msg = Msg::new("User".to_string(), "Channel".to_string(), "a test msg".to_string().into_bytes());
         let cbor_msg = message_encode(&orig_msg);
         let decoded_msg = message_decode(&cbor_msg);
         assert_eq!(decoded_msg.uid, orig_msg.uid);
