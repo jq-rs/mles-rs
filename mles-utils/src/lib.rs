@@ -28,9 +28,46 @@ use std::hash::{Hash, Hasher};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Msg {
-    pub uid:     String,
-    pub channel: String,
-    pub message: Vec<u8>,
+    uid:     String,
+    channel: String,
+    message: Vec<u8>,
+}
+
+impl Msg {
+    pub fn new(uid: String, channel: String, message: Vec<u8>) -> Msg {
+        Msg {
+            uid: uid,
+            channel: channel,
+            message: message
+        }
+    }
+
+    pub fn set_uid(mut self, uid: String) -> Msg {
+        self.uid = uid;
+        self
+    }
+
+    pub fn set_channel(mut self, channel: String) -> Msg {
+        self.channel = channel;
+        self
+    }
+
+    pub fn set_message(mut self, message: Vec<u8>) -> Msg {
+        self.message = message;
+        self
+    }
+
+    pub fn get_uid(&self) -> &String {
+        &self.uid
+    }
+
+    pub fn get_channel(&self) -> &String {
+        &self.channel
+    }
+
+    pub fn get_message(&self) -> &Vec<u8> {
+        &self.message
+    }
 }
 
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
@@ -101,12 +138,29 @@ mod tests {
 
     #[test]
     fn test_encode_decode_msg() {
-        let orig_msg = Msg { uid: "User".to_string(), channel: "Channel".to_string(), message: "a test msg".to_string().into_bytes() };
+        let uid =  "User".to_string();
+        let channel =  "Channel".to_string();
+        let msg =  "a test msg".to_string().into_bytes();
+        let orig_msg = Msg::new(uid, channel, msg);
         let cbor_msg = message_encode(&orig_msg);
         let decoded_msg = message_decode(&cbor_msg);
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
+    }
+
+    #[test]
+    fn test_set_get_msg() {
+        let uid =  "User".to_string();
+        let channel =  "Channel".to_string();
+        let msg =  "a test msg".to_string().into_bytes();
+        let orig_msg = Msg::new("".to_string(), channel.to_string(), Vec::new());
+        let orig_msg = orig_msg.set_uid(uid.clone());
+        let orig_msg = orig_msg.set_channel(channel.clone());
+        let orig_msg = orig_msg.set_message(msg.clone());
+        assert_eq!(&uid, orig_msg.get_uid());
+        assert_eq!(&channel, orig_msg.get_channel());
+        assert_eq!(&msg, orig_msg.get_message());
     }
 
     #[test]

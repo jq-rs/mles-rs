@@ -1,13 +1,13 @@
 [package]
 name = "mles-client"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed database server example (chat) client"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 
 [dependencies]
-mles-utils = "0.5"
+mles-utils = "0.6"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
