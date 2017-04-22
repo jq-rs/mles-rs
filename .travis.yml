@@ -8,15 +8,26 @@ matrix:
     allow_failures:
       - rust: nightly
 sudo: false
+addons:
+  apt:
+    packages:
+    - libcurl4-openssl-dev
+    - libelf-dev
+    - libdw-dev
 before_script:
-    - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
+- |
+  pip install 'travis-cargo<0.2' --user &&
+  export PATH=$HOME/.local/bin:$PATH
 script:
-    - cargo build --manifest-path mles-utils/Cargo.toml
-    - cargo test --manifest-path mles-utils/Cargo.toml 
-    - cargo build --manifest-path mles/Cargo.toml
-    - cargo test --manifest-path mles/Cargo.toml 
-    - cargo build --manifest-path mles-client/Cargo.toml
-    - cargo test --manifest-path mles-client/Cargo.toml 
+- |
+  travis-cargo build --manifest-path mles-utils/Cargo.toml &&
+  travis-cargo test --manifest-path mles-utils/Cargo.toml &&
+  travis-cargo build --manifest-path mles/Cargo.toml &&
+  travis-cargo test --manifest-path mles/Cargo.toml &&
+  travis-cargo build --manifest-path mles-client/Cargo.toml &&
+  travis-cargo test --manifest-path mles-client/Cargo.toml
+after_success:
+- travis-cargo coveralls --no-sudo
 
 notifications:
     email:
