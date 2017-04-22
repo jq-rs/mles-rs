@@ -99,6 +99,7 @@ fn main() {
 
     let mles_db_hash: HashMap<String, MlesDb> = HashMap::new();
     let mles_db = Rc::new(RefCell::new(mles_db_hash));
+    let channel_db = Rc::new(RefCell::new(HashMap::new()));
     let mut cnt = 0;
     let mut peer_cnt = 0;
 
@@ -129,6 +130,7 @@ fn main() {
         let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| process_key(reader, hdr_key, hdr_len, keyval_inner, paddr_inner));
 
         let tx_inner = tx.clone();
+        let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
         let socket_once = frame.and_then(move |(reader, mut hdr_key, hdr_len)| {
             let tframe = io::read_exact(reader, vec![0;hdr_len]);
@@ -139,6 +141,7 @@ fn main() {
                 let decoded_message = message_decode(message.as_slice());
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
+                let mut channel_db = channel_db_inner.borrow_mut();
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
@@ -178,6 +181,7 @@ fn main() {
                         return Err(Error::new(ErrorKind::BrokenPipe, "internal error"));
                     }
                 }
+                channel_db.insert(cnt, channel.clone());
                 println!("User {}:{} joined channel {}", cnt, decoded_message.get_uid(), channel);
                 Ok((reader, channel))
             })
@@ -253,25 +257,25 @@ fn main() {
         });
 
         let mles_db_conn = mles_db.clone();
+        let channel_db_conn = channel_db.clone();
         let socket_reader = socket_next.map_err(|_| ());
         let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
         handle.spawn(connection.then(move |_| {
             let mut mles_db = mles_db_conn.borrow_mut();
-            let mut to_remove: Option<u64> = None;
-            for (cname, mles_db_entry) in mles_db.iter_mut() {
-                if let Some(mles_channel) = mles_db_entry.get_channels() {
-                    if mles_channel.contains_key(&cnt) {
-                           to_remove = Some(cnt);
-                    }
-                }
-                if let Some(cnt) = to_remove {
+            let mut channel_db = channel_db_conn.borrow_mut();
+            let mut chan_to_rem: Option<u64> = None;
+            if let Some(channel) = channel_db.get_mut(&cnt) {
+                if let Some(mles_db_entry) = mles_db.get_mut(channel) {
                     mles_db_entry.rem_channel(cnt);
+                    chan_to_rem = Some(cnt);
                     if 0 == mles_db_entry.get_channels_len() {
-                        println!("Channel {} dropped.", cname);
+                        println!("Channel {} dropped.", channel);
                         drop(mles_db_entry);
                     }
-                    break;
                 }
+            }
+            if let Some(cnt) = chan_to_rem {
+                channel_db.remove(&cnt);
             }
             println!("Connection {} for user {} closed.", addr, cnt);
             Ok(())
