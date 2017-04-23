@@ -38,6 +38,7 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
+#[macro_use]
 extern crate serde_json;
 
 use serde_json::{Value, Error};
@@ -106,41 +107,55 @@ fn main() {
 
     // Handle stdin in a separate thread 
     let (stdin_tx, stdin_rx) = mpsc::channel(16);
+    let (mles_tx_ws, mles_rx_ws) = std::sync::mpsc::channel();
+
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
+    let remote = core.remote();
+    let tcp = TcpStream::connect(&addr, &handle);
+    let mut key = 0;
+
 
     let ws_tx_inner = stdin_tx.clone();
+    let mles_tx_ws_inner = mles_tx_ws.clone();
     thread::spawn(move || {
         let ws_server = Server::bind("0.0.0.0:8076").unwrap();
         for connection in ws_server.filter_map(Result::ok) {
             let ws_tx = ws_tx_inner.clone();
-            thread::spawn(move || {
-                if !connection.protocols().contains(&"mles-websocket".to_string()) {
-                    connection.reject().unwrap();
-                    println!("Protocol rejected");
-                    return;
-                }
-                let mut client = connection.use_protocol("mles-websocket").accept().unwrap();
-                let ip = client.peer_addr().unwrap();
-                println!("Connection from {}", ip);
+            let mles_tx_ws = mles_tx_ws_inner.clone();
+            if !connection.protocols().contains(&"mles-websocket".to_string()) {
+                connection.reject().unwrap();
+                println!("Protocol rejected");
+                continue;
+            }
+            let mut client = connection.use_protocol("mles-websocket").accept().unwrap();
+            let ip = client.peer_addr().unwrap();
+            println!("Connection from {}", ip);
 
-                let (mut receiver, mut sender) = client.split().unwrap();
+            let (mut receiver, mut sender) = client.split().unwrap();
+            thread::spawn(move || {
                 for message in receiver.incoming_messages() {
                     let ws_tx_msg = ws_tx.clone();
+                    let mles_tx_ws_msg = mles_tx_ws.clone();
                     let message: Message = message.unwrap();
 
                     match message.opcode {
                         Type::Close => {
                             let message = Message::close();
-                            sender.send_message(&message).unwrap();
+                            let msg = message.payload.into_owned().to_vec();
+                            mles_tx_ws_msg.send(msg).unwrap();
                             println!("Client {} disconnected", ip);
                             return;
                         }
                         Type::Ping => {
                             let message = Message::pong(message.payload);
-                            sender.send_message(&message).unwrap();
+                            let msg = message.payload.into_owned().to_vec();
+                            mles_tx_ws_msg.send(msg).unwrap();
                         }
                         _ => {
-                            sender.send_message(&message).unwrap();
-                            let msg: Value = serde_json::from_slice(message.payload.into_owned().as_slice()).unwrap();
+                            let msg = message.payload.into_owned().to_vec();
+                            mles_tx_ws_msg.send(msg.clone()).unwrap();
+                            let msg: Value = serde_json::from_slice(msg.as_slice()).unwrap();
                             println!("Msg: uid {}, channel {}, message {}", msg["uid"], msg["channel"], msg["message"]);
                             let uid: String = msg["uid"].to_string();
                             let channel: String = msg["channel"].to_string();
@@ -155,16 +170,20 @@ fn main() {
                             let _ = ws_tx_msg.send(message_encode(&mles_msg)).wait().unwrap();
                         }
                     }
-
                 }
             });
+
+            loop {
+                println!("About to sending to ws!");
+                let mles_msg: Vec<u8> = mles_rx_ws.recv().unwrap();
+                let mles_new_msg = mles_msg.clone();
+                let mles_new = String::from_utf8_lossy(mles_new_msg.as_slice());
+                let message: Message = Message::text(mles_new.clone());
+                println!("Sending to ws! {:?}", mles_new);
+                sender.send_message(&message).unwrap();
+            }
         }
     });
-
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let tcp = TcpStream::connect(&addr, &handle);
-    let mut key = 0;
 
     thread::spawn(|| read_stdin(stdin_tx));
     let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
@@ -192,6 +211,13 @@ fn main() {
 
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
+            // forward msg to ws as json
+            let newbuf = buf.to_vec().clone();
+            match mles_tx_ws.send(newbuf) {
+                Ok(_) => {},
+                Err(err) => {println!("Error: {}", err)},
+            }
+
             let decoded = message_decode(buf.to_vec().as_slice());
             let mut msg = "".to_string();
             if  decoded.get_message().len() > 0 {
