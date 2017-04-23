@@ -39,6 +39,10 @@ extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
 
+/* websocket proxy support */
+extern crate websocket;
+extern crate hyper;
+
 use std::{env, process};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
@@ -52,6 +56,17 @@ use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 use tokio_io::codec::{Encoder, Decoder};
 use mles_utils::*;
+
+/* websocket proxy support */
+use websocket::{Server, Message};
+use websocket::message::Type;
+use hyper::server::{Request, Response};
+
+const HTML: &'static str = include_str!("mles-websockets.html");
+
+fn hello(_: Request, res: Response) {
+        res.send(HTML.as_bytes()).unwrap();
+}
 
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
@@ -77,6 +92,54 @@ fn main() {
         Ok(val) => val,
         Err(_) => "".to_string(),
     };
+
+    /* Websocket proxy support */
+    thread::spawn(move || {
+        let _listening = hyper::Server::http("0.0.0.0:8080").unwrap()
+        .handle(hello);
+        println!("Mles Websockets listening on http://0.0.0.0:8080");
+    });
+
+    thread::spawn(move || {
+        let ws_server = Server::bind("0.0.0.0:8076").unwrap();
+        for connection in ws_server.filter_map(Result::ok) {
+            thread::spawn(move || {
+                if !connection.protocols().contains(&"mles-websocket".to_string()) {
+                    connection.reject().unwrap();
+                    println!("Protocol rejected");
+                    return;
+                }
+                let mut client = connection.use_protocol("mles-websocket").accept().unwrap();
+
+                let ip = client.peer_addr().unwrap();
+
+                println!("Connection from {}", ip);
+
+                let message = Message::text("Hello".to_string());
+                client.send_message(&message).unwrap();
+
+                let (mut receiver, mut sender) = client.split().unwrap();
+
+                for message in receiver.incoming_messages() {
+                    let message: Message = message.unwrap();
+
+                    match message.opcode {
+                        Type::Close => {
+                            let message = Message::close();
+                            sender.send_message(&message).unwrap();
+                            println!("Client {} disconnected", ip);
+                            return;
+                        }
+                        Type::Ping => {
+                            let message = Message::pong(message.payload);
+                            sender.send_message(&message).unwrap();
+                        }
+                        _ => sender.send_message(&message).unwrap(),
+                    }
+                }
+            });
+        }
+    });
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
