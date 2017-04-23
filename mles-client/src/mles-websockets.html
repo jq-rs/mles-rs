@@ -253,6 +253,7 @@ function parseMessage(message) {
     $('#messages').append(li);
 
     $('#input_message').val('');
+    $('#messages').scrollTop($('#messages').height());
 }
 
 function sendMessageToServer(message) {
