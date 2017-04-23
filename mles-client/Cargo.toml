@@ -1,13 +1,13 @@
 [package]
 name = "mles-client"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed database server example (chat) client"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 
 [dependencies]
-mles-utils = "0.6"
+mles-utils = "0.7"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
@@ -19,3 +19,6 @@ tokio-proto = "0.1"
 tokio-service = "0.1"
 hyper = "0.10"
 websocket = {version = "0.19", default-features=false}
+serde = "0.9"
+serde_derive = "0.9"
+serde_json = "1.0"

@@ -258,7 +258,7 @@ function closeSocket() {
 function parseMessage(message) {
     var jObj = $.parseJSON(message);
 
-    var li = '<li class="new"><span class="name">' + jObj.name + '</span> '
+    var li = '<li class="new"><span class="name">' + jObj.uid + '</span> '
         + jObj.message + '</li>';
     $('#messages').append(li);
 
@@ -269,7 +269,7 @@ function parseMessage(message) {
 function sendMessageToServer(message) {
     var json = '{""}';
     var myObject = new Object();
-    myObject.name = myname;
+    myObject.uid = myname;
     myObject.channel = mychannel;
     myObject.message = message;
     json = JSON.stringify(myObject);
