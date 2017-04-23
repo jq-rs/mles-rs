@@ -38,6 +38,10 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
+extern crate serde_json;
+
+use serde_json::{Value, Error};
+
 
 /* websocket proxy support */
 extern crate websocket;
@@ -97,12 +101,17 @@ fn main() {
     thread::spawn(move || {
         let _listening = hyper::Server::http("0.0.0.0:8080").unwrap()
         .handle(hello);
-        println!("Mles Websockets listening on http://0.0.0.0:8080");
+        println!("Mles Websockets listening on port 8080");
     });
 
+    // Handle stdin in a separate thread 
+    let (stdin_tx, stdin_rx) = mpsc::channel(16);
+
+    let ws_tx_inner = stdin_tx.clone();
     thread::spawn(move || {
         let ws_server = Server::bind("0.0.0.0:8076").unwrap();
         for connection in ws_server.filter_map(Result::ok) {
+            let ws_tx = ws_tx_inner.clone();
             thread::spawn(move || {
                 if !connection.protocols().contains(&"mles-websocket".to_string()) {
                     connection.reject().unwrap();
@@ -110,17 +119,12 @@ fn main() {
                     return;
                 }
                 let mut client = connection.use_protocol("mles-websocket").accept().unwrap();
-
                 let ip = client.peer_addr().unwrap();
-
                 println!("Connection from {}", ip);
 
-                let message = Message::text("Hello".to_string());
-                client.send_message(&message).unwrap();
-
                 let (mut receiver, mut sender) = client.split().unwrap();
-
                 for message in receiver.incoming_messages() {
+                    let ws_tx_msg = ws_tx.clone();
                     let message: Message = message.unwrap();
 
                     match message.opcode {
@@ -134,8 +138,24 @@ fn main() {
                             let message = Message::pong(message.payload);
                             sender.send_message(&message).unwrap();
                         }
-                        _ => sender.send_message(&message).unwrap(),
+                        _ => {
+                            sender.send_message(&message).unwrap();
+                            let msg: Value = serde_json::from_slice(message.payload.into_owned().as_slice()).unwrap();
+                            println!("Msg: uid {}, channel {}, message {}", msg["uid"], msg["channel"], msg["message"]);
+                            let uid: String = msg["uid"].to_string();
+                            let channel: String = msg["channel"].to_string();
+                            let mut message: String = msg["message"].to_string();
+                            let uid: Vec<&str> = uid.split("\"").collect();
+                            let channel: Vec<&str> = channel.split("\"").collect();
+                            let message: Vec<&str> = message.split("\"").collect();
+                            let mut mes: String = message[1].to_string();
+                            mes.push('\n');
+                            let mles_msg: Msg = Msg::new(uid[1].to_string(), channel[1].to_string(), mes.into_bytes());
+                            println!("Msg: {:?}", mles_msg);
+                            let _ = ws_tx_msg.send(message_encode(&mles_msg)).wait().unwrap();
+                        }
                     }
+
                 }
             });
         }
@@ -145,16 +165,13 @@ fn main() {
     let handle = core.handle();
     let tcp = TcpStream::connect(&addr, &handle);
     let mut key = 0;
-    
-    // Handle stdin in a separate thread 
-    let (stdin_tx, stdin_rx) = mpsc::channel(0);
+
     thread::spawn(|| read_stdin(stdin_tx));
     let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
     let mut stdout = io::stdout();
     let client = tcp.and_then(|stream| {
         let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
-        /* Set key */
         if 0 == keyval.len() {
             key = match stream.local_addr() {
                 Ok(laddr) => do_hash(&laddr),
@@ -172,6 +189,7 @@ fn main() {
             keyv.extend(buf);
             Ok(keyv)
         });
+
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
             let decoded = message_decode(buf.to_vec().as_slice());
@@ -273,7 +291,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let n = match stdin.read(&mut buf) {
         Err(_) |
             Ok(0) => return,
-            Ok(n) => n,
+            Ok(n) => n,             
     };
     buf.truncate(n-1);
     let mut channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
@@ -305,7 +323,9 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         };
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
-        let msg = message_encode(&Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes()));
+        let msg = Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes());
+        //println!("Msg from input: {:?}", msg);
+        let msg = message_encode(&msg);
         rx = rx.send(msg).wait().unwrap();
     }
 }
