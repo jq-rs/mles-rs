@@ -1,6 +1,6 @@
 /**
  *   Mles-utils to be used with Mles client or server.
- *   Copyright (C) 2017  Mles developers
+ *   Copyright (C) 2017 jq-rs / Mles developers
  *
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_cbor;
+extern crate serde_bytes;
 extern crate byteorder;
 extern crate siphasher;
 
@@ -30,6 +31,7 @@ use std::hash::{Hash, Hasher};
 pub struct Msg {
     uid:     String,
     channel: String,
+    #[serde(with = "serde_bytes")]
     message: Vec<u8>,
 }
 
