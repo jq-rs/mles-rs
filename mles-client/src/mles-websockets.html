@@ -677,11 +677,11 @@ function parseMessage(message) {
 }
 
 function send_message(uid, channel, message) {
-    var arr = new Uint8Array();
-    for(var p in Object.getOwnPropertyNames(message)) {
-        console.log("Adding " + message[p]);
-            arr[p] = message[p];
+    var arr = new Uint8Array(message.length+1);
+    for (var i=0, len=message.length; i<len; i++) {
+        arr[i] = message.charCodeAt(i);
     }
+    arr[message.length] = "\n".charCodeAt(0);
     var obj = {
         uid: uid,
         channel: channel,

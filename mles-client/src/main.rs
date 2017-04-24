@@ -38,11 +38,6 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
-#[macro_use]
-extern crate serde_json;
-
-use serde_json::{Value, Error};
-
 
 /* websocket proxy support */
 extern crate websocket;
