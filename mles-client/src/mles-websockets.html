@@ -5,7 +5,7 @@
 <title>Mles WebSocket Channels</title>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width">
-<script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+<script src="http://code.jquery.com/jquery-1.12.4.min.js"></script>
 <script>
 /*
 * The MIT License (MIT)
@@ -621,7 +621,7 @@ function openSocket() {
     webSocket = new WebSocket("ws://" + socket_url + ":" + port
                               + "?myname=" + myname
                               + "&mychannel=" + mychannel, "mles-websocket");
-    webSocket.binarytype = "arraybuffer";
+    webSocket.binaryType = "arraybuffer";
     webSocket.onopen = function(event) {
         $('p.channel_header').html(
                                    'Channel <span class="green">' + mychannel + '</span>').fadeIn();
@@ -633,8 +633,10 @@ function openSocket() {
     };
 
     webSocket.onmessage = function(event) {
-        var message = event.data;
-        parseMessage(event.data);
+        if(event.data) {
+            var message = CBOR.decode(event.data);
+            handle_message(message);
+        }
     };
 
     webSocket.onclose = function(event) {
@@ -665,11 +667,9 @@ function closeSocket() {
     });
 }
 
-function parseMessage(message) {
-    var msg = CBOR.decode(message);
-
-    var li = '<li class="new"><span class="name">' + jObj.uid + '</span> '
-        + jObj.message + '</li>';
+function handle_message(message) {
+    var li = '<li class="new"><span class="name">' + message.uid + '</span> '
+        + message.message + '</li>';
     $('#messages').append(li);
 
     $('#input_message').val('');

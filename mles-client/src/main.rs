@@ -106,7 +106,6 @@ fn main() {
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
-    let remote = core.remote();
     let tcp = TcpStream::connect(&addr, &handle);
     let mut key = 0;
 
@@ -123,7 +122,7 @@ fn main() {
                 println!("Protocol rejected");
                 continue;
             }
-            let mut client = connection.use_protocol("mles-websocket").accept().unwrap();
+            let client = connection.use_protocol("mles-websocket").accept().unwrap();
             let ip = client.peer_addr().unwrap();
             println!("Connection from {}", ip);
 
@@ -149,34 +148,18 @@ fn main() {
                         }
                         _ => {
                             let msg = message.payload.into_owned().to_vec();
-                            let newmsg = message_decode(msg.as_slice());
-                            println!("Decoded {:?}", newmsg);
+                            println!("Rcvd msg {:?} len {}", msg, msg.len());
                             mles_tx_ws_msg.send(msg.clone()).unwrap();
-                            /*let msg: Value = serde_json::from_slice(msg.as_slice()).unwrap();
-                            println!("Msg: uid {}, channel {}, message {}", msg["uid"], msg["channel"], msg["message"]);
-                            let uid: String = msg["uid"].to_string();
-                            let channel: String = msg["channel"].to_string();
-                            let mut message: String = msg["message"].to_string();
-                            let uid: Vec<&str> = uid.split("\"").collect();
-                            let channel: Vec<&str> = channel.split("\"").collect();
-                            let message: Vec<&str> = message.split("\"").collect();
-                            let mut mes: String = message[1].to_string();
-                            mes.push('\n');
-                            let mles_msg: Msg = Msg::new(uid[1].to_string(), channel[1].to_string(), mes.into_bytes());
-                            println!("Msg: {:?}", mles_msg);
-                            let _ = ws_tx_msg.send(message_encode(&mles_msg)).wait().unwrap();*/
+                            let _ = ws_tx_msg.send(msg).wait().unwrap();
                         }
                     }
                 }
             });
 
             loop {
-                println!("About to sending to ws!");
                 let mles_msg: Vec<u8> = mles_rx_ws.recv().unwrap();
-                let mles_new_msg = mles_msg.clone();
-                let mles_new = String::from_utf8_lossy(mles_new_msg.as_slice());
-                let message: Message = Message::text(mles_new.clone());
-                println!("Sending to ws! {:?}", mles_new);
+                println!("Sending msg {:?} len {}", mles_msg, mles_msg.len());
+                let message: Message = Message::binary(mles_msg);
                 sender.send_message(&message).unwrap();
             }
         }
@@ -208,9 +191,8 @@ fn main() {
 
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
-            // forward msg to ws as json
-            let newbuf = buf.to_vec().clone();
-            match mles_tx_ws.send(newbuf) {
+            /* send to websocket */
+            match mles_tx_ws.send(buf.to_vec().clone()) {
                 Ok(_) => {},
                 Err(err) => {println!("Error: {}", err)},
             }
