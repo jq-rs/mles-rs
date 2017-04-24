@@ -154,8 +154,10 @@ fn main() {
                         }
                         _ => {
                             let msg = message.payload.into_owned().to_vec();
+                            let newmsg = message_decode(msg.as_slice());
+                            println!("Decoded {:?}", newmsg);
                             mles_tx_ws_msg.send(msg.clone()).unwrap();
-                            let msg: Value = serde_json::from_slice(msg.as_slice()).unwrap();
+                            /*let msg: Value = serde_json::from_slice(msg.as_slice()).unwrap();
                             println!("Msg: uid {}, channel {}, message {}", msg["uid"], msg["channel"], msg["message"]);
                             let uid: String = msg["uid"].to_string();
                             let channel: String = msg["channel"].to_string();
@@ -167,7 +169,7 @@ fn main() {
                             mes.push('\n');
                             let mles_msg: Msg = Msg::new(uid[1].to_string(), channel[1].to_string(), mes.into_bytes());
                             println!("Msg: {:?}", mles_msg);
-                            let _ = ws_tx_msg.send(message_encode(&mles_msg)).wait().unwrap();
+                            let _ = ws_tx_msg.send(message_encode(&mles_msg)).wait().unwrap();*/
                         }
                     }
                 }
