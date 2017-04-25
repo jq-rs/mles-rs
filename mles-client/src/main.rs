@@ -39,6 +39,10 @@ extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
 
+/* websocket proxy support */
+extern crate websocket;
+extern crate hyper;
+
 use std::{env, process};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
@@ -53,22 +57,45 @@ use tokio_io::AsyncRead;
 use tokio_io::codec::{Encoder, Decoder};
 use mles_utils::*;
 
+/* websocket proxy support */
+use websocket::{Server, Message};
+use websocket::message::Type;
+use hyper::server::{Request, Response};
+
+const HTML: &'static str = include_str!("mles-websockets.html");
+
+fn hello(_: Request, res: Response) {
+        res.send(HTML.as_bytes()).unwrap();
+}
+
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
 
 fn main() {
+    let mut ws_enabled: Option<bool> = None;
+
     // Parse what address we're going to connect to
     let addr = env::args().nth(1).unwrap_or_else(|| {
-        println!("Usage: mles-client <server-address>");
+        println!("Usage: mles-client <server-address> [--use-websockets]");
         process::exit(1);
+    });
+
+    if let Some(ws) = env::args().nth(2) {
+        if ws == "--use-websockets" {
+            ws_enabled = Some(true);
+        }
+        else {
+            println!("Usage: mles-client <server-address> [--use-websockets]");
+            process::exit(1);
+        }
     }
-    );
+
     // add port
     let addr = addr + ":8077";
     let addr = match addr.parse::<SocketAddr>() {
         Ok(addr) => addr,
         Err(err) => {
-            println!("Error: {}\nUsage: mles-client <server-address>", err);
+            println!("Error: {}\nUsage: mles-client <server-address> [--use-websockets]", err);
             process::exit(1);
         },
     };
@@ -78,20 +105,92 @@ fn main() {
         Err(_) => "".to_string(),
     };
 
+    // Handle stdin in a separate thread 
+    let (stdin_tx, stdin_rx) = mpsc::channel(16);
+    let (mles_tx_ws, mles_rx_ws) = std::sync::mpsc::channel();
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let tcp = TcpStream::connect(&addr, &handle);
     let mut key = 0;
-    
-    // Handle stdin in a separate thread 
-    let (stdin_tx, stdin_rx) = mpsc::channel(0);
-    thread::spawn(|| read_stdin(stdin_tx));
-    let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
+
+    if let Some(_) = ws_enabled {
+        /* Websocket proxy support */
+        thread::spawn(move || {
+            if let Ok(listening) = hyper::Server::http("0.0.0.0:8080") {
+                println!("Listening http at port 8080 for Websockets client requests");
+                let _ = listening.handle(hello);
+            }
+            else {
+                println!("Could not start web service for sockets");
+            }
+        });
+        let ws_tx_inner = stdin_tx.clone();
+        let mles_tx_ws_inner = mles_tx_ws.clone();
+        thread::spawn(move || {
+            if let Ok(ws_server) = Server::bind("0.0.0.0:8076") {
+                println!("Listening Websockets clients at port 8076");
+                for connection in ws_server.filter_map(Result::ok) {
+                    let ws_tx = ws_tx_inner.clone();
+                    let mles_tx_ws = mles_tx_ws_inner.clone();
+                    if !connection.protocols().contains(&"mles-websocket".to_string()) {
+                        connection.reject().unwrap();
+                        println!("Protocol rejected");
+                        continue;
+                    }
+                    let client = connection.use_protocol("mles-websocket").accept().unwrap();
+                    let ip = client.peer_addr().unwrap();
+                    println!("Connection from {}", ip);
+
+                    let (mut receiver, mut sender) = client.split().unwrap();
+                    thread::spawn(move || {
+                        for message in receiver.incoming_messages() {
+                            let ws_tx_msg = ws_tx.clone();
+                            let mles_tx_ws_msg = mles_tx_ws.clone();
+                            let message: Message = message.unwrap();
+
+                            match message.opcode {
+                                Type::Close => {
+                                    let message = Message::close();
+                                    let msg = message.payload.into_owned().to_vec();
+                                    mles_tx_ws_msg.send(msg).unwrap();
+                                    println!("Client {} disconnected", ip);
+                                    return;
+                                }
+                                Type::Ping => {
+                                    let message = Message::pong(message.payload);
+                                    let msg = message.payload.into_owned().to_vec();
+                                    mles_tx_ws_msg.send(msg).unwrap();
+                                }
+                                _ => {
+                                    let msg = message.payload.into_owned().to_vec();
+                                    mles_tx_ws_msg.send(msg.clone()).unwrap();
+                                    let _ = ws_tx_msg.send(msg).wait().unwrap();
+                                }
+                            }
+                        }
+                    });
+                    loop {
+                        let mles_msg: Vec<u8> = mles_rx_ws.recv().unwrap();
+                        let message: Message = Message::binary(mles_msg);
+                        sender.send_message(&message).unwrap();
+                    }
+                }
+            }
+            else {
+                println!("Could not bind to websockets port");
+            }
+        });
+    }
+    else {
+        /* Normal console connection */
+        thread::spawn(|| read_stdin(stdin_tx));
+    }
+    let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx XXX
 
     let mut stdout = io::stdout();
     let client = tcp.and_then(|stream| {
         let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
-        /* Set key */
         if 0 == keyval.len() {
             key = match stream.local_addr() {
                 Ok(laddr) => do_hash(&laddr),
@@ -109,8 +208,15 @@ fn main() {
             keyv.extend(buf);
             Ok(keyv)
         });
+
         let send_stdin = stdin_rx.forward(sink);
         let write_stdout = stream.for_each(move |buf| {
+            /* send to websocket */
+            match mles_tx_ws.send(buf.to_vec().clone()) {
+                Ok(_) => {},
+                Err(err) => {println!("Error: {}", err)},
+            }
+
             let decoded = message_decode(buf.to_vec().as_slice());
             let mut msg = "".to_string();
             if  decoded.get_message().len() > 0 {
@@ -210,7 +316,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let n = match stdin.read(&mut buf) {
         Err(_) |
             Ok(0) => return,
-            Ok(n) => n,
+            Ok(n) => n,             
     };
     buf.truncate(n-1);
     let mut channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
@@ -242,7 +348,9 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         };
         buf.truncate(n);
         let str =  String::from_utf8_lossy(buf.as_slice()).into_owned();
-        let msg = message_encode(&Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes()));
+        let msg = Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes());
+        //println!("Msg from input: {:?}", msg);
+        let msg = message_encode(&msg);
         rx = rx.send(msg).wait().unwrap();
     }
 }
