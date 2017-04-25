@@ -3,7 +3,7 @@
 **Mles** [![crates.io status](https://img.shields.io/crates/v/mles.svg)](https://crates.io/crates/mles)
 **Mles-client** [![crates.io status](https://img.shields.io/crates/v/mles-client.svg)](https://crates.io/crates/mles-client)
 
-Mles is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe database service. It consists of _Mles-utils_, _Mles-client_ and _Mles_ server implementations.
+Mles is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe database service. The reference implementation consists of _Mles-utils_, _Mles-client_ and _Mles_ server.
 
 ## Mles protocol overview
 
