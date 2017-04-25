@@ -3,7 +3,7 @@
 <html>
 <head>
 <title>Mles WebSocket Channels</title>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
 <script src="http://code.jquery.com/jquery-1.12.4.min.js"></script>
 <script>
@@ -420,37 +420,17 @@ body {
     margin: 0;
 }
 
-.body_container {
-    width: 1000px;
+.body_cont {
+    width: 350px;
     margin: 0 auto;
     padding: 0;
 }
 
-.clear {
-    clear: both;
+.fuchsia {
+    color: #d699ff;
 }
 
-.green {
-    color: #8aaf0d;
-}
-
-#header {
-    margin: 0 auto;
-    padding: 50px 0;
-    text-align: center;
-}
-
-#header h1,#header p.channel_header {
-    font-family: 'Open Sans', sans-serif;
-    font-weight: 300;
-}
-
-#header p.channel_header {
-    font-size: 18px;
-    display: none;
-}
-
-.box_shadow {
+.box_with_shadow {
     background: #f3f4f6;
     border: 1px solid #e4e4e4;
     -moz-box-shadow: 0px 0px 2px 1px #e5e5e5;
@@ -458,163 +438,138 @@ body {
     box-shadow: 0px 0px 2px 1px #e5e5e5;
 }
 
-#prompt_name_container {
+#name_channel_cont {
     margin: 0 auto;
     width: 350px;
+    height: 200px;
     text-align: center;
 }
 
-#prompt_name_container p {
-    font-family: 'Open Sans', sans-serif;
-    font-weight: 300;
-    font-size: 24px;
-    color: #5e5e5e;
-}
-
-#prompt_name_container #input_name {
-    border: 1px solid #dddddd;
-    padding: 10px;
-    width: 250px;
-    display: block;
-    margin: 0 auto;
-    outline: none;
-    font-family: 'Open Sans', sans-serif;
-}
-
-#prompt_name_container #input_channel {
-    border: 1px solid #dddddd;
-    padding: 10px;
-    width: 250px;
-    display: block;
-    margin: 0 auto;
-    outline: none;
-    font-family: 'Open Sans', sans-serif;
-}
-
-#prompt_name_container #btn_join {
-    border: none;
-    width: 100px;
-    display: block;
-    outline: none;
-    font-family: 'Open Sans', sans-serif;
-    color: #fff;
-    background: #96be0e;
+#name_channel_cont p {
+    font-family: sans-serif;
     font-size: 18px;
-    padding: 5px 20px;
-    margin: 15px auto;
-    cursor: pointer;
+    color: #5f5f5f;
 }
 
-#message_container {
+#name_channel_cont #input_name {
+    border: 1px solid #dddddd;
+    padding: 5px;
+    width: 250px;
+    display: block;
+    margin: 0 auto;
+    outline: none;
+    font-family: sans-serif;
+}
+
+#name_channel_cont #input_channel {
+    border: 1px solid #dddddd;
+    padding: 5px;
+    width: 250px;
+    display: block;
+    margin: 0 auto;
+    outline: none;
+    font-family: sans-serif;
+}
+
+#name_channel_cont #the_join {
     display: none;
-    width: 500px;
+}
+
+#message_cont {
+    display: none;
+    width: 350px;
     margin: 0 auto;
     background: #fff;
-    padding: 15px 0 0 0;
+    padding: 10px 0 0 0;
 }
 
 #messages {
     margin: 0;
     padding: 0;
-    height: 300px;
+    height: 200px;
     overflow: scroll;
     overflow-x: hidden;
 }
 
 #messages li {
     list-style: none;
-    font-family: 'Open Sans', sans-serif;
-    font-size: 16px;
-    padding: 10px 20px;
+    font-family: sans-serif;
+    font-size: 14px;
+    padding: 6px 10px;
 }
 
 #messages li.new,#messages li.exit {
     font-style: italic;
-    color: #bbbbbb;
+    color: #bbbbbe;
+}
+
+#messages li.own {
+    color: #bbbbbf;
 }
 
 #messages li span.name {
-    color: #8aaf0d;
+    color: #d899ff;
 }
 
-#messages li span.red {
-    color: #e94e59;
-}
-
-#input_message_container {
-    margin: 40px 20px 0 20px;
+#input_message_cont {
+    margin: 10px 5px 0 5px;
 }
 
 #input_message {
     background: #f0f0f0;
     border: none;
-    font-size: 20px;
-    font-family: 'Open Sans', sans-serif;
+    font-size: 16px;
+    font-family: sans-serif;
     outline: none;
-    padding: 10px;
+    padding: 6px;
     float: left;
-    margin: 0;
-    width: 348px;
+    margin: 1;
+    width: 300px;
 }
 
-#btn_send {
+#the_send {
     float: left;
     margin: 0;
     border: none;
     color: #fff;
-    font-family: 'Open Sans', sans-serif;
-    background: #96be0e;
+    font-family: sans-serif;
+    background: #d699ff;
     outline: none;
     padding: 10px 20px;
-    font-size: 20px;
+    font-size: 16px;
     cursor: pointer;
-}
-
-#btn_close {
-    margin: 0;
-    border: none;
-    color: #fff;
-    font-family: 'Open Sans', sans-serif;
-    background: #e94e59;
-    outline: none;
-    padding: 10px 20px;
-    font-size: 20px;
-    cursor: pointer;
-    width: 100%;
-    margin: 30px 0 0 0;
+    display: none;
 }
 </style>
 <script>
 var myname = '';
 var mychannel = '';
-var socket_url = '127.0.0.1';
+var socket_url = '192.168.0.104';
 var port = '8076';
- 
-$(document).ready(function() {
-                  $("#form_submit, #form_send_message").submit(function(e) {
-                                                               e.preventDefault();
-                                                               join();
-                                                               });
-});
- 
 var webSocket;
  
-function join() {
-    if ($('#input_name').val().trim().length <= 0 || $('#input_channel').val().trim().length <= 0) {                                          
-        alert('Enter your name and channel');
+$(document).ready(function() {
+                  $("#channel_submit, #form_send_message").submit(function(e) {
+                                                               e.preventDefault();
+                                                               ask_channel();
+                                                               });
+                  });
+ 
+function ask_channel() {
+    if ($('#input_name').val().trim().length <= 0 || $('#input_channel').val().trim().length <= 0) {
+        alert('Name and channel?');
     } else {
         myname = $('#input_name').val().trim();
         mychannel = $('#input_channel').val().trim();
 
-        $('#prompt_name_container').fadeOut(500, function() {
-            openSocket();
+        $('#name_channel_cont').fadeOut(400, function() {
+            open_socket();
         });
     }
-
     return false;
 }
 
-function openSocket() {
+function open_socket() {
     if (webSocket !== undefined && webSocket.readyState !== WebSocket.CLOSED) {
         return;
     }
@@ -623,9 +578,9 @@ function openSocket() {
                               + "&mychannel=" + mychannel, "mles-websocket");
     webSocket.binaryType = "arraybuffer";
     webSocket.onopen = function(event) {
-        $('p.channel_header').html(
-                                   'Channel <span class="green">' + mychannel + '</span>').fadeIn();
-        $('#message_container').fadeIn();
+        $('#message_cont').fadeIn();
+        if(myname.length > 0 && mychannel.length > 0)
+            send_message(myname, mychannel, "");
 
         if (event.data === undefined)
             return;
@@ -634,13 +589,13 @@ function openSocket() {
 
     webSocket.onmessage = function(event) {
         if(event.data) {
-            var message = CBOR.decode(event.data);
-            handle_message(message);
+            handle_message(event.data);
         }
     };
 
     webSocket.onclose = function(event) {
         alert('Error! Connection is closed. Try connecting again.');
+        close_socket();
     };
 }
 
@@ -652,28 +607,46 @@ function send() {
     } else {
         alert('Please enter a message to send!');
     }
-
 }
 
-function closeSocket() {
+function close_socket() {
     webSocket.close();
 
-    $('#message_container').fadeOut(600, function() {
-        $('#prompt_name_container').fadeIn();
+    $('#message_cont').fadeOut(400, function() {
+        $('#name_channel_cont').fadeIn();
         myname = '';
         mychannel = '';
         $('#messages').html('');
-        $('p.channel_header').hide();
     });
 }
 
-function handle_message(message) {
-    var li = '<li class="new"><span class="name">' + message.uid + '</span> '
-        + message.message + '</li>';
-    $('#messages').append(li);
+var shouldScroll;
+function handle_message(data) {
+    var message = $('#messages');
+    var msg = CBOR.decode(data);
+    var message = String.fromCharCode.apply(null, new Uint8Array(msg.message));
+    if(message.length > 1) {
+        shouldScroll = messages.scrollTop + messages.clientHeight === messages.scrollHeight;
 
-    $('#input_message').val('');
-    $('#messages').scrollTop($('#messages').height());
+        var message = message.slice(0, message.length-1);
+        if (msg.uid != myname) {
+            var li = '<li class="new"><span class="name">' + msg.uid + '</span> '
+                + message + '</li>';
+        }
+        else {
+            var li = '<li class="own">' + message + '</li>';
+        }
+        $('#messages').append(li);
+
+        $('#input_message').val('');
+        if (!shouldScroll) {
+            scrollToBottom();
+        }
+    }
+}
+
+function scrollToBottom() {
+    messages.scrollTop = messages.scrollHeight;
 }
 
 function send_message(uid, channel, message) {
@@ -681,7 +654,9 @@ function send_message(uid, channel, message) {
     for (var i=0, len=message.length; i<len; i++) {
         arr[i] = message.charCodeAt(i);
     }
-    arr[message.length] = "\n".charCodeAt(0);
+    if(message.length > 0) {
+        arr[message.length] = "\n".charCodeAt(0);
+    }
     var obj = {
         uid: uid,
         channel: channel,
@@ -693,45 +668,29 @@ function send_message(uid, channel, message) {
 </script>
 </head>
 <body>
-<div class="body_container">
-
-    <div id="header">
-        <h1>Mles Websocket Channels</h1>
-        <p class='channel_header'>
-        </p>
-    </div>
-
-    <div id="prompt_name_container" class="box_shadow">
+<div class="body_cont">
+    <div id="name_channel_cont" class="box_with_shadow">
         <p>Your name?</p>
-        <form id="form_submit" method="post">
+        <form id="channel_submit" method="post">
             <input type="text" id="input_name" />
             <p>Channel?</p>
-            <input type="text" id="input_channel" />  <input type="submit"
-            value="JOIN" id="btn_join">
+            <input type="text" id="input_channel" /> 
+            <input type="submit" value="Join" id="the_join">
         </form>
     </div>
 
-    <div id="message_container" class="box_shadow">
+    <div id="message_cont" class="box_with_shadow">
 
         <ul id="messages">
         </ul>
 
-
-        <div id="input_message_container">
+        <div id="input_message_cont">
             <form id="form_send_message" method="post" action="#">
-                <input type="text" id="input_message"
-                placeholder="Type your message here..." /> <input type="submit"
-                id="btn_send" onclick="send();" value="Send" />
-                <div class="clear"></div>
+                <input type="text" id="input_message" /> 
+                <input type="submit" id="the_send" onclick="send();" value="Send" />
             </form>
         </div>
-        <div>
-            <input type="button" onclick="closeSocket();"
-            value="Exit" id="btn_close" />
-        </div>
-
     </div>
-
 </div>
 
 </body>

@@ -5,9 +5,10 @@ authors = ["jq-rs"]
 description = "Mles - a distributed publish/subscribe database server"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
+documentation = "http://mles.io"
 
 [dependencies]
-mles-utils = "0.6"
+mles-utils = "0.7"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"

@@ -148,7 +148,6 @@ fn main() {
                         }
                         _ => {
                             let msg = message.payload.into_owned().to_vec();
-                            println!("Rcvd msg {:?} len {}", msg, msg.len());
                             mles_tx_ws_msg.send(msg.clone()).unwrap();
                             let _ = ws_tx_msg.send(msg).wait().unwrap();
                         }
@@ -158,7 +157,6 @@ fn main() {
 
             loop {
                 let mles_msg: Vec<u8> = mles_rx_ws.recv().unwrap();
-                println!("Sending msg {:?} len {}", mles_msg, mles_msg.len());
                 let message: Message = Message::binary(mles_msg);
                 sender.send_message(&message).unwrap();
             }
