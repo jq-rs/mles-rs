@@ -118,6 +118,7 @@ fn main() {
         /* Websocket proxy support */
         thread::spawn(move || {
             if let Ok(listening) = hyper::Server::http("0.0.0.0:8080") {
+                println!("Listening http at port 8080 for Websockets client requests");
                 let _ = listening.handle(hello);
             }
             else {
@@ -128,6 +129,7 @@ fn main() {
         let mles_tx_ws_inner = mles_tx_ws.clone();
         thread::spawn(move || {
             if let Ok(ws_server) = Server::bind("0.0.0.0:8076") {
+                println!("Listening Websockets clients at port 8076");
                 for connection in ws_server.filter_map(Result::ok) {
                     let ws_tx = ws_tx_inner.clone();
                     let mles_tx_ws = mles_tx_ws_inner.clone();
