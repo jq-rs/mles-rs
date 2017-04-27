@@ -496,7 +496,7 @@ body {
 #messages {
     margin: 0;
     padding: 0;
-    height: 200px;
+    height: 225px;
     overflow: scroll;
     overflow-x: hidden;
 }
@@ -538,16 +538,6 @@ body {
 }
 
 #the_send {
-    float: left;
-    margin: 0;
-    border: none;
-    color: #fff;
-    font-family: sans-serif;
-    background: #d699ff;
-    outline: none;
-    padding: 10px 20px;
-    font-size: 16px;
-    cursor: pointer;
     display: none;
 }
 </style>
@@ -557,12 +547,29 @@ var mychannel = '';
 var myaddr = '';
 var port = '8076';
 var webSocket;
- 
+var Notification = window.Notification || window.mozNotification || window.webkitNotification;
+var was_questioned = false;
+if (Notification.permission == 'default') {
+    was_questioned = true;
+}
+Notification.requestPermission(function (permission) {
+                               if (was_questioned) {
+                               console.log("User was asked. New permission is: " + permission);
+                               }
+                               if ('permissions' in navigator) {
+                               navigator.permissions.query({name:'notifications'}).then(function(notificationPerm) {
+                                                                                        notificationPerm.onchange = function() {
+                                                                                        console.log("User decided to change his seettings. New permission: " + notificationPerm.state);
+                                                                                        };
+                                                                                        });
+                               }
+                               });
+
 $(document).ready(function() {
                   $("#channel_submit, #form_send_message").submit(function(e) {
-                                                               e.preventDefault();
-                                                               ask_channel();
-                                                               });
+                                                                  e.preventDefault();
+                                                                  ask_channel();
+                                                                  });
                   });
  
 function ask_channel() {
@@ -647,6 +654,12 @@ function handle_message(data) {
             var li = '<li class="own">' + message + '</li>';
         }
         $('#messages').append(li);
+
+        
+        if(!document.hasFocus()) {
+            var n = new Notification(msg.uid + ":" + message);
+            setTimeout(n.close.bind(n), 3000);
+        }
 
         $('#input_message').val('');
         scrollToBottom();
