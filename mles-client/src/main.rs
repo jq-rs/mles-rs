@@ -46,6 +46,7 @@ use std::{env, process};
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::thread;
+use std::io::{Error, ErrorKind};
 
 use bytes::{BufMut, BytesMut};
 use futures::{Sink, Future, Stream};
@@ -134,7 +135,8 @@ fn main() {
                                 Type::Close => {
                                     let message = Message::close();
                                     let msg = message.payload.into_owned().to_vec();
-                                    mles_tx_ws_msg.send(msg).unwrap();
+                                    mles_tx_ws_msg.send(msg.clone()).unwrap();
+                                    let _ = ws_tx_msg.send(msg).wait().unwrap();
                                     println!("Client {} disconnected", ip);
                                     return;
                                 }
@@ -154,8 +156,12 @@ fn main() {
                     thread::spawn(move || {
                         loop {
                             if let Ok(mles_msg) = mles_rx_ws.recv() {
-                                let message: Message = Message::binary(mles_msg);
-                                sender.send_message(&message).unwrap();
+                                if 0 == mles_msg.len() {
+                                   println!("Rx thread disconnected");
+                                   return;
+                                }
+				let message: Message = Message::binary(mles_msg);
+				sender.send_message(&message).unwrap();
                             }
                             else {
                                 return;
@@ -179,6 +185,10 @@ fn main() {
                         }
                     let (sink, stream) = stream.framed(Bytes).split();
                     let ws_rx = ws_rx.and_then(|buf| {
+                        if 0 == buf.len() {
+                           println!("Stopping client");
+			   return Err(Error::new(ErrorKind::BrokenPipe, "connection closed"));
+                        }
                         let mut keyv = write_key(key);
                         keyv.extend(buf);
                         Ok(keyv)
@@ -213,63 +223,65 @@ fn main() {
             println!("Could not bind to websockets port");
         }
     }
-    // Handle stdin in a separate thread 
-    let (stdin_tx, stdin_rx) = mpsc::channel(16);
+    else {
+	    // Handle stdin in a separate thread 
+	    let (stdin_tx, stdin_rx) = mpsc::channel(16);
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let tcp = TcpStream::connect(&addr, &handle);
-    let mut key = 0;
+	    let mut core = Core::new().unwrap();
+	    let handle = core.handle();
+	    let tcp = TcpStream::connect(&addr, &handle);
+	    let mut key = 0;
 
-    /* Normal console connection */
-    thread::spawn(|| read_stdin(stdin_tx));
-    let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx XXX
+	    /* Normal console connection */
+	    thread::spawn(|| read_stdin(stdin_tx));
+	    let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx XXX
 
-    let mut stdout = io::stdout();
-    let client = tcp.and_then(|stream| {
-        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
-        if 0 == keyval.len() {
-            key = match stream.local_addr() {
-                Ok(laddr) => do_hash(&laddr),
-                Err(_) => {
-                    panic!("Cannot get local address");
-                },
-            };
-        }
-        else {
-            key = do_hash(&keyval);
-        }
-        let (sink, stream) = stream.framed(Bytes).split();
-        let stdin_rx = stdin_rx.and_then(|buf| {
-            let mut keyv = write_key(key);
-            keyv.extend(buf);
-            Ok(keyv)
-        });
+	    let mut stdout = io::stdout();
+	    let client = tcp.and_then(|stream| {
+			    let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
+			    if 0 == keyval.len() {
+			    key = match stream.local_addr() {
+			    Ok(laddr) => do_hash(&laddr),
+			    Err(_) => {
+			    panic!("Cannot get local address");
+			    },
+			    };
+			    }
+			    else {
+			    key = do_hash(&keyval);
+			    }
+			    let (sink, stream) = stream.framed(Bytes).split();
+			    let stdin_rx = stdin_rx.and_then(|buf| {
+					    let mut keyv = write_key(key);
+					    keyv.extend(buf);
+					    Ok(keyv)
+					    });
 
-        let send_stdin = stdin_rx.forward(sink);
-        let write_stdout = stream.for_each(move |buf| {
-            let decoded = message_decode(buf.to_vec().as_slice());
-            let mut msg = "".to_string();
-            if  decoded.get_message().len() > 0 {
-                msg.push_str(decoded.get_uid());
-                msg.push_str(":");
-                msg.push_str(String::from_utf8_lossy(decoded.get_message().as_slice()).into_owned().as_str());
-            }
-            stdout.write_all(&msg.into_bytes())
-        });
+			    let send_stdin = stdin_rx.forward(sink);
+			    let write_stdout = stream.for_each(move |buf| {
+					    let decoded = message_decode(buf.to_vec().as_slice());
+					    let mut msg = "".to_string();
+					    if  decoded.get_message().len() > 0 {
+					    msg.push_str(decoded.get_uid());
+					    msg.push_str(":");
+					    msg.push_str(String::from_utf8_lossy(decoded.get_message().as_slice()).into_owned().as_str());
+					    }
+					    stdout.write_all(&msg.into_bytes())
+					    });
 
-        send_stdin.map(|_| ())
-        .select(write_stdout.map(|_| ()))
-        .then(|_| Ok(()))
-    });
+			    send_stdin.map(|_| ())
+				    .select(write_stdout.map(|_| ()))
+				    .then(|_| Ok(()))
+	    });
 
-    let _run = match core.run(client) {
-        Ok(run) => run,
-        Err(err) => {
-            println!("Error: {}", err);
-            process::exit(1);
-        }
-    };
+	    let _run = match core.run(client) {
+		    Ok(run) => run,
+			    Err(err) => {
+				    println!("Error: {}", err);
+				    process::exit(1);
+			    }
+	    };
+	}
 }
 
 struct Bytes;
