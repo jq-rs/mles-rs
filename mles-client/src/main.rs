@@ -217,7 +217,6 @@ fn main() {
                             println!("Error: {}", err);
                         }
                     };
-                    println!("Returning from client");
                 });
             }
         } else {
