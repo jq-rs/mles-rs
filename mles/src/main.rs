@@ -273,14 +273,18 @@ fn main() {
             let mut mles_db = mles_db_conn.borrow_mut();
             let mut channel_db = channel_db_conn.borrow_mut();
             let mut chan_to_rem: Option<u64> = None;
+            let mut chan_drop = false;
             if let Some(channel) = channel_db.get_mut(&cnt) {
                 if let Some(mles_db_entry) = mles_db.get_mut(channel) {
                     mles_db_entry.rem_channel(cnt);
                     chan_to_rem = Some(cnt);
                     if 0 == mles_db_entry.get_channels_len() {
-                        println!("Channel {} dropped.", channel);
-                        drop(mles_db_entry);
+                        chan_drop = true;
                     }
+                }
+                if chan_drop {
+                    mles_db.remove(channel);
+                    println!("Channel {} dropped.", channel);
                 }
             }
             if let Some(cnt) = chan_to_rem {
