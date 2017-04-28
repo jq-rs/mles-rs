@@ -41,7 +41,6 @@ extern crate bytes;
 
 /* websocket proxy support */
 extern crate websocket;
-extern crate hyper;
 
 use std::{env, process};
 use std::io::{self, Read, Write};
@@ -60,13 +59,6 @@ use mles_utils::*;
 /* websocket proxy support */
 use websocket::{Server, Message};
 use websocket::message::Type;
-use hyper::server::{Request, Response};
-
-const HTML: &'static str = include_str!("mles-websockets.html");
-
-fn hello(_: Request, res: Response) {
-        res.send(HTML.as_bytes()).unwrap();
-}
 
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
@@ -107,15 +99,6 @@ fn main() {
 
     if let Some(_) = ws_enabled {
         /* Websocket proxy support */
-        thread::spawn(move || {
-            if let Ok(listening) = hyper::Server::http("0.0.0.0:8080") {
-                println!("Listening http at port 8080 for Websockets client requests");
-                let _ = listening.handle(hello);
-            }
-            else {
-                println!("Could not start web service for sockets");
-            }
-        });
         if let Ok(ws_server) = Server::bind("0.0.0.0:8076") {
             println!("Listening Websockets clients at port 8076");
             for connection in ws_server.filter_map(Result::ok) {
@@ -204,7 +187,7 @@ fn main() {
                     let send_wsrx = ws_rx.forward(sink);
                     let write_wstx = stream.for_each(move |buf| {
                         // send to websocket 
-                        match mles_tx_ws.send(buf.to_vec().clone()) {
+                        match mles_tx_ws.send(buf.to_vec()) {
                             Ok(_) => {},
                             Err(err) => {println!("Error: {}", err)},
                         }
