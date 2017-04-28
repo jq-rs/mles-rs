@@ -161,7 +161,6 @@ fn main() {
                     thread::spawn(move || loop {
                                       if let Ok(mles_msg) = mles_rx_ws.recv() {
                                           if 0 == mles_msg.len() {
-                                              println!("Rx thread disconnected");
                                               return;
                                           }
                                           let message: Message = Message::binary(mles_msg);
@@ -189,7 +188,6 @@ fn main() {
                         let (sink, stream) = stream.framed(Bytes).split();
                         let ws_rx = ws_rx.and_then(|buf| {
                             if 0 == buf.len() {
-                                println!("Stopping client");
                                 return Err(Error::new(ErrorKind::BrokenPipe, "connection closed"));
                             }
                             let mut keyv = write_key(key);
@@ -217,9 +215,9 @@ fn main() {
                         Ok(run) => run,
                         Err(err) => {
                             println!("Error: {}", err);
-                            process::exit(1);
                         }
                     };
+                    println!("Returning from client");
                 });
             }
         } else {
