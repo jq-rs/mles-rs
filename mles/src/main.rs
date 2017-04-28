@@ -279,12 +279,12 @@ fn main() {
                     mles_db_entry.rem_channel(cnt);
                     chan_to_rem = Some(cnt);
                     if 0 == mles_db_entry.get_channels_len() {
-                        println!("Channel {} dropped.", channel);
-			chan_drop = true;
+                        chan_drop = true;
                     }
                 }
                 if chan_drop {
-		    mles_db.remove(channel);
+                    mles_db.remove(channel);
+                    println!("Channel {} dropped.", channel);
                 }
             }
             if let Some(cnt) = chan_to_rem {
