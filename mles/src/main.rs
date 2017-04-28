@@ -145,12 +145,13 @@ fn main() {
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
-                    hdr_key.extend(message);
 
                     //if peer is set, create peer channel thread
                     if has_peer(&peer) {
+                        let mut msg = hdr_key.clone();
+                        msg.extend(message.clone());
                         peer_cnt = inc_peer_cnt(cnt);
-                        thread::spawn(move || peer_conn(peer, peer_cnt, chan, hdr_key, tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(peer, peer_cnt, chan, msg, tx_peer_for_msgs));
                     }
 
                     let mut mles_db_entry = MlesDb::new();
@@ -179,6 +180,14 @@ fn main() {
                     else {
                         println!("Channel {} not found", channel);
                         return Err(Error::new(ErrorKind::BrokenPipe, "internal error"));
+                    }
+                }
+
+                if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
+                    // add to history if no peer
+                    if !has_peer(&peer) {
+                        hdr_key.extend(message);
+                        mles_db_entry.add_message(hdr_key);
                     }
                 }
                 channel_db.insert(cnt, channel.clone());
