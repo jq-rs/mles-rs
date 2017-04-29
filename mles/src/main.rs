@@ -278,7 +278,7 @@ fn main() {
                 if let Some(mles_db_entry) = mles_db.get_mut(channel) {
                     mles_db_entry.rem_channel(cnt);
                     chan_to_rem = Some(cnt);
-                    if 0 == mles_db_entry.get_channels_len() {
+                    if 0 == mles_db_entry.get_channels_len() && 0 == mles_db_entry.get_history_limit() {
                         chan_drop = true;
                     }
                 }
