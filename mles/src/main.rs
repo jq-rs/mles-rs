@@ -23,6 +23,7 @@ extern crate mles_utils;
 
 mod local_db;
 mod frame;
+mod peer;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -34,18 +35,18 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::thread;
 
 use tokio_core::net::TcpListener;
-use tokio_core::net::TcpStream;
 use tokio_core::reactor::Core;
 use tokio_io::io;
 use tokio_io::AsyncRead;
 
 use futures::Future;
 use futures::stream::{self, Stream};
-use futures::sync::mpsc::{unbounded, UnboundedSender};
+use futures::sync::mpsc::unbounded;
 use mles_utils::*;
 
 use local_db::*;
 use frame::*;
+use peer::*;
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
@@ -147,7 +148,7 @@ fn main() {
                     let chan = channel.clone();
 
                     //if peer is set, create peer channel thread
-                    if has_peer(&peer) {
+                    if peer::has_peer(&peer) {
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
                         peer_cnt = inc_peer_cnt(cnt);
@@ -162,7 +163,7 @@ fn main() {
                 else {
                     if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                         mles_db_entry.add_channel(cnt, tx_inner.clone());
-                        if has_peer(&peer) {
+                        if peer::has_peer(&peer) {
                             if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
                                 let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                             }
@@ -185,7 +186,7 @@ fn main() {
 
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                     // add to history if no peer
-                    if !has_peer(&peer) {
+                    if !peer::has_peer(&peer) {
                         hdr_key.extend(message);
                         mles_db_entry.add_message(hdr_key);
                     }
@@ -217,7 +218,7 @@ fn main() {
                     let mut mles_db_borrow = mles_db.borrow_mut();
                     if let Some(mles_db_entry) = mles_db_borrow.get_mut(&channel) {
                         // add to history if no peer
-                        if !has_peer(&peer) {
+                        if !peer::has_peer(&peer) {
                             mles_db_entry.add_message(hdr_key.clone());
                         }
 
@@ -300,112 +301,10 @@ fn main() {
     let _res = core.run(srv).map_err(|err| { println!("Main: {}", err); ()});
 }
 
-fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>, 
-             tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
-{
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new()));
-
-    let tcp = TcpStream::connect(&peer, &handle);
-
-    let (tx_orig_chan, rx_orig_chan) = unbounded();
-
-    let orig_channel = channel.clone();
-    println!("Peer channel thread for channel {}", orig_channel);
-    let client = tcp.and_then(move |pstream| {
-        let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
-        println!("Successfully connected to peer");
-
-        //save writes to db
-        let (reader, writer) = pstream.split();
-        let (tx, rx) = unbounded();
-        let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
-        let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
-
-        let mles_peer_db_inner = mles_peer_db.clone();
-        let psocket_writer = rx.fold(writer, move |writer, msg| {
-            //push message to history
-            let mut mles_peer_db = mles_peer_db_inner.borrow_mut();
-            mles_peer_db.add_message(msg.clone());
-            
-            //send message forward
-            let amt = io::write_all(writer, msg);
-            let amt = amt.map(|(writer, _)| writer);
-            amt.map_err(|_| ())
-        });
-        handle.spawn(psocket_writer.then(|_| {
-            println!("Peer socket writer closed");
-            Ok(())
-        }));
-
-        let mles_peer_db_inner = mles_peer_db.clone();
-        let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
-            //save receiver side tx to db
-            let mut mles_peer_db_once = mles_peer_db_inner.borrow_mut();
-            mles_peer_db_once.add_channel(tx_orig.clone());  
-
-            //push history to client if not the first one (as peer will send the history then)
-            if mles_peer_db_once.get_messages_len() > 1 {
-                for msg in mles_peer_db_once.get_messages().iter() {
-                    let _res = tx_orig.send(msg.clone()).map_err(|err| { println!("Failed to send history from peer: {}", err); () });
-                }
-            }
-            Ok(())
-        });
-        handle.spawn(tx_origs_reader.then(|_| {
-            println!("Tx origs reader closed");
-            Ok(())
-        }));
-        
-        let mles_peer_db_inner = mles_peer_db.clone();
-        let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
-        iter.fold(reader, move |reader, _| {
-            let frame = io::read_exact(reader, vec![0;HDRKEYL]);
-            let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
-
-            let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
-                let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message)) 
-            }); 
-
-            let mles_peer_db_frame = mles_peer_db_inner.clone();
-            frame.map(move |(reader, mut hdr_key, message)| {
-                hdr_key.extend(message);
-
-                //send message forward
-                let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
-                for tx_orig in mles_peer_db.get_channels().iter() {
-                    let _res = tx_orig.send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
-                }
-                //push message to history
-                mles_peer_db.add_message(hdr_key);
-                
-                reader
-            })
-        })
-    });
-
-    // execute server
-    let _res = core.run(client).map_err(|err| { println!("Peer: {}", err); () });
-    println!("Peer channel thread {} out", orig_channel);
-}
-
 fn inc_cnt(cnt: u64) -> u64 {
     let mut val = cnt as u32;
     val += 1;
     val as u64 
-}
-
-fn inc_peer_cnt(cnt: u64) -> u64 {
-    let mut val = cnt;
-    val = val >> 32;
-    val += 1;
-    val << 32
-}
-
-fn has_peer(peer: &SocketAddr) -> bool {
-    0 != peer.port() 
 }
 
 #[cfg(test)]
@@ -416,17 +315,5 @@ mod tests {
     fn test_inc_cnt() {
         let val: u64 = 1;
         assert_eq!(val + 1, inc_cnt(val));
-    }
-
-    #[test]
-    fn test_peer_inc_cnt() {
-        let val: u64 = 1 << 32;
-        assert_eq!(2 << 32, inc_peer_cnt(val));
-    }
-
-    #[test]
-    fn test_has_peer() {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-        assert_eq!(false, has_peer(&addr));
     }
 }
