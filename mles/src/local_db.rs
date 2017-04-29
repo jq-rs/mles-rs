@@ -77,7 +77,7 @@ impl MlesDb {
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
-        if self.messages.len() == self.history_limit {
+        if self.messages.len() == self.get_history_limit() {
             self.messages.remove(0);
         }
         self.messages.push(message);
@@ -112,7 +112,7 @@ impl MlesPeerDb {
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
-        if self.messages.len() == self.history_limit {
+        if self.messages.len() == self.get_history_limit() {
             self.messages.remove(0);
         }
         self.messages.push(message);
