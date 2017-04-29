@@ -119,58 +119,70 @@ fn main() {
                     if !connection
                             .protocols()
                             .contains(&"mles-websocket".to_string()) {
-                        connection.reject().unwrap();
+                        let _ = connection.reject().map_err(|_| ());
                         println!("Protocol rejected");
                         return;
                     }
-                    let client = connection
-                        .use_protocol("mles-websocket")
-                        .accept()
-                        .unwrap();
+                    let client = match connection.use_protocol("mles-websocket").accept() {
+                        Ok(client) => client,
+                        Err(_) => {
+                            println!("Connection rejected");
+                            return;
+                        }
+                    };
+
                     let ip = client.peer_addr().unwrap();
                     println!("Connection from {}", ip);
 
                     let (mut receiver, mut sender) = client.split().unwrap();
                     let mles_tx_ws_inner = mles_tx_ws.clone();
                     thread::spawn(move || for message in receiver.incoming_messages() {
-                                      let ws_tx_msg = ws_tx.clone();
-                                      let mles_tx_ws_msg = mles_tx_ws_inner.clone();
-                                      let message: Message = message.unwrap();
+                        let ws_tx_msg = ws_tx.clone();
+                        let mles_tx_ws_msg = mles_tx_ws_inner.clone();
+                        let message: Message = message.unwrap();
 
-                                      match message.opcode {
-                                          Type::Close => {
-                            let message = Message::close();
-                            let msg = message.payload.into_owned().to_vec();
-                            mles_tx_ws_msg.send(msg.clone()).unwrap();
-                            let _ = ws_tx_msg.send(msg).wait().unwrap();
-                            println!("Client {} disconnected", ip);
+                        match message.opcode {
+                            Type::Close => {
+                                let message = Message::close();
+                                let msg = message.payload.into_owned().to_vec();
+                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
+                                println!("Client {} disconnected", ip);
+                                return;
+                            }
+                            Type::Ping => {
+                                let message = Message::pong(message.payload);
+                                let msg = message.payload.into_owned().to_vec();
+                                let _ = message_forward_mles(mles_tx_ws_msg, ws_tx_msg, msg).map_err(|_| {
+                                    println!("Client {} disconnected", ip);
+                                    return;
+                                });
+                            }
+                            _ => {
+                                let msg = message.payload.into_owned().to_vec();
+                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg).map_err(|_| {
+                                    println!("Client {} disconnected", ip);
+                                    return;
+                                });
+                            }
+                        }
+                    });
+                    thread::spawn(move || loop {
+                        if let Ok(mles_msg) = mles_rx_ws.recv() {
+                            if 0 == mles_msg.len() {
+                                return;
+                            }
+                            let message: Message = Message::binary(mles_msg);
+                            match sender.send_message(&message) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    println!("Client tx error: {}", err);
+                                }
+                            }
+                        } else {
                             return;
                         }
-                                          Type::Ping => {
-                            let message = Message::pong(message.payload);
-                            let msg = message.payload.into_owned().to_vec();
-                            mles_tx_ws_msg.send(msg).unwrap();
-                        }
-                                          _ => {
-                            let msg = message.payload.into_owned().to_vec();
-                            mles_tx_ws_msg.send(msg.clone()).unwrap();
-                            let _ = ws_tx_msg.send(msg).wait().unwrap();
-                        }
-                                      }
-                                  });
-                    thread::spawn(move || loop {
-                                      if let Ok(mles_msg) = mles_rx_ws.recv() {
-                                          if 0 == mles_msg.len() {
-                                              return;
-                                          }
-                                          let message: Message = Message::binary(mles_msg);
-                                          sender.send_message(&message).unwrap();
-                                      } else {
-                                          return;
-                                      }
-                                  });
+                    });
 
-                    let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
                     let client = tcp.and_then(|stream| {
                         let _val = stream
                             .set_nodelay(true)
@@ -186,9 +198,10 @@ fn main() {
                             key = do_hash(&keyval);
                         }
                         let (sink, stream) = stream.framed(Bytes).split();
+                        let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
                         let ws_rx = ws_rx.and_then(|buf| {
                             if 0 == buf.len() {
-                                return Err(Error::new(ErrorKind::BrokenPipe, "connection closed"));
+                                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                             }
                             let mut keyv = write_key(key);
                             keyv.extend(buf);
@@ -200,7 +213,9 @@ fn main() {
                             // send to websocket
                             match mles_tx_ws.send(buf.to_vec()) {
                                 Ok(_) => {}
-                                Err(err) => println!("Error: {}", err),
+                                Err(_) => {
+                                    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+                                }
                             }
                             Ok(())
                         });
@@ -212,7 +227,7 @@ fn main() {
                     });
 
                     let _run = match core.run(client) {
-                        Ok(run) => run,
+                        Ok(_) => {}
                         Err(err) => {
                             println!("Error: {}", err);
                         }
@@ -233,7 +248,7 @@ fn main() {
 
         /* Normal console connection */
         thread::spawn(|| read_stdin(stdin_tx));
-        let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx XXX
+        let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
         let mut stdout = io::stdout();
         let client = tcp.and_then(|stream| {
@@ -278,7 +293,7 @@ fn main() {
         });
 
         let _run = match core.run(client) {
-            Ok(run) => run,
+            Ok(_) => {}
             Err(err) => {
                 println!("Error: {}", err);
                 process::exit(1);
@@ -393,8 +408,56 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         buf.truncate(n);
         let str = String::from_utf8_lossy(buf.as_slice()).into_owned();
         let msg = Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes());
-        //println!("Msg from input: {:?}", msg);
         let msg = message_encode(&msg);
         rx = rx.send(msg).wait().unwrap();
     }
 }
+
+fn message_forward_all(mles_tx: std::sync::mpsc::Sender<Vec<u8>>, ws_tx: futures::sync::mpsc::Sender<Vec<u8>>, msg: Vec<u8>) -> Result<futures::sync::mpsc::Sender<std::vec::Vec<u8>>, Error> {
+    match mles_tx.send(msg.clone()) {
+        Ok(_) => {
+            match ws_tx.send(msg).wait() {
+                Ok(val) => { 
+                    return Ok(val);
+                }
+                Err(_) => { 
+                    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+                }
+            }
+        }
+        Err(_) => {
+            // send empty messages to drop remaining threads
+            let empty = Vec::new();
+            match ws_tx.send(empty).wait() {
+                Ok(val) => {
+                  return Ok(val);
+                }
+                Err(_) => { 
+                    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+                }
+            }
+        }
+    };
+}
+
+
+fn message_forward_mles(mles_tx: std::sync::mpsc::Sender<Vec<u8>>, ws_tx: futures::sync::mpsc::Sender<Vec<u8>>, msg: Vec<u8>) -> Result<futures::sync::mpsc::Sender<std::vec::Vec<u8>>, Error> {
+    match mles_tx.send(msg.clone()) {
+        Ok(_) => {
+            return Ok(ws_tx);
+        }
+        Err(_) => {
+            // send empty messages to drop remaining threads
+            let empty = Vec::new();
+            match ws_tx.send(empty).wait() {
+                Ok(val) => {
+                  return Ok(val);
+                }
+                Err(_) => { 
+                    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+                }
+            }
+        }
+    };
+}
+
