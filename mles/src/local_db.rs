@@ -25,7 +25,8 @@ pub struct MlesDb {
     channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
     messages: Vec<Vec<u8>>,
     peer_tx: Option<UnboundedSender<UnboundedSender<Vec<u8>>>>, 
-    history_limit: usize
+    history_limit: usize,
+    tx_db: Vec<UnboundedSender<Vec<u8>>>,
 }
 
 impl MlesDb {
@@ -34,7 +35,8 @@ impl MlesDb {
             channels: None,
             messages: Vec::new(),
             peer_tx: None,
-            history_limit: HISTORYL
+            history_limit: HISTORYL,
+            tx_db: Vec::new(),
         }
     }
 
@@ -46,7 +48,15 @@ impl MlesDb {
         &self.messages
     }
 
-    pub fn get_history_limit(&mut self) -> usize {
+    pub fn get_tx_db(&self) -> &Vec<UnboundedSender<Vec<u8>>> {
+        &self.tx_db
+    }
+
+    pub fn add_tx_db(&mut self, tx: UnboundedSender<Vec<u8>>) {
+        &self.tx_db.push(tx);
+    }
+
+    pub fn get_history_limit(&self) -> usize {
         self.history_limit
     }
 
