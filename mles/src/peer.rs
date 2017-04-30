@@ -44,20 +44,19 @@ const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = HDRL + KEYL;
 
-const DAY: u64 = 60*60*24;
+const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
 pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
+    let waittime = WAITTIME;
     let mut loopcnt = 1;
-    let mut waittime = WAITTIME;
-    let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new()));
 
     println!("Peer channel thread for channel {}", channel);
     loop {
-        let mles_peer_db = mles_peer_db.clone();
+        let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new()));
         let handle = core.handle();
         let channel = channel.clone();
         let channel2 = channel.clone();
@@ -90,7 +89,6 @@ pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
                 amt.map_err(|_| ())
             });
             handle.spawn(psocket_writer.then(|_| {
-                println!("Peer socket writer closed");
                 Ok(())
             }));
 
@@ -109,7 +107,6 @@ pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
                 Ok(())
             });
             handle.spawn(tx_origs_reader.then(|_| {
-                println!("Tx origs reader closed");
                 Ok(())
             }));
 
@@ -143,13 +140,15 @@ pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
 
         // execute server
         let _res = core.run(client).map_err(|err| { println!("Peer: {}", err); () });
-        waittime = waittime*loopcnt;
-        if waittime > DAY {
-            waittime = DAY;
+
+        let mut wait = waittime * loopcnt;
+        if wait > MAXWAIT {
+            wait = MAXWAIT;
         }
-        loopcnt += 1;
-        println!("Connection for channel {} failed. Please check for proper key. Retrying in {} s.", channel2, waittime);
-        thread::sleep(Duration::from_secs(waittime));
+        loopcnt *= 2;
+
+        println!("Connection for channel {} failed. Please check for proper key. Retrying in {} s.", channel2, wait);
+        thread::sleep(Duration::from_secs(wait));
     }
 }
 

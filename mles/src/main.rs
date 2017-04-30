@@ -165,6 +165,7 @@ fn main() {
                         mles_db_entry.add_channel(cnt, tx_inner.clone());
                         if peer::has_peer(&peer) {
                             if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
+                                //sending tx to peer
                                 let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                             }
                             else {
@@ -190,6 +191,7 @@ fn main() {
                         hdr_key.extend(message);
                         mles_db_entry.add_message(hdr_key);
                     }
+                    mles_db_entry.add_tx_db(tx_inner.clone());
                 }
                 channel_db.insert(cnt, channel.clone());
                 println!("User {}:{} joined channel {}", cnt, decoded_message.get_uid(), channel);
@@ -242,14 +244,17 @@ fn main() {
             })
         });
 
-        let tx_inner = tx.clone();
         let mles_db_inner = mles_db.clone();
         let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cnt, channel, peer_tx, tx_orig_chan)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
             if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
+                //setting peer tx
                 mles_db_entry.add_channel(peer_cnt, peer_tx);  
                 mles_db_entry.set_peer_tx(tx_orig_chan.clone());
-                let _res = tx_orig_chan.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                //sending all tx's to (possibly restarted) peer
+                for tx_entry in mles_db_entry.get_tx_db() {
+                    let _res = tx_orig_chan.send(tx_entry.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                }
             }
             else {
                 println!("Cannot find peer channel {}", channel);
