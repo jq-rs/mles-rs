@@ -66,16 +66,17 @@ pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
         let tcp = TcpStream::connect(&peer, &handle);
 
         let (tx_orig_chan, rx_orig_chan) = unbounded();
+        let (tx, rx) = unbounded();
+
+        //distribute channels
+        let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
+        let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
         let client = tcp.and_then(move |pstream| {
             let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
             println!("Successfully connected to peer");
 
-            //save writes to db
             let (reader, writer) = pstream.split();
-            let (tx, rx) = unbounded();
-            let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
-            let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
             let mles_peer_db_inner = mles_peer_db.clone();
             let psocket_writer = rx.fold(writer, move |writer, msg| {
