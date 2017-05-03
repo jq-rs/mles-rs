@@ -61,10 +61,10 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, mut hdr_key: Vec<u8>, hdr_le
     let key = hdr_key.split_off(HDRL);
     let keyx = read_key(&key);
     if 0 == keyval.len() {
-        hkey = do_hash(&peer_addr);
+        hkey = do_hash(&vec![&peer_addr]);
     }
     else {
-        hkey = do_hash(&keyval);
+        hkey = do_hash(&vec![&keyval]);
     }
     if hkey != keyx {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
