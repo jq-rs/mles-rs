@@ -204,12 +204,12 @@ fn main() {
                 }
                 channel_db.insert(cnt, (key, channel.clone()));
                 println!("User {}:{:x} {} joined channel {}", cnt, key, decoded_message.get_uid(), channel);
-                Ok((reader, channel))
+                Ok((reader, key, channel))
             })
         });
 
         let mles_db_inner = mles_db.clone();
-        let socket_next = socket_once.and_then(move |(reader, channel)| {
+        let socket_next = socket_once.and_then(move |(reader, key, channel)| {
             let channel_next = channel.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
@@ -234,8 +234,8 @@ fn main() {
                         }
 
                         if let Some(channels) = mles_db_entry.get_channels() {
-                            for (ocnt, tx) in channels.iter() {
-                                if *ocnt != cnt {
+                            for (okey, tx) in channels.iter() {
+                                if *okey != key {
                                     let _res = tx.send(hdr_key.clone()).map_err(|_| { 
                                         //just ignore failures for now
                                         () 
