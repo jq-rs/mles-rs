@@ -44,10 +44,12 @@ const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = HDRL + KEYL;
 
+const PEERAND: u64 = !(::KEYAND);
+
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
-pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>, 
+pub fn peer_conn(peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
@@ -69,7 +71,7 @@ pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
         let (tx, rx) = unbounded();
 
         //distribute channels
-        let _res = tx_peer_for_msgs.send((peer_cnt, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
+        let _res = tx_peer_for_msgs.send((peer_key, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
         let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
         let client = tcp.and_then(move |pstream| {
@@ -153,11 +155,10 @@ pub fn peer_conn(peer: SocketAddr, peer_cnt: u64, channel: String, msg: Vec<u8>,
     }
 }
 
-pub fn inc_peer_cnt(cnt: u64) -> u64 {
-    let mut val = cnt;
-    val = val >> 32;
-    val += 1;
-    val << 32
+pub fn set_peer_key(peer_key: u64) -> u64 {
+    let mut val = peer_key;
+    val &= PEERAND;
+    val
 }
 
 pub fn has_peer(peer: &SocketAddr) -> bool {
@@ -170,9 +171,9 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     #[test]
-    fn test_peer_inc_cnt() {
-        let val: u64 = 1 << 32;
-        assert_eq!(2 << 32, inc_peer_cnt(val));
+    fn test_peer_set_key() {
+        let val: u64 = 1 << 41;
+        assert_eq!(1 << 41 & PEERAND, set_peer_key(val));
     }
 
     #[test]
