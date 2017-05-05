@@ -121,7 +121,6 @@ fn main() {
         };
         let keyinput;
         if keyval.len() > 0 {
-            println!("keyval {}", keyval);
             keyinput = KeyInput::Str(keyval.clone());
         }
         else {

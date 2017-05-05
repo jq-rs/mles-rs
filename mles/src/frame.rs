@@ -22,7 +22,6 @@ extern crate futures;
 extern crate mles_utils;
 
 use std::io::{Error, ErrorKind};
-//use std::net::{SocketAddr};
 use std::hash::Hash;
 
 use tokio_core::net::TcpStream;

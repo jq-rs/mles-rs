@@ -189,13 +189,13 @@ fn main() {
                             .map_err(|_| panic!("Cannot set to no delay"));
                         if 0 == keyval.len() {
                             key = match stream.local_addr() {
-                                Ok(laddr) => do_hash(&vec![&laddr]),
+                                Ok(laddr) => do_hash(&vec![&KeyInput::Addr(laddr)]),
                                 Err(_) => {
                                     panic!("Cannot get local address");
                                 }
                             };
                         } else {
-                            key = do_hash(&vec![&keyval]);
+                            key = do_hash(&vec![&KeyInput::Str(keyval)]);
                         }
                         let (sink, stream) = stream.framed(Bytes).split();
                         let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
@@ -257,13 +257,13 @@ fn main() {
                 .map_err(|_| panic!("Cannot set to no delay"));
             if 0 == keyval.len() {
                 key = match stream.local_addr() {
-                    Ok(laddr) => do_hash(&vec![&laddr]),
+                    Ok(laddr) => do_hash(&vec![&KeyInput::Addr(laddr)]),
                     Err(_) => {
                         panic!("Cannot get local address");
                     }
                 };
             } else {
-                key = do_hash(&vec![&keyval]);
+                key = do_hash(&vec![&KeyInput::Str(keyval)]);
             }
             let (sink, stream) = stream.framed(Bytes).split();
             let stdin_rx = stdin_rx.and_then(|buf| {
