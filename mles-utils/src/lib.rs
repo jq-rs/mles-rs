@@ -29,11 +29,11 @@ extern crate serde_bytes;
 extern crate byteorder;
 extern crate siphasher;
 
-
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
+use std::net::SocketAddr;
 
 /// Msg structure
 ///
@@ -134,6 +134,17 @@ impl Msg {
     pub fn get_message(&self) -> &Vec<u8> {
         &self.message
     }
+}
+
+/// KeyInput structure
+///
+/// This structure defines the Mles types that can be hashed easily. 
+#[derive(Hash, Clone)]
+pub enum KeyInput {
+    /// Socket address as a hash input
+    Addr(SocketAddr),
+    /// String value as a hash input
+    Str(String),
 }
 
 /// Encode Msg object to CBOR.
