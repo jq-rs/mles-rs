@@ -20,8 +20,6 @@
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_cbor;
@@ -29,11 +27,14 @@ extern crate serde_bytes;
 extern crate byteorder;
 extern crate siphasher;
 
-
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
+
+const HDRL: usize = 4; //hdr len
+const KEYL: usize = 8; //key len
+const HDRKEYL: usize = HDRL + KEYL;
 
 /// Msg structure
 ///
@@ -184,10 +185,13 @@ pub fn message_decode(slice: &[u8]) -> Msg {
 /// use mles_utils::read_hdr_type;
 ///
 /// let hdr: Vec<u8> = vec![77,1,2,3];
-/// let hdr_type = read_hdr_type(hdr.as_slice());
+/// let hdr_type = read_hdr_type(&hdr);
 /// assert_eq!('M' as u32, hdr_type);
 /// ```
-pub fn read_hdr_type(hdr: &[u8]) -> u32 { 
+pub fn read_hdr_type(hdr: &Vec<u8>) -> u32 { 
+    if hdr.len() < HDRL {
+        return 0;
+    }
     let mut buf = Cursor::new(&hdr[..]);
     let num = buf.read_u32::<BigEndian>().unwrap();
     num >> 24
@@ -200,10 +204,13 @@ pub fn read_hdr_type(hdr: &[u8]) -> u32 {
 /// use mles_utils::read_hdr_len;
 ///
 /// let hdr: Vec<u8> = vec![77,1,2,3];
-/// let hdr_len = read_hdr_len(hdr.as_slice());
+/// let hdr_len = read_hdr_len(&hdr);
 /// assert_eq!(515, hdr_len);
 /// ```
-pub fn read_hdr_len(hdr: &[u8]) -> usize { 
+pub fn read_hdr_len(hdr: &Vec<u8>) -> usize { 
+    if hdr.len() < HDRL {
+        return 0;
+    }
     let mut buf = Cursor::new(&hdr[..]);
     let num = buf.read_u32::<BigEndian>().unwrap();
     (num & 0xfff) as usize
@@ -216,7 +223,7 @@ pub fn read_hdr_len(hdr: &[u8]) -> usize {
 /// use mles_utils::{write_hdr, read_hdr_len};
 ///
 /// let hdr = write_hdr(515);
-/// let hdr_len = read_hdr_len(hdr.as_slice());
+/// let hdr_len = read_hdr_len(&hdr);
 /// assert_eq!(515, hdr_len);
 /// ```
 pub fn write_hdr(len: usize) -> Vec<u8> {
@@ -258,7 +265,34 @@ pub fn write_key(val: u64) -> Vec<u8> {
 /// assert_eq!(key, read_key);
 /// ```
 pub fn read_key(keyv: &Vec<u8>) -> u64 {
+    if keyv.len() < KEYL {
+        return 0;
+    }
     let mut buf = Cursor::new(&keyv[..]);
+    let num = buf.read_u64::<BigEndian>().unwrap();
+    num
+}
+
+/// Read a key from header.
+///
+/// # Example
+/// ```
+/// use mles_utils::{write_hdr, write_key, read_key_from_hdr, do_hash};
+///
+/// let hashstr = "Another string".to_string();
+/// let hashable = vec![&hashstr];
+/// let key = do_hash(&hashable); 
+/// let mut hdr: Vec<u8> = write_hdr(12);
+/// let keyhdr: Vec<u8> = write_key(key);
+/// hdr.extend(keyhdr);
+/// let read_key = read_key_from_hdr(&hdr);
+/// assert_eq!(key, read_key);
+/// ```
+pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
+    if keyv.len() < HDRKEYL {
+        return 0;
+    }
+    let mut buf = Cursor::new(&keyv[HDRL..]);
     let num = buf.read_u64::<BigEndian>().unwrap();
     num
 }
@@ -325,4 +359,5 @@ mod tests {
         assert_eq!(orig_key, key);
     }
 }
+
 
