@@ -22,14 +22,13 @@ extern crate futures;
 extern crate mles_utils;
 
 use std::io::{Error, ErrorKind};
-use std::net::{SocketAddr};
+//use std::net::{SocketAddr};
+use std::hash::Hash;
 
 use tokio_core::net::TcpStream;
 use tokio_io::io;
 
 use mles_utils::*;
-
-const HDRL: usize = 4; //hdr len
 
 pub fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
     process_hdr(reader, hdr_key)
@@ -39,10 +38,10 @@ pub fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io:
     if hdr.len() == 0 {
         return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
     }
-    if read_hdr_type(hdr.as_slice()) != 'M' as u32 {
+    if read_hdr_type(&hdr) != 'M' as u32 {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
     }
-    let hdr_len = read_hdr_len(hdr.as_slice());
+    let hdr_len = read_hdr_len(&hdr);
     if 0 == hdr_len {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
     }
@@ -56,10 +55,11 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, mut hdr_key: Vec<u8>, hdr_len: usize, keys: Vec<_>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> { 
-    let key = read_key_from_hdr(hdr_key);
+pub fn process_key<T: Hash>(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, hdr_len: usize, keys: Vec<&T>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> { 
+    let key = read_key_from_hdr(&hdr_key);
     let hkey = do_hash(&keys);
     if hkey != key {
+        println!("Incorrect key {:x} != hkey {:x}", key, hkey);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
     Ok((reader, hdr_key, hdr_len))

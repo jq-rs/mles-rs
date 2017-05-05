@@ -311,12 +311,12 @@ impl Decoder for Bytes {
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
         if buf.len() >= HDRKEYL {
             // HDRKEYL is header min size
-            if read_hdr_type(buf.to_vec().as_slice()) != 'M' as u32 {
+            if read_hdr_type(&buf.to_vec()) != 'M' as u32 {
                 let len = buf.len();
                 buf.split_to(len);
                 return Ok(None);
             }
-            let hdr_len = read_hdr_len(buf);
+            let hdr_len = read_hdr_len(&buf.to_vec());
             if 0 == hdr_len {
                 let len = buf.len();
                 buf.split_to(len);
