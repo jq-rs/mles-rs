@@ -56,20 +56,12 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, mut hdr_key: Vec<u8>, hdr_len: usize, keyval: String, peer_addr: SocketAddr) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> { 
-    let hkey;
-    let key = hdr_key.split_off(HDRL);
-    let keyx = read_key(&key);
-    if 0 == keyval.len() {
-        hkey = do_hash(&vec![&peer_addr]);
-    }
-    else {
-        hkey = do_hash(&vec![&keyval]);
-    }
-    if hkey != keyx {
+pub fn process_key(reader: io::ReadHalf<TcpStream>, mut hdr_key: Vec<u8>, hdr_len: usize, keys: Vec<_>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> { 
+    let key = read_key_from_hdr(hdr_key);
+    let hkey = do_hash(&keys);
+    if hkey != key {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    hdr_key.extend(key);
     Ok((reader, hdr_key, hdr_len))
 }
 
