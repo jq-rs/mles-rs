@@ -152,6 +152,7 @@ fn main() {
                 let tkey = hdr.split_off(HDRL);
                 let key = read_key(&tkey);
                 let key = set_key(key);
+                let key = key + cnt; //for transition period
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
