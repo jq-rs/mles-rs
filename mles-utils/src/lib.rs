@@ -31,6 +31,7 @@ use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
+use std::net::SocketAddr;
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
@@ -135,6 +136,17 @@ impl Msg {
     pub fn get_message(&self) -> &Vec<u8> {
         &self.message
     }
+}
+
+/// KeyInput structure
+///
+/// This structure defines the Mles types that can be hashed easily. 
+#[derive(Hash, Clone)]
+pub enum KeyInput {
+    /// Socket address as a hash input
+    Addr(SocketAddr),
+    /// String value as a hash input
+    Str(String),
 }
 
 /// Encode Msg object to CBOR.
