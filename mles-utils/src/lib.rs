@@ -251,6 +251,27 @@ pub fn write_key(val: u64) -> Vec<u8> {
     msgv
 }
 
+/// Write a valid Mles header with specified length and key to network byte order.
+///
+/// # Example
+/// ```
+/// use mles_utils::{write_hdr_with_key, read_hdr_len, read_key_from_hdr, do_hash};
+///
+/// let hashstr = "Yet another string".to_string();
+/// let hashable = vec![&hashstr];
+/// let key = do_hash(&hashable); 
+/// let hdr = write_hdr_with_key(515, key);
+/// let hdr_len = read_hdr_len(&hdr);
+/// assert_eq!(515, hdr_len);
+/// let keyx = read_key_from_hdr(&hdr);
+/// assert_eq!(key, keyx);
+/// ```
+pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
+    let mut hdrv = write_hdr(len);
+    hdrv.extend(write_key(key));
+    hdrv
+}
+
 /// Read a key from buffer.
 ///
 /// # Example
