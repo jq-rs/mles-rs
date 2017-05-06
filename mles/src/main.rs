@@ -134,22 +134,19 @@ fn main() {
 
         let frame = io::read_exact(reader, vec![0;HDRKEYL]);
         let frame = frame.and_then(move |(reader, hdr_key)| process_hdr(reader, hdr_key));
+        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| { 
+            let tframe = io::read_exact(reader, vec![0;hdr_len]);
+            tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message))
+        });
 
         let keyinput_inner = keyinput.clone();
         // verify key
-        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| process_key(reader, hdr_key, hdr_len, vec![&keyinput_inner]));
+        let frame = frame.and_then(move |(reader, hdr_key, message)| process_key(reader, hdr_key, message, vec![&keyinput_inner]));
 
         let tx_inner = tx.clone();
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
-        let socket_once = frame.and_then(move |(reader, mut hdr_key, hdr_len)| {
-            let tframe = io::read_exact(reader, vec![0;hdr_len]);
-            tframe.and_then(move |(reader, message)| {
-                if 0 == message.len() {  
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                }
-
-                let decoded_message = message_decode(message.as_slice());
+        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, decoded_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
@@ -211,7 +208,6 @@ fn main() {
                 channel_db.insert(cnt, (key, channel.clone()));
                 println!("User {}:{:x} {} joined channel {}", cnt, key, decoded_message.get_uid(), channel);
                 Ok((reader, key, channel))
-            })
         });
 
         let mles_db_inner = mles_db.clone();

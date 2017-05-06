@@ -54,14 +54,25 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key<T: Hash>(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, hdr_len: usize, keys: Vec<&T>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> { 
+pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<KeyInput>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, Msg), Error> { 
+
+    //read hash from message
     let key = read_key_from_hdr(&hdr_key);
+
+    //create hash for verification
+    let decoded_message = message_decode(message.as_slice());
+    let keyuid = KeyInput::Str(decoded_message.get_uid().to_string());
+    let keychannel = KeyInput::Str(decoded_message.get_channel().to_string());
+
+    keys.extend(vec![keyuid, keychannel]);
+
     let hkey = do_hash(&keys);
     if hkey != key {
-        println!("Incorrect key {:x} != hkey {:x}", key, hkey);
+        println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    Ok((reader, hdr_key, hdr_len))
+    let decoded_message = message_decode(message.as_slice());
+    Ok((reader, hdr_key, message, decoded_message))
 }
 
 
