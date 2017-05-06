@@ -19,8 +19,6 @@
 use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
 
-const HISTORYL: usize = 100; //default history limit
-
 pub struct MlesDb {
     channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
     messages: Vec<Vec<u8>>,
@@ -30,12 +28,12 @@ pub struct MlesDb {
 }
 
 impl MlesDb {
-    pub fn new() -> MlesDb {
+    pub fn new(hlim: usize) -> MlesDb {
         MlesDb {
             channels: None,
             messages: Vec::new(),
             peer_tx: None,
-            history_limit: HISTORYL,
+            history_limit: hlim,
             tx_db: Vec::new(),
         }
     }
@@ -80,13 +78,16 @@ impl MlesDb {
     }
 
     pub fn get_channels_len(&mut self) -> usize {
-        if let Some(ref mut channels) = self.channels {
+        if let Some(ref channels) = self.channels {
             return channels.len();
         }
         0
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
+        if 0 == self.get_history_limit() {
+            return;
+        }
         if self.messages.len() == self.get_history_limit() {
             self.messages.remove(0);
         }
@@ -105,11 +106,11 @@ pub struct MlesPeerDb {
 }
 
 impl MlesPeerDb {
-    pub fn new() -> MlesPeerDb {
+    pub fn new(hlim: usize) -> MlesPeerDb {
         MlesPeerDb {
             channels: Vec::new(),
             messages: Vec::new(),
-            history_limit: HISTORYL
+            history_limit: hlim,
         }
     }
 
@@ -122,6 +123,9 @@ impl MlesPeerDb {
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
+        if 0 == self.get_history_limit() {
+            return;
+        }
         if self.messages.len() == self.get_history_limit() {
             self.messages.remove(0);
         }

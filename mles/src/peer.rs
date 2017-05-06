@@ -49,7 +49,7 @@ const PEERAND: u64 = !(::KEYAND);
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
-pub fn peer_conn(peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>, 
+pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
@@ -58,7 +58,7 @@ pub fn peer_conn(peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>,
 
     println!("Peer channel thread for channel {}", channel);
     loop {
-        let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new()));
+        let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new(hist_limit)));
         let handle = core.handle();
         let channel = channel.clone();
         let channel2 = channel.clone();

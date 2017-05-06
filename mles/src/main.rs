@@ -53,16 +53,34 @@ const SRVPORT: &str = ":8077";
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = HDRL + KEYL;
-const USAGE: &str = "Usage: mles <peer-address> [--history-limit=N]";
+const USAGE: &str = "Usage: mles [peer-address] [--history-limit=N]";
+const HISTLIMIT: usize = 100;
 
 const KEYAND: u64 = 0x0000ffffffffffff;
 
 fn main() {
     let mut peer: Option<SocketAddr> = None;
     let mut argcnt = 0;
+    let mut hist_limit = HISTLIMIT;
     for arg in env::args() {
         argcnt += 1;
-        if 2 == argcnt {
+        if 1 == argcnt {
+            continue;
+        }
+        let this_arg = arg.clone();
+        let v: Vec<&str> = this_arg.split("--history-limit=").collect();
+        if v.len() > 1 {
+            if let Some(limitstr) = v.get(1) {
+                if let Ok(limit)= limitstr.parse::<usize>() {
+                    hist_limit = limit;
+                    println!("History limit: {}", hist_limit);
+                    continue;
+                }
+            }
+            println!("{}", USAGE);
+            process::exit(1);
+        }
+        else {
             let peerarg = arg + SRVPORT;
             let rpeer: Vec<_> = peerarg.to_socket_addrs()
                                        .unwrap_or(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
@@ -76,15 +94,6 @@ fn main() {
             }
             else { 
                 println!("Unable to resolve peer domain {}", peerarg); 
-            }
-        }
-        else if 3 == argcnt {
-            let ws = arg;
-            if ws == "--use-websockets" {
-                //ws_enabled = Some(true);
-            } else {
-                println!("{}", USAGE);
-                process::exit(1);
             }
         }
         if argcnt > 3 {
@@ -175,10 +184,10 @@ fn main() {
                         msg.extend(message.clone());
                         let peer_key = set_peer_key(key);
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(peer, peer_key, chan, msg, tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(hist_limit, peer, peer_key, chan, msg, tx_peer_for_msgs));
                     }
 
-                    let mut mles_db_entry = MlesDb::new();
+                    let mut mles_db_entry = MlesDb::new(hist_limit);
                     mles_db_entry.add_channel(key, tx_inner.clone());
                     mles_db_once.insert(channel.clone(), mles_db_entry);
 
@@ -217,7 +226,7 @@ fn main() {
                     mles_db_entry.add_tx_db(tx_inner.clone());
                 }
                 channel_db.insert(cnt, (key, channel.clone()));
-                println!("User {}:{:x} {} joined channel {}", cnt, key, decoded_message.get_uid(), channel);
+                println!("User {}:{:x} joined channel", cnt, key);
                 Ok((reader, key, channel))
         });
 
@@ -312,7 +321,6 @@ fn main() {
                 }
                 if chan_drop {
                     mles_db.remove(channel);
-                    println!("Channel {} dropped.", channel);
                 }
             }
             if let Some(key) = chan_to_rem {
