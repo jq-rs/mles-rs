@@ -31,7 +31,7 @@ use std::cell::RefCell;
 use std::iter;
 use std::io::{Error, ErrorKind};
 use std::{process, env};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::thread;
 
 use tokio_core::net::TcpListener;
@@ -48,40 +48,50 @@ use local_db::*;
 use frame::*;
 use peer::*;
 
+const SRVPORT: &str = ":8077";
+
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = HDRL + KEYL;
+const USAGE: &str = "Usage: mles <peer-address> [--history-limit=N]";
 
 const KEYAND: u64 = 0x0000ffffffffffff;
 
 fn main() {
-    let mut peer = "".to_string();
+    let mut peer: Option<SocketAddr> = None;
     let mut argcnt = 0;
     for arg in env::args() {
         argcnt += 1;
         if 2 == argcnt {
-            peer = arg;
-            peer += ":8077";
-            match peer.parse::<SocketAddr>() {
-                Ok(_) => {},
-                Err(err) => {
-                    println!("Error: {}\nUsage: mles [peer-address]", err);
-                    process::exit(1);
-                },
+            let peerarg = arg + SRVPORT;
+            let rpeer: Vec<_> = peerarg.to_socket_addrs()
+                                       .unwrap_or(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+                                       .collect();
+            let rpeer = *rpeer.first().unwrap();
+            let rpeer = Some(rpeer);
+            // check that we really got a proper peer
+            if has_peer(&rpeer) {
+                println!("Using peer domain {}", peerarg); 
+                peer = rpeer;
+            }
+            else { 
+                println!("Unable to resolve peer domain {}", peerarg); 
             }
         }
-        if argcnt > 2 {
-            println!("Usage: mles [peer-address]");
+        else if 3 == argcnt {
+            let ws = arg;
+            if ws == "--use-websockets" {
+                //ws_enabled = Some(true);
+            } else {
+                println!("{}", USAGE);
+                process::exit(1);
+            }
+        }
+        if argcnt > 3 {
+            println!("{}", USAGE);
             process::exit(1);
         }
     }
-
-    let peer = match peer.parse::<SocketAddr>() {
-        Ok(addr) => addr,
-        Err(_) => {
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)
-        },
-    };
 
     let keyval = match env::var("MLES_KEY") {
         Ok(val) => val,
@@ -90,7 +100,8 @@ fn main() {
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
-    let address = "0.0.0.0:8077".parse().unwrap();
+    let address = "0.0.0.0".to_string() + SRVPORT;
+    let address = address.parse().unwrap();
     let socket = match TcpListener::bind(&address, &handle) {
         Ok(listener) => listener,
         Err(err) => {
@@ -163,6 +174,7 @@ fn main() {
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
                         let peer_key = set_peer_key(key);
+                        let peer = peer.unwrap();
                         thread::spawn(move || peer_conn(peer, peer_key, chan, msg, tx_peer_for_msgs));
                     }
 
@@ -312,7 +324,7 @@ fn main() {
         Ok(())
     });
 
-    // execute server
+    // execute server                               
     let _res = core.run(srv).map_err(|err| { println!("Main: {}", err); ()});
 }
 

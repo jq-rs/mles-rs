@@ -161,8 +161,11 @@ pub fn set_peer_key(peer_key: u64) -> u64 {
     val
 }
 
-pub fn has_peer(peer: &SocketAddr) -> bool {
-    0 != peer.port() 
+pub fn has_peer(peer: &Option<SocketAddr>) -> bool {
+   if let Some(peer) = *peer {
+       return peer.port() != 0;
+   }
+   return false;
 }
 
 #[cfg(test)]
