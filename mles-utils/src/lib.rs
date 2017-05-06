@@ -252,7 +252,7 @@ pub fn write_hdr(len: usize) -> Vec<u8> {
 /// use mles_utils::{write_key, do_hash};
 ///
 /// let hashstr = "A string".to_string();
-/// let hashable = vec![&hashstr];
+/// let hashable = vec![hashstr];
 /// let key = do_hash(&hashable); 
 /// let keyhdr: Vec<u8> = write_key(key);
 /// ```
@@ -270,7 +270,7 @@ pub fn write_key(val: u64) -> Vec<u8> {
 /// use mles_utils::{write_hdr_with_key, read_hdr_len, read_key_from_hdr, do_hash};
 ///
 /// let hashstr = "Yet another string".to_string();
-/// let hashable = vec![&hashstr];
+/// let hashable = vec![hashstr];
 /// let key = do_hash(&hashable); 
 /// let hdr = write_hdr_with_key(515, key);
 /// let hdr_len = read_hdr_len(&hdr);
@@ -291,7 +291,7 @@ pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
 /// use mles_utils::{write_key, read_key, do_hash};
 ///
 /// let hashstr = "Another string".to_string();
-/// let hashable = vec![&hashstr];
+/// let hashable = vec![hashstr];
 /// let key = do_hash(&hashable); 
 /// let keyhdr: Vec<u8> = write_key(key);
 /// let read_key = read_key(&keyhdr);
@@ -313,7 +313,7 @@ pub fn read_key(keyv: &Vec<u8>) -> u64 {
 /// use mles_utils::{write_hdr, write_key, read_key_from_hdr, do_hash};
 ///
 /// let hashstr = "Another string".to_string();
-/// let hashable = vec![&hashstr];
+/// let hashable = vec![hashstr];
 /// let key = do_hash(&hashable); 
 /// let mut hdr: Vec<u8> = write_hdr(12);
 /// let keyhdr: Vec<u8> = write_key(key);
@@ -338,10 +338,10 @@ pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
 ///
 /// let hashstr1 = "A string".to_string();
 /// let hashstr2 = "Another string".to_string();
-/// let hashable = vec![&hashstr1, &hashstr2];
+/// let hashable = vec![hashstr1, hashstr2];
 /// let key: u64 = do_hash(&hashable); 
 /// ```
-pub fn do_hash<T: Hash>(t: &Vec<&T>) -> u64 {
+pub fn do_hash<T: Hash>(t: &Vec<T>) -> u64 {
     let mut s = SipHasher::new();
     for item in t {
         item.hash(&mut s);
@@ -386,7 +386,7 @@ mod tests {
     fn test_hash() {
         let addr = "127.0.0.1:8077";
         let addr = addr.parse::<SocketAddr>().unwrap();
-        let orig_key = do_hash(&vec![&addr]);
+        let orig_key = do_hash(&vec![addr]);
         let keyv = write_key(orig_key);
         let key = read_key(&keyv);
         assert_eq!(orig_key, key);
