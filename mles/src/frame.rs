@@ -22,7 +22,6 @@ extern crate futures;
 extern crate mles_utils;
 
 use std::io::{Error, ErrorKind};
-use std::hash::Hash;
 
 use tokio_core::net::TcpStream;
 use tokio_io::io;
@@ -61,17 +60,14 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
 
     //create hash for verification
     let decoded_message = message_decode(message.as_slice());
-    let keyuid = KeyInput::Str(decoded_message.get_uid().to_string());
-    let keychannel = KeyInput::Str(decoded_message.get_channel().to_string());
-
-    keys.extend(vec![keyuid, keychannel]);
+    keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
+    keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
 
     let hkey = do_hash(&keys);
     if hkey != key {
         println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    let decoded_message = message_decode(message.as_slice());
     Ok((reader, hdr_key, message, decoded_message))
 }
 

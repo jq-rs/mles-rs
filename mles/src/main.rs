@@ -141,7 +141,7 @@ fn main() {
 
         let keyinput_inner = keyinput.clone();
         // verify key
-        let frame = frame.and_then(move |(reader, hdr_key, message)| process_key(reader, hdr_key, message, vec![&keyinput_inner]));
+        let frame = frame.and_then(move |(reader, hdr_key, message)| process_key(reader, hdr_key, message, vec![keyinput_inner]));
 
         let tx_inner = tx.clone();
         let channel_db_inner = channel_db.clone();
@@ -154,7 +154,6 @@ fn main() {
                 //pick the verified key from header and use it as an identifier
                 let key = read_key_from_hdr(&hdr_key);
                 let key = set_key(key);
-                let key = key + cnt; //for transition period
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();

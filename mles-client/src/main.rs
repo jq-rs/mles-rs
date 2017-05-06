@@ -114,7 +114,8 @@ fn main() {
                     let mut core = Core::new().unwrap();
                     let handle = core.handle();
                     let tcp = TcpStream::connect(&addr, &handle);
-                    let mut key = 0;
+                    let mut key: Option<u64> = None;
+                    let mut keys = Vec::new();
 
                     if !connection
                             .protocols()
@@ -187,15 +188,20 @@ fn main() {
                         let _val = stream
                             .set_nodelay(true)
                             .map_err(|_| panic!("Cannot set to no delay"));
+                        let laddr = match stream.local_addr() {
+                            Ok(laddr) => laddr,
+                            Err(_) => {
+                                let addr = "0.0.0.0:0";
+                                let addr = addr.parse::<SocketAddr>().unwrap();
+                                addr
+                            }
+                        };
+                        let keyaddr = KeyInput::Addr(laddr);
+                        let keystr = KeyInput::Str(keyval.clone());
                         if 0 == keyval.len() {
-                            key = match stream.local_addr() {
-                                Ok(laddr) => do_hash(&vec![&KeyInput::Addr(laddr)]),
-                                Err(_) => {
-                                    panic!("Cannot get local address");
-                                }
-                            };
+                            keys.push(keyaddr);
                         } else {
-                            key = do_hash(&vec![&KeyInput::Str(keyval)]);
+                            keys.push(keystr);
                         }
                         let (sink, stream) = stream.framed(Bytes).split();
                         let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
@@ -203,7 +209,14 @@ fn main() {
                             if 0 == buf.len() {
                                 return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                             }
-                            let mut keyv = write_key(key);
+                            if None == key {
+                                //create hash for verification
+                                let decoded_message = message_decode(buf.as_slice());
+                                keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
+                                keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
+                                key = Some(do_hash(&keys));
+                            }
+                            let mut keyv = write_key(key.unwrap());
                             keyv.extend(buf);
                             Ok(keyv)
                         });
@@ -244,7 +257,8 @@ fn main() {
         let mut core = Core::new().unwrap();
         let handle = core.handle();
         let tcp = TcpStream::connect(&addr, &handle);
-        let mut key = 0;
+        let mut key: Option<u64> = None;
+        let mut keys = Vec::new();
 
         /* Normal console connection */
         thread::spawn(|| read_stdin(stdin_tx));
@@ -255,22 +269,34 @@ fn main() {
             let _val = stream
                 .set_nodelay(true)
                 .map_err(|_| panic!("Cannot set to no delay"));
+            let laddr = match stream.local_addr() {
+                Ok(laddr) => laddr,
+                Err(_) => {
+                    let addr = "0.0.0.0:0";
+                    let addr = addr.parse::<SocketAddr>().unwrap();
+                    addr
+                }
+            };
+            let keyaddr = KeyInput::Addr(laddr);
+            let keystr = KeyInput::Str(keyval.clone());
             if 0 == keyval.len() {
-                key = match stream.local_addr() {
-                    Ok(laddr) => do_hash(&vec![&KeyInput::Addr(laddr)]),
-                    Err(_) => {
-                        panic!("Cannot get local address");
-                    }
-                };
+                keys.push(keyaddr);
             } else {
-                key = do_hash(&vec![&KeyInput::Str(keyval)]);
+                keys.push(keystr);
             }
             let (sink, stream) = stream.framed(Bytes).split();
             let stdin_rx = stdin_rx.and_then(|buf| {
-                                                 let mut keyv = write_key(key);
-                                                 keyv.extend(buf);
-                                                 Ok(keyv)
-                                             });
+                if None == key {
+                    //create hash for verification
+                    let decoded_message = message_decode(buf.as_slice());
+                    keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
+                    keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
+                    key = Some(do_hash(&keys));
+                }
+                let mut keyv = write_key(key.unwrap());
+                keyv.extend(buf);
+                Ok(keyv)
+            });
 
             let send_stdin = stdin_rx.forward(sink);
             let write_stdout = stream.for_each(move |buf| {
