@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_new_db() {
         let msg = "Message".to_string().into_bytes();
-        let mut mles_db = MlesDb::new();
+        let mut mles_db = MlesDb::new(::HISTLIMIT);
         mles_db.add_message(msg);
         assert_eq!(1, mles_db.get_messages().len());
         assert_eq!(0, mles_db.get_channels_len());
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn test_new_peer_db() {
         let msg = "Message".to_string().into_bytes();
-        let mut mles_peer = MlesPeerDb::new();
+        let mut mles_peer = MlesPeerDb::new(::HISTLIMIT);
         assert_eq!(0, mles_peer.get_messages_len());
         mles_peer.add_message(msg);
         assert_eq!(1, mles_peer.get_messages_len());
@@ -173,9 +173,9 @@ mod tests {
 
     #[test]
     fn test_db_history_limit() {
-        let mut limit = HISTORYL;
+        let mut limit = ::HISTLIMIT;
         let msg = "Message".to_string().into_bytes();
-        let mut mles_peer = MlesPeerDb::new();
+        let mut mles_peer = MlesPeerDb::new(limit);
         assert_eq!(0, mles_peer.get_messages_len());
         mles_peer.add_message(msg.clone());
         assert_eq!(1, mles_peer.get_messages_len());
@@ -183,7 +183,7 @@ mod tests {
             mles_peer.add_message(msg.clone());
             limit -= 1;
         }
-        assert_eq!(HISTORYL, mles_peer.get_messages_len());
-        assert_eq!(HISTORYL, mles_peer.get_history_limit());
+        assert_eq!(::HISTLIMIT, mles_peer.get_messages_len());
+        assert_eq!(::HISTLIMIT, mles_peer.get_history_limit());
     }
 }

@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_has_peer() {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+        let addr = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0));
         assert_eq!(false, has_peer(&addr));
     }
 }
