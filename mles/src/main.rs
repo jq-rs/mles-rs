@@ -107,6 +107,9 @@ fn main() {
     let mut cnt = 0;
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
+        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));;
+        cnt += 1;
+
         println!("New Connection: {}", addr);
         let paddr = match stream.peer_addr() {
                 Ok(paddr) => paddr,
@@ -116,8 +119,13 @@ fn main() {
                     addr
                 }
         };
-        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));;
-        cnt += 1;
+        let keyinput;
+        if keyval.len() > 0 {
+            keyinput = KeyInput::Str(keyval.clone());
+        }
+        else {
+            keyinput = KeyInput::Addr(paddr);
+        }
 
         let (reader, writer) = stream.split();
         let (tx, rx) = unbounded();
@@ -126,33 +134,26 @@ fn main() {
 
         let frame = io::read_exact(reader, vec![0;HDRKEYL]);
         let frame = frame.and_then(move |(reader, hdr_key)| process_hdr(reader, hdr_key));
+        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| { 
+            let tframe = io::read_exact(reader, vec![0;hdr_len]);
+            tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message))
+        });
 
-        let paddr_inner = paddr.clone();
-        let keyval_inner = keyval.clone();
+        let keyinput_inner = keyinput.clone();
         // verify key
-        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| process_key(reader, hdr_key, hdr_len, keyval_inner, paddr_inner));
+        let frame = frame.and_then(move |(reader, hdr_key, message)| process_key(reader, hdr_key, message, vec![keyinput_inner]));
 
         let tx_inner = tx.clone();
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
-        let socket_once = frame.and_then(move |(reader, mut hdr_key, hdr_len)| {
-            let tframe = io::read_exact(reader, vec![0;hdr_len]);
-            tframe.and_then(move |(reader, message)| {
-                if 0 == message.len() {  
-                    return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
-                }
-
-                let decoded_message = message_decode(message.as_slice());
+        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, decoded_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
 
                 //pick the verified key from header and use it as an identifier
-                let mut hdr = hdr_key.clone();
-                let tkey = hdr.split_off(HDRL);
-                let key = read_key(&tkey);
+                let key = read_key_from_hdr(&hdr_key);
                 let key = set_key(key);
-                let key = key + cnt; //for transition period
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
@@ -206,7 +207,6 @@ fn main() {
                 channel_db.insert(cnt, (key, channel.clone()));
                 println!("User {}:{:x} {} joined channel {}", cnt, key, decoded_message.get_uid(), channel);
                 Ok((reader, key, channel))
-            })
         });
 
         let mles_db_inner = mles_db.clone();

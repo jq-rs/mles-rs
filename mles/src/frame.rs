@@ -22,14 +22,11 @@ extern crate futures;
 extern crate mles_utils;
 
 use std::io::{Error, ErrorKind};
-use std::net::{SocketAddr};
 
 use tokio_core::net::TcpStream;
 use tokio_io::io;
 
 use mles_utils::*;
-
-const HDRL: usize = 4; //hdr len
 
 pub fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
     process_hdr(reader, hdr_key)
@@ -39,10 +36,10 @@ pub fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io:
     if hdr.len() == 0 {
         return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
     }
-    if read_hdr_type(hdr.as_slice()) != 'M' as u32 {
+    if read_hdr_type(&hdr) != 'M' as u32 {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header"));
     }
-    let hdr_len = read_hdr_len(hdr.as_slice());
+    let hdr_len = read_hdr_len(&hdr);
     if 0 == hdr_len {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect header len"));
     }
@@ -56,21 +53,22 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, mut hdr_key: Vec<u8>, hdr_len: usize, keyval: String, peer_addr: SocketAddr) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> { 
-    let hkey;
-    let key = hdr_key.split_off(HDRL);
-    let keyx = read_key(&key);
-    if 0 == keyval.len() {
-        hkey = do_hash(&vec![&peer_addr]);
-    }
-    else {
-        hkey = do_hash(&vec![&keyval]);
-    }
-    if hkey != keyx {
+pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<KeyInput>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, Msg), Error> { 
+
+    //read hash from message
+    let key = read_key_from_hdr(&hdr_key);
+
+    //create hash for verification
+    let decoded_message = message_decode(message.as_slice());
+    keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
+    keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
+
+    let hkey = do_hash(&keys);
+    if hkey != key {
+        println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    hdr_key.extend(key);
-    Ok((reader, hdr_key, hdr_len))
+    Ok((reader, hdr_key, message, decoded_message))
 }
 
 
