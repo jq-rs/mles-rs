@@ -49,7 +49,7 @@ const PEERAND: u64 = !(::KEYAND);
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
-pub fn peer_conn(peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>, 
+pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
@@ -58,7 +58,7 @@ pub fn peer_conn(peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>,
 
     println!("Peer channel thread for channel {}", channel);
     loop {
-        let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new()));
+        let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new(hist_limit)));
         let handle = core.handle();
         let channel = channel.clone();
         let channel2 = channel.clone();
@@ -161,8 +161,11 @@ pub fn set_peer_key(peer_key: u64) -> u64 {
     val
 }
 
-pub fn has_peer(peer: &SocketAddr) -> bool {
-    0 != peer.port() 
+pub fn has_peer(peer: &Option<SocketAddr>) -> bool {
+   if let Some(peer) = *peer {
+       return peer.port() != 0;
+   }
+   return false;
 }
 
 #[cfg(test)]
@@ -178,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_has_peer() {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+        let addr = Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0));
         assert_eq!(false, has_peer(&addr));
     }
 }

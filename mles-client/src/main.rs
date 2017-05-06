@@ -61,8 +61,11 @@ use mles_utils::*;
 use websocket::{Server, Message};
 use websocket::message::Type;
 
+const SRVPORT: &str = ":8077";
+const WSPORT: &str = ":8076";
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
+const USAGE: &str = "Usage: mles-client <server-address> [--use-websockets]";
 
 fn main() {
     let mut ws_enabled: Option<bool> = None;
@@ -71,7 +74,7 @@ fn main() {
     let addr = env::args()
         .nth(1)
         .unwrap_or_else(|| {
-                            println!("Usage: mles-client <server-address> [--use-websockets]");
+                            println!("{}", USAGE);
                             process::exit(1);
                         });
 
@@ -79,18 +82,18 @@ fn main() {
         if ws == "--use-websockets" {
             ws_enabled = Some(true);
         } else {
-            println!("Usage: mles-client <server-address> [--use-websockets]");
+            println!("{}", USAGE);
             process::exit(1);
         }
     }
 
     // add port
-    let addr = addr + ":8077";
+    let addr = addr + SRVPORT;
     let addr = match addr.parse::<SocketAddr>() {
         Ok(addr) => addr,
         Err(err) => {
-            println!("Error: {}\nUsage: mles-client <server-address> [--use-websockets]",
-                     err);
+            println!("Error: {}\n{}",
+                     err, USAGE);
             process::exit(1);
         }
     };
@@ -102,8 +105,8 @@ fn main() {
 
     if let Some(_) = ws_enabled {
         /* Websocket proxy support */
-        if let Ok(ws_server) = Server::bind("0.0.0.0:8076") {
-            println!("Listening Websockets clients at port 8076");
+        if let Ok(ws_server) = Server::bind("0.0.0.0".to_string() + WSPORT) {
+            println!("Listening Websockets clients at port{}", WSPORT);
             for connection in ws_server.filter_map(Result::ok) {
                 let keyval = keyval.clone();
                 thread::spawn(move || {

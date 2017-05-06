@@ -19,8 +19,6 @@
 use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
 
-const HISTORYL: usize = 100; //default history limit
-
 pub struct MlesDb {
     channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
     messages: Vec<Vec<u8>>,
@@ -30,12 +28,12 @@ pub struct MlesDb {
 }
 
 impl MlesDb {
-    pub fn new() -> MlesDb {
+    pub fn new(hlim: usize) -> MlesDb {
         MlesDb {
             channels: None,
             messages: Vec::new(),
             peer_tx: None,
-            history_limit: HISTORYL,
+            history_limit: hlim,
             tx_db: Vec::new(),
         }
     }
@@ -80,13 +78,16 @@ impl MlesDb {
     }
 
     pub fn get_channels_len(&mut self) -> usize {
-        if let Some(ref mut channels) = self.channels {
+        if let Some(ref channels) = self.channels {
             return channels.len();
         }
         0
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
+        if 0 == self.get_history_limit() {
+            return;
+        }
         if self.messages.len() == self.get_history_limit() {
             self.messages.remove(0);
         }
@@ -105,11 +106,11 @@ pub struct MlesPeerDb {
 }
 
 impl MlesPeerDb {
-    pub fn new() -> MlesPeerDb {
+    pub fn new(hlim: usize) -> MlesPeerDb {
         MlesPeerDb {
             channels: Vec::new(),
             messages: Vec::new(),
-            history_limit: HISTORYL
+            history_limit: hlim,
         }
     }
 
@@ -122,6 +123,9 @@ impl MlesPeerDb {
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
+        if 0 == self.get_history_limit() {
+            return;
+        }
         if self.messages.len() == self.get_history_limit() {
             self.messages.remove(0);
         }
@@ -150,7 +154,7 @@ mod tests {
     #[test]
     fn test_new_db() {
         let msg = "Message".to_string().into_bytes();
-        let mut mles_db = MlesDb::new();
+        let mut mles_db = MlesDb::new(::HISTLIMIT);
         mles_db.add_message(msg);
         assert_eq!(1, mles_db.get_messages().len());
         assert_eq!(0, mles_db.get_channels_len());
@@ -161,7 +165,7 @@ mod tests {
     #[test]
     fn test_new_peer_db() {
         let msg = "Message".to_string().into_bytes();
-        let mut mles_peer = MlesPeerDb::new();
+        let mut mles_peer = MlesPeerDb::new(::HISTLIMIT);
         assert_eq!(0, mles_peer.get_messages_len());
         mles_peer.add_message(msg);
         assert_eq!(1, mles_peer.get_messages_len());
@@ -169,9 +173,9 @@ mod tests {
 
     #[test]
     fn test_db_history_limit() {
-        let mut limit = HISTORYL;
+        let mut limit = ::HISTLIMIT;
         let msg = "Message".to_string().into_bytes();
-        let mut mles_peer = MlesPeerDb::new();
+        let mut mles_peer = MlesPeerDb::new(limit);
         assert_eq!(0, mles_peer.get_messages_len());
         mles_peer.add_message(msg.clone());
         assert_eq!(1, mles_peer.get_messages_len());
@@ -179,7 +183,7 @@ mod tests {
             mles_peer.add_message(msg.clone());
             limit -= 1;
         }
-        assert_eq!(HISTORYL, mles_peer.get_messages_len());
-        assert_eq!(HISTORYL, mles_peer.get_history_limit());
+        assert_eq!(::HISTLIMIT, mles_peer.get_messages_len());
+        assert_eq!(::HISTLIMIT, mles_peer.get_history_limit());
     }
 }
