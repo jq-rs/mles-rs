@@ -62,13 +62,22 @@ impl MlesDb {
         self.peer_tx.as_ref()
     }
 
-    pub fn add_channel(&mut self, cnt: u64, sender: UnboundedSender<Vec<u8>>) {
+    pub fn add_channel(&mut self, key: u64, sender: UnboundedSender<Vec<u8>>) {
         if self.channels.is_none() {
             self.channels = Some(HashMap::new());
         }
         if let Some(ref mut channels) = self.channels {
-            channels.insert(cnt, sender);
+            channels.insert(key, sender);
         }
+    }
+
+    pub fn check_for_duplicate_key(&self, key: u64) -> bool {
+        if let Some(ref channels) = self.channels {
+            if channels.contains_key(&key) {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn rem_channel(&mut self, cnt: u64) {
