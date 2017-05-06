@@ -107,6 +107,11 @@ fn main() {
         Err(_) => "".to_string(),
     };
 
+    let keyaddr = match env::var("MLES_ADDR_KEY") {
+        Ok(val) => val,
+        Err(_) => "".to_string(),
+    };
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let address = "0.0.0.0".to_string() + SRVPORT;
@@ -139,12 +144,15 @@ fn main() {
                     addr
                 }
         };
-        let keyinput;
+        let mut keys = Vec::new();
         if keyval.len() > 0 {
-            keyinput = KeyInput::Str(keyval.clone());
+            keys.push(KeyInput::Str(keyval.clone()));
         }
         else {
-            keyinput = KeyInput::Addr(paddr);
+            keys.push(KeyInput::Addr(paddr));
+            if keyaddr.len() > 0 {
+                keys.push(KeyInput::Str(keyaddr.clone()));
+            }
         }
 
         let (reader, writer) = stream.split();
@@ -159,9 +167,8 @@ fn main() {
             tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message))
         });
 
-        let keyinput_inner = keyinput.clone();
         // verify key
-        let frame = frame.and_then(move |(reader, hdr_key, message)| process_key(reader, hdr_key, message, vec![keyinput_inner]));
+        let frame = frame.and_then(move |(reader, hdr_key, message)| process_key(reader, hdr_key, message, keys));
 
         let tx_inner = tx.clone();
         let channel_db_inner = channel_db.clone();
@@ -226,7 +233,7 @@ fn main() {
                     mles_db_entry.add_tx_db(tx_inner.clone());
                 }
                 channel_db.insert(cnt, (key, channel.clone()));
-                println!("User {}:{:x} joined channel", cnt, key);
+                println!("User {}:{:x} joined.", cnt, key);
                 Ok((reader, key, channel))
         });
 

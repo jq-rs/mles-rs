@@ -44,7 +44,7 @@ extern crate websocket;
 
 use std::{env, process};
 use std::io::{self, Read, Write};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::thread;
 use std::io::{Error, ErrorKind};
 
@@ -78,6 +78,18 @@ fn main() {
                             process::exit(1);
                         });
 
+    let raddr = addr + SRVPORT;
+    let raddr: Vec<_> = raddr.to_socket_addrs()
+        .unwrap_or(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+        .collect();
+    let raddr = *raddr.first().unwrap();
+    let raddr = Some(raddr).unwrap();
+    // check that we really got a proper peer
+    if 0 == raddr.port() {
+        println!("{}", USAGE);
+        process::exit(1);
+    }
+
     if let Some(ws) = env::args().nth(2) {
         if ws == "--use-websockets" {
             ws_enabled = Some(true);
@@ -87,18 +99,12 @@ fn main() {
         }
     }
 
-    // add port
-    let addr = addr + SRVPORT;
-    let addr = match addr.parse::<SocketAddr>() {
-        Ok(addr) => addr,
-        Err(err) => {
-            println!("Error: {}\n{}",
-                     err, USAGE);
-            process::exit(1);
-        }
+    let keyval = match env::var("MLES_KEY") {
+        Ok(val) => val,
+        Err(_) => "".to_string(),
     };
 
-    let keyval = match env::var("MLES_KEY") {
+    let keyaddr = match env::var("MLES_ADDR_KEY") {
         Ok(val) => val,
         Err(_) => "".to_string(),
     };
@@ -109,6 +115,7 @@ fn main() {
             println!("Listening Websockets clients at port{}", WSPORT);
             for connection in ws_server.filter_map(Result::ok) {
                 let keyval = keyval.clone();
+                let keyaddr = keyaddr.clone();
                 thread::spawn(move || {
                     // Handle stdin in a separate thread
                     let (ws_tx, ws_rx) = mpsc::channel(16);
@@ -116,7 +123,7 @@ fn main() {
 
                     let mut core = Core::new().unwrap();
                     let handle = core.handle();
-                    let tcp = TcpStream::connect(&addr, &handle);
+                    let tcp = TcpStream::connect(&raddr, &handle);
                     let mut key: Option<u64> = None;
                     let mut keys = Vec::new();
 
@@ -207,12 +214,13 @@ fn main() {
                                 addr
                             }
                         };
-                        let keyaddr = KeyInput::Addr(laddr);
-                        let keystr = KeyInput::Str(keyval.clone());
-                        if 0 == keyval.len() {
-                            keys.push(keyaddr);
-                        } else {
-                            keys.push(keystr);
+                        if  keyval.len() > 0 {
+                            keys.push(KeyInput::Str(keyval.clone()));
+                        } else {            
+                            keys.push(KeyInput::Addr(laddr));
+                            if keyaddr.len() > 0 {
+                                keys.push(KeyInput::Str(keyaddr.clone()));
+                            }
                         }
                         let (sink, stream) = stream.framed(Bytes).split();
                         let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
@@ -267,7 +275,7 @@ fn main() {
 
         let mut core = Core::new().unwrap();
         let handle = core.handle();
-        let tcp = TcpStream::connect(&addr, &handle);
+        let tcp = TcpStream::connect(&raddr, &handle);
         let mut key: Option<u64> = None;
         let mut keys = Vec::new();
 
@@ -288,12 +296,13 @@ fn main() {
                     addr
                 }
             };
-            let keyaddr = KeyInput::Addr(laddr);
-            let keystr = KeyInput::Str(keyval.clone());
-            if 0 == keyval.len() {
-                keys.push(keyaddr);
-            } else {
-                keys.push(keystr);
+            if  keyval.len() > 0 {
+                keys.push(KeyInput::Str(keyval.clone()));
+            } else {            
+                keys.push(KeyInput::Addr(laddr));
+                if keyaddr.len() > 0 {
+                    keys.push(KeyInput::Str(keyaddr.clone()));
+                }
             }
             let (sink, stream) = stream.framed(Bytes).split();
             let stdin_rx = stdin_rx.and_then(|buf| {
