@@ -140,8 +140,16 @@ fn main() {
                     thread::spawn(move || for message in receiver.incoming_messages() {
                         let ws_tx_msg = ws_tx.clone();
                         let mles_tx_ws_msg = mles_tx_ws_inner.clone();
-                        let message: Message = message.unwrap();
-
+                        let message: Message = match message {
+                            Ok(message) => message,
+                            Err(_) => {
+                                //Sometimes message just fails..
+                                let empty_msg = Vec::new();
+                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, empty_msg).map_err(|_| {});
+                                println!("Message failed, client {} disconnected", ip);
+                                return;
+                            }
+                        };
                         match message.opcode {
                             Type::Close => {
                                 let message = Message::close();
