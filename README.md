@@ -3,7 +3,7 @@
 **Mles** [![crates.io status](https://img.shields.io/crates/v/mles.svg)](https://crates.io/crates/mles)
 **Mles-client** [![crates.io status](https://img.shields.io/crates/v/mles-client.svg)](https://crates.io/crates/mles-client)
 
-Mles is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe database service. The reference implementation consists of _Mles-utils_, _Mles-client/WebSockets-proxy_ and _Mles_ server.
+Mles is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe database service. The reference implementation consists of _Mles-utils_, _Mles_ server and _Mles-client/WebSocket-proxy_.
 
 ## Mles protocol overview
 
@@ -17,7 +17,7 @@ An Mles server may contact to an Mles peer server. The Mles peer server sees thi
 
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server may be configured to use IP anycast.
 
-An Mles clients may implement WebSocket proxy which allows to do Mles connections over WebSockets. Such proxy implementation is available in the reference client.
+An Mles clients may implement WebSocket [4] proxy which allows to do Mles connections over WebSocket protocol. Such proxy implementation is available in the reference client.
 
 Mles protocol has Internet Assigned Number Authority (IANA) **port 8077** [3] registered for its use.
 
@@ -59,3 +59,4 @@ pub struct Msg {
  1. Concise Binary Object Representation (CBOR), https://tools.ietf.org/html/rfc7049
  2. SipHash: a fast short-input PRF, https://131002.net/siphash/, referenced 4.2.2017
  3. Mles registered port #8077, http://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=8077
+ 4. The WebSocket Protocol, https://tools.ietf.org/html/rfc6455
