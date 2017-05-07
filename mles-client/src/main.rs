@@ -63,6 +63,8 @@ use websocket::message::Type;
 
 const SRVPORT: &str = ":8077";
 const WSPORT: &str = ":8076";
+const KEEPALIVE: Option<u32> = Some(5000);
+
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
 const USAGE: &str = "Usage: mles-client <server-address> [--use-websockets]";
@@ -144,7 +146,8 @@ fn main() {
 
                     let ip = client.peer_addr().unwrap();
                     println!("Connection from {}", ip);
-
+                    let _val = client.set_nodelay(true)
+                                     .map_err(|_| panic!("Cannot set to no delay"));
                     let (mut receiver, mut sender) = client.split().unwrap();
                     let mles_tx_ws_inner = mles_tx_ws.clone();
                     thread::spawn(move || for message in receiver.incoming_messages() {
@@ -213,9 +216,10 @@ fn main() {
                     });
 
                     let client = tcp.and_then(|stream| {
-                        let _val = stream
-                            .set_nodelay(true)
-                            .map_err(|_| panic!("Cannot set to no delay"));
+                        let _val = stream.set_nodelay(true)
+                                         .map_err(|_| panic!("Cannot set to no delay"));
+                        let _val = stream.set_keepalive_ms(KEEPALIVE)
+                                         .map_err(|_| panic!("Cannot set keepalive"));
                         let laddr = match stream.local_addr() {
                             Ok(laddr) => laddr,
                             Err(_) => {
@@ -300,9 +304,10 @@ fn main() {
 
         let mut stdout = io::stdout();
         let client = tcp.and_then(|stream| {
-            let _val = stream
-                .set_nodelay(true)
-                .map_err(|_| panic!("Cannot set to no delay"));
+            let _val = stream.set_nodelay(true)
+                             .map_err(|_| panic!("Cannot set to no delay"));
+            let _val = stream.set_keepalive_ms(KEEPALIVE)
+                             .map_err(|_| panic!("Cannot set keepalive"));
             let laddr = match stream.local_addr() {
                 Ok(laddr) => laddr,
                 Err(_) => {

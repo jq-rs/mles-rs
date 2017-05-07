@@ -49,6 +49,7 @@ use frame::*;
 use peer::*;
 
 const SRVPORT: &str = ":8077";
+const KEEPALIVE: Option<u32> = Some(5000);
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
@@ -132,7 +133,8 @@ fn main() {
     let mut cnt = 0;
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
-        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));;
+        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
+        let _val = stream.set_keepalive_ms(KEEPALIVE).map_err(|_| panic!("Cannot set keepalive"));
         cnt += 1;
 
         println!("New Connection: {}", addr);
