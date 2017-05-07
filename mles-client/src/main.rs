@@ -165,7 +165,7 @@ fn main() {
                                 let message = Message::close();
                                 let msg = message.payload.into_owned().to_vec();
                                 let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
-                                println!("Client {} disconnected", ip);
+                                println!("Close: Client {} disconnected", ip);
                                 return;
                             }
                             Type::Ping => {
@@ -206,6 +206,7 @@ fn main() {
                                 }
                             }
                         } else {
+                            println!("Returning from Rx");
                             return;
                         }
                     });
