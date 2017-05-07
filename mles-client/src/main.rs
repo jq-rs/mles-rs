@@ -136,7 +136,7 @@ fn main() {
                         println!("Protocol rejected");
                         return;
                     }
-                    let client = match connection.use_protocol("mles-websocket").accept() {
+                    let mut client = match connection.use_protocol("mles-websocket").accept() {
                         Ok(client) => client,
                         Err(_) => {
                             println!("Connection rejected");
