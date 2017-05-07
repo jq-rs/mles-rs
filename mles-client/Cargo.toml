@@ -1,6 +1,6 @@
 [package]
 name = "mles-client"
-version = "0.9.2"
+version = "0.9.3"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed database server example (chat) client"
 license = "GPL-3.0"
