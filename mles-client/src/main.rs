@@ -198,7 +198,6 @@ fn main() {
                                         println!("Client tx error: {}", err);
                                     }
                                 }
-                                println!("Got empty message, returning");
                                 return;
                             }
                             let message: Message = Message::binary(mles_msg);
@@ -209,7 +208,6 @@ fn main() {
                                 }
                             }
                         } else {
-                            println!("Returning from Rx");
                             return;
                         }
                     });
