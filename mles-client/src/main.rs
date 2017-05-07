@@ -178,7 +178,7 @@ fn main() {
                             }
                             _ => {
                                 let msg = message.payload.into_owned().to_vec();
-                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg).map_err(|_| {
+                                let _ = message_forward_all(mles_tx_ws_msg.clone(), ws_tx_msg.clone(), msg).map_err(|_| {
                                     let message = Message::close();
                                     let msg = message.payload.into_owned().to_vec();
                                     let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
