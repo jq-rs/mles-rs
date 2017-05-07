@@ -202,7 +202,7 @@ fn main() {
                 else {
                     if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                         if mles_db_entry.check_for_duplicate_key(key) {
-                            println!("Duplicate key {} detected", key);
+                            println!("Duplicate key {:x} detected", key);
                             return Err(Error::new(ErrorKind::BrokenPipe, "duplicate key"));
                         }
                         mles_db_entry.add_channel(key, tx_inner.clone());

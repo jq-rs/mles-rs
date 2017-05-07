@@ -165,7 +165,7 @@ fn main() {
                                 let message = Message::close();
                                 let msg = message.payload.into_owned().to_vec();
                                 let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
-                                println!("Client {} disconnected", ip);
+                                println!("Close: Client {} disconnected", ip);
                                 return;
                             }
                             Type::Ping => {
@@ -178,7 +178,10 @@ fn main() {
                             }
                             _ => {
                                 let msg = message.payload.into_owned().to_vec();
-                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg).map_err(|_| {
+                                let _ = message_forward_all(mles_tx_ws_msg.clone(), ws_tx_msg.clone(), msg).map_err(|_| {
+                                    let message = Message::close();
+                                    let msg = message.payload.into_owned().to_vec();
+                                    let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
                                     println!("Client {} disconnected", ip);
                                     return;
                                 });
@@ -188,6 +191,13 @@ fn main() {
                     thread::spawn(move || loop {
                         if let Ok(mles_msg) = mles_rx_ws.recv() {
                             if 0 == mles_msg.len() {
+                                let message = Message::close();
+                                match sender.send_message(&message) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        println!("Client tx error: {}", err);
+                                    }
+                                }
                                 return;
                             }
                             let message: Message = Message::binary(mles_msg);
@@ -226,6 +236,7 @@ fn main() {
                         let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
                         let ws_rx = ws_rx.and_then(|buf| {
                             if 0 == buf.len() {
+                                println!("Got broken pipe");
                                 return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                             }
                             if None == key {
@@ -249,6 +260,9 @@ fn main() {
                                     return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                                 }
                             }
+                            if 0 == buf.len() {
+                                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+                            }
                             Ok(())
                         });
 
@@ -264,6 +278,7 @@ fn main() {
                             println!("Error: {}", err);
                         }
                     };
+                    println!("Returning from main ws thread");
                 });
             }
         } else {
