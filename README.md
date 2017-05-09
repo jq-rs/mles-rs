@@ -13,7 +13,7 @@ An Mles server may save the history of received data, which can be then distribu
 
 Every session between Mles server and client is authenticated using 64-bit SipHash [2]. The 64-bit key is hashed over provided UTF-8 strings. These can be combined from user connection endpoint details and/or a shared key and session (uid, channel) values. This allows Mles server to verify that a connecting Mles client is really connecting from the endpoint where it claims to be connecting with proper user and channel details. Mles client sessions behind Network Address Translation (NAT) can use a shared key without session endpoint detail authentication.
 
-After Mles server has authenticated the session and moved the connected Mles client to its channel context, SipHash key should be ignored by the Mles server. After context change, SipHash key may be changed and used by Mles clients within the channel context.
+After Mles server has authenticated the session and moved the connected Mles client to its channel context, the SipHash key should be ignored by the Mles server. After context change, the SipHash key may be changed and used by Mles clients within the channel context.
 
 An Mles server may contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers.
 
