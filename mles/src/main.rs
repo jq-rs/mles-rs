@@ -49,7 +49,6 @@ use frame::*;
 use peer::*;
 
 const SRVPORT: &str = ":8077";
-const KEEPALIVE: Option<u32> = Some(5000);
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len

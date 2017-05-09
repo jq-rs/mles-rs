@@ -365,13 +365,18 @@ pub fn do_hash<T: Hash>(t: &Vec<T>) -> u64 {
 /// # Example
 /// ```
 ///
-/// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+/// use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
 /// use mles_utils::addr2str;
 ///
 /// let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
 /// let addrstr = addr2str(&addr);
 ///
 /// assert_eq!("127.0.0.1:8080", addrstr);
+///
+/// let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xff03, 0, 0, 0, 0, 0, 0, 1)), 8077);
+/// let addrstr = addr2str(&addr);
+///
+/// assert_eq!("[ff03:0:0:0:0:0:0:1]:8077", addrstr);
 /// ```
 pub fn addr2str(addr: &SocketAddr) -> String {
     let ipaddr = addr.ip();
