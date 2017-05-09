@@ -1,12 +1,15 @@
 [package]
 name = "mles-utils"
-version = "0.9.8"
+version = "0.9.9"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "https://docs.rs/mles-utils"
+readme = "README.md"
+categories = ["Network programming"]
+keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 
 [dependencies]
 serde = "1.0"
@@ -18,3 +21,6 @@ siphasher = "0.2"
  
 [lib]
 test = true
+
+[badges]
+travis-ci = { repository = "https://github.com/jq-rs/mles-rs", branch = "master" }

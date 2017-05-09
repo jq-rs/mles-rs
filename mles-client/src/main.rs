@@ -237,7 +237,6 @@ fn main() {
                         let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
                         let ws_rx = ws_rx.and_then(|buf| {
                             if 0 == buf.len() {
-                                println!("Got broken pipe");
                                 return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
                             }
                             if None == key {
@@ -279,7 +278,6 @@ fn main() {
                             println!("Error: {}", err);
                         }
                     };
-                    println!("Returning from main ws thread");
                 });
             }
         } else {

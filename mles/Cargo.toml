@@ -1,14 +1,20 @@
 [package]
 name = "mles"
-version = "0.9.7"
+version = "0.9.9"
 authors = ["jq-rs"]
-description = "Mles - a distributed publish/subscribe database server"
+description = "Mles - a distributed publish/subscribe data server"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "http://mles.io"
+readme = "README.md"
+categories = ["Network programming"]
+keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 
 [dependencies]
 mles-utils = "0.9"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
+
+[badges]
+travis-ci = { repository = "https://github.com/jq-rs/mles-rs", branch = "master" }
