@@ -21,4 +21,5 @@ tokio-service = "0.1"
 websocket = {version = "0.19", default-features=false}
 
 [badges]
-travis-ci = { repository = "https://github.com/jq-rs/mles-rs", branch = "master" }
+travis-ci = { repository = "jq-rs/mles-rs" }
+appveyor = { repository = "jq-rs/mles-rs" }
