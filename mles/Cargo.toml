@@ -6,8 +6,8 @@ description = "Mles - a distributed publish/subscribe data server"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "http://mles.io"
-readme = "README.md"
-categories = ["Network programming"]
+readme = "../README.md"
+categories = ["network-programming"]
 keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 
 [dependencies]
@@ -17,4 +17,5 @@ tokio-core = "0.1"
 tokio-io = "0.1"
 
 [badges]
-travis-ci = { repository = "https://github.com/jq-rs/mles-rs", branch = "master" }
+travis-ci = { repository = "jq-rs/mles-rs" }
+appveyor = { repository = "jq-rs/mles-rs" }
