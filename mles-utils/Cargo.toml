@@ -1,6 +1,6 @@
 [package]
 name = "mles-utils"
-version = "0.9.10"
+version = "0.9.11"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
@@ -23,4 +23,5 @@ siphasher = "0.2"
 test = true
 
 [badges]
-travis-ci = { repository = "https://github.com/jq-rs/mles-rs", branch = "master" }
+travis-ci = { repository = "jq-rs/mles-rs" }
+appveyor = { repository = "jq-rs/mles-rs" }
