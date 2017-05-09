@@ -6,8 +6,8 @@ description = "Mles - a distributed publish/subscribe data server"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "http://mles.io"
-readme = "README.md"
-categories = ["Network programming"]
+readme = "../README.md"
+categories = ["network-programming"]
 keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 
 [dependencies]

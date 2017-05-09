@@ -1,14 +1,14 @@
 [package]
 name = "mles-utils"
-version = "0.9.9"
+version = "0.9.10"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "https://docs.rs/mles-utils"
-readme = "README.md"
-categories = ["Network programming"]
+readme = "../README.md"
+categories = ["network-programming"]
 keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 
 [dependencies]
