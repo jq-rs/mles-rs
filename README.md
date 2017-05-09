@@ -3,7 +3,7 @@
 **Mles** [![crates.io status](https://img.shields.io/crates/v/mles.svg)](https://crates.io/crates/mles)
 **Mles-client** [![crates.io status](https://img.shields.io/crates/v/mles-client.svg)](https://crates.io/crates/mles-client)
 
-Mles is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe database service. The reference implementation consists of _Mles-utils_, _Mles_ server and _Mles-client/WebSocket-proxy_.
+Mles (Modern Lightweight channEl Service) is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe service. The reference implementation consists of _Mles-utils_, _Mles_ server and _Mles-client/websocket-proxy_.
 
 ## Mles protocol overview
 
@@ -19,7 +19,7 @@ An Mles server may contact to an Mles peer server. The Mles peer server sees thi
 
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server may be configured to use IP anycast.
 
-An Mles clients may implement WebSocket [4] proxy which allows to do Mles connections over WebSocket protocol. Such simple example proxy implementation is available in the reference client.
+Mles clients may implement WebSocket [4] proxy which allows to do Mles connections over WebSocket protocol. Such simple example proxy implementation is available in the reference client.
 
 Mles protocol has Internet Assigned Number Authority (IANA) **port 8077** [3] registered for its use.
 
