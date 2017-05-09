@@ -218,8 +218,6 @@ fn main() {
                     let client = tcp.and_then(|stream| {
                         let _val = stream.set_nodelay(true)
                                          .map_err(|_| panic!("Cannot set to no delay"));
-                        let _val = stream.set_keepalive_ms(KEEPALIVE)
-                                         .map_err(|_| panic!("Cannot set keepalive"));
                         let laddr = match stream.local_addr() {
                             Ok(laddr) => laddr,
                             Err(_) => {
@@ -306,8 +304,6 @@ fn main() {
         let client = tcp.and_then(|stream| {
             let _val = stream.set_nodelay(true)
                              .map_err(|_| panic!("Cannot set to no delay"));
-            let _val = stream.set_keepalive_ms(KEEPALIVE)
-                             .map_err(|_| panic!("Cannot set keepalive"));
             let laddr = match stream.local_addr() {
                 Ok(laddr) => laddr,
                 Err(_) => {

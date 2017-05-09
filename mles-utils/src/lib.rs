@@ -141,6 +141,9 @@ impl Msg {
 
 /// Encode Msg object to CBOR.
 ///
+/// # Errors
+/// If message cannot be encoded, an empty vector is returned.
+///
 /// # Example
 /// ```
 /// use mles_utils::{Msg, message_encode};
@@ -160,6 +163,9 @@ pub fn message_encode(msg: &Msg) -> Vec<u8> {
 }
 
 /// Decode CBOR byte string to Msg object.
+///
+/// # Errors
+/// If message cannot be decoded, a Msg structure with empty items is returned.
 ///
 /// # Example
 /// ```
@@ -182,6 +188,9 @@ pub fn message_decode(slice: &[u8]) -> Msg {
 
 /// Read received buffer header type.
 ///
+/// # Errors
+/// If input vector length is smaller than needed, zero is returned.
+///
 /// # Example
 /// ```
 /// use mles_utils::read_hdr_type;
@@ -200,6 +209,9 @@ pub fn read_hdr_type(hdr: &Vec<u8>) -> u32 {
 }
 
 /// Read received buffer header len.
+///
+/// # Errors
+/// If input vector length is smaller than needed, zero is returned.
 ///
 /// # Example
 /// ```
@@ -276,6 +288,9 @@ pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
 
 /// Read a key from buffer.
 ///
+/// # Errors
+/// If input vector length is smaller than needed, zero is returned.
+///
 /// # Example
 /// ```
 /// use mles_utils::{write_key, read_key, do_hash};
@@ -297,6 +312,9 @@ pub fn read_key(keyv: &Vec<u8>) -> u64 {
 }
 
 /// Read a key from header.
+///
+/// # Errors
+/// If input vector length is smaller than needed, zero is returned.
 ///
 /// # Example
 /// ```
@@ -320,7 +338,7 @@ pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
     num
 }
 
-/// Do a valid hash for Mles over provided list.
+/// Do a valid hash for Mles over provided UTF-8 String list.
 ///
 /// # Example
 /// ```
