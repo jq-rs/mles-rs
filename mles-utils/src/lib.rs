@@ -32,6 +32,7 @@ use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
+use std::net::IpAddr;
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
@@ -140,8 +141,8 @@ impl Msg {
 
 /// KeyInput structure
 ///
-/// This structure defines the Mles types that can be hashed easily. 
-#[derive(Hash, Clone)]
+/// This structure defines the Mles types that can be hashed easily. However, for generic
+/// portability, the String-type is the only type that actually gets hashed. 
 pub enum KeyInput {
     /// Socket address as a hash input
     Addr(SocketAddr),
@@ -349,8 +350,45 @@ pub fn do_hash<T: Hash>(t: &Vec<T>) -> u64 {
     s.finish()
 }
 
-#[cfg(test)]
+/// Do a valid UTF-8 string from a SocketAddr.
+///
+/// For IPv4 the format is "x.x.x.x:y", where x is u8 and y is u16
+/// For IPv6 the format is "[z:z:z:z:z:z:z:z]:y", where z is u16 in hexadecimal format and y is u16
+///
+/// # Example
+/// ```
+///
+/// use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+/// use mles_utils::addr2str;
+///
+/// let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+/// let addrstr = addr2str(&addr);
+///
+/// assert_eq!("127.0.0.1:8080", addrstr);
+/// ```
+pub fn addr2str(addr: &SocketAddr) -> String {
+    let ipaddr = addr.ip();
+    match ipaddr {
+        IpAddr::V4(v4) => {
+            let v4oct = v4.octets();
+            let v4str = format!("{}.{}.{}.{}:{}", 
+                                v4oct[0], v4oct[1], v4oct[2], v4oct[3], 
+                                addr.port());
+            return v4str;
+        }
+        IpAddr::V6(v6) => {
+            let v6seg = v6.segments();
+            let v6str = format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}", 
+                                v6seg[0], v6seg[1], v6seg[2], v6seg[3], 
+                                v6seg[4], v6seg[5], v6seg[6], v6seg[7], 
+                                addr.port());
+            return v6str;
+        }
+    }
+}
 
+
+#[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
     use super::*;
