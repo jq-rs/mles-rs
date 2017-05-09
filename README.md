@@ -11,7 +11,7 @@ Mles clients connect to an Mles server using Mles protocol header and (uid, chan
 
 An Mles server may save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels: therefore a TCP session per (uid, channel) pair is always used.
 
-Every session between Mles server and client is authenticated using 64-bit SipHash [2]. The 64-bit key is hashed over provided UTF-8 strings. These can be combined from user connection endpoint details and/or a shared key and session (uid, channel) values. This allows Mles server to verify that connecting Mles client is really connecting from the endpoint where it claims to be connecting with correct user and channel details. Mles client sessions behind Network Address Translation (NAT) has to use a shared key without session endpoint detail authentication.
+Every session between Mles server and client is authenticated using 64-bit SipHash [2]. The 64-bit key is hashed over provided UTF-8 strings. These can be combined from user connection endpoint details and/or a shared key and session (uid, channel) values. This allows Mles server to verify that a connecting Mles client is really connecting from the endpoint where it claims to be connecting with proper user and channel details. Mles client sessions behind Network Address Translation (NAT) can use a shared key without session endpoint detail authentication.
 
 After Mles server has authenticated the session and moved the connected Mles client to its channel context, SipHash key should be ignored by the Mles server. After context change, SipHash key may be changed and used by Mles clients within the channel context.
 
