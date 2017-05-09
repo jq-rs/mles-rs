@@ -229,11 +229,11 @@ fn main() {
                             }
                         };
                         if  keyval.len() > 0 {
-                            keys.push(KeyInput::Str(keyval.clone()));
+                            keys.push(keyval.clone());
                         } else {            
-                            keys.push(KeyInput::Addr(laddr));
+                            keys.push(addr2str(&laddr));
                             if keyaddr.len() > 0 {
-                                keys.push(KeyInput::Str(keyaddr.clone()));
+                                keys.push(keyaddr.clone());
                             }
                         }
                         let (sink, stream) = stream.framed(Bytes).split();
@@ -246,8 +246,8 @@ fn main() {
                             if None == key {
                                 //create hash for verification
                                 let decoded_message = message_decode(buf.as_slice());
-                                keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
-                                keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
+                                keys.push(decoded_message.get_uid().to_string());
+                                keys.push(decoded_message.get_channel().to_string());
                                 key = Some(do_hash(&keys));
                             }
                             let mut keyv = write_key(key.unwrap());
@@ -317,11 +317,11 @@ fn main() {
                 }
             };
             if  keyval.len() > 0 {
-                keys.push(KeyInput::Str(keyval.clone()));
+                keys.push(keyval.clone());
             } else {            
-                keys.push(KeyInput::Addr(laddr));
+                keys.push(addr2str(&laddr));
                 if keyaddr.len() > 0 {
-                    keys.push(KeyInput::Str(keyaddr.clone()));
+                    keys.push(keyaddr.clone());
                 }
             }
             let (sink, stream) = stream.framed(Bytes).split();
@@ -329,8 +329,8 @@ fn main() {
                 if None == key {
                     //create hash for verification
                     let decoded_message = message_decode(buf.as_slice());
-                    keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
-                    keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
+                    keys.push(decoded_message.get_uid().to_string());
+                    keys.push(decoded_message.get_channel().to_string());
                     key = Some(do_hash(&keys));
                 }
                 let mut keyv = write_key(key.unwrap());

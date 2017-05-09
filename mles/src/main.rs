@@ -148,12 +148,12 @@ fn main() {
         };
         let mut keys = Vec::new();
         if keyval.len() > 0 {
-            keys.push(KeyInput::Str(keyval.clone()));
+            keys.push(keyval.clone());
         }
         else {
-            keys.push(KeyInput::Addr(paddr));
+            keys.push(addr2str(&paddr));
             if keyaddr.len() > 0 {
-                keys.push(KeyInput::Str(keyaddr.clone()));
+                keys.push(keyaddr.clone());
             }
         }
 

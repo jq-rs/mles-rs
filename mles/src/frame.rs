@@ -53,15 +53,15 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<KeyInput>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, Msg), Error> { 
+pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, Msg), Error> { 
 
     //read hash from message
     let key = read_key_from_hdr(&hdr_key);
 
     //create hash for verification
     let decoded_message = message_decode(message.as_slice());
-    keys.push(KeyInput::Str(decoded_message.get_uid().to_string()));
-    keys.push(KeyInput::Str(decoded_message.get_channel().to_string()));
+    keys.push(decoded_message.get_uid().to_string());
+    keys.push(decoded_message.get_channel().to_string());
 
     let hkey = do_hash(&keys);
     if hkey != key {

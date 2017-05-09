@@ -139,17 +139,6 @@ impl Msg {
     }
 }
 
-/// KeyInput structure
-///
-/// This structure defines the Mles types that can be hashed easily. However, for generic
-/// portability, the String-type is the only type that actually gets hashed. 
-pub enum KeyInput {
-    /// Socket address as a hash input
-    Addr(SocketAddr),
-    /// String value as a hash input
-    Str(String),
-}
-
 /// Encode Msg object to CBOR.
 ///
 /// # Example
