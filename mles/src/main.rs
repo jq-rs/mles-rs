@@ -134,7 +134,6 @@ fn main() {
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
-        let _val = stream.set_keepalive_ms(KEEPALIVE).map_err(|_| panic!("Cannot set keepalive"));
         cnt += 1;
 
         println!("New Connection: {}", addr);

@@ -76,7 +76,6 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: St
 
         let client = tcp.and_then(move |pstream| {
             let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
-            let _val = pstream.set_keepalive_ms(::KEEPALIVE).map_err(|_| panic!("Cannot set keepalive"));;
             println!("Successfully connected to peer");
 
             let (reader, writer) = pstream.split();
