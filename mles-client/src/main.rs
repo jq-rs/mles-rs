@@ -63,7 +63,6 @@ use websocket::message::Type;
 
 const SRVPORT: &str = ":8077";
 const WSPORT: &str = ":8076";
-const KEEPALIVE: Option<u32> = Some(5000);
 
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
