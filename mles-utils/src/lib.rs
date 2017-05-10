@@ -435,7 +435,7 @@ mod tests {
     fn test_hash() {
         let addr = "127.0.0.1:8077";
         let addr = addr.parse::<SocketAddr>().unwrap();
-        let orig_key = do_hash(&vec![addr]);
+        let orig_key = do_hash(&vec![addr2str(&addr)]);
         let keyv = write_key(orig_key);
         let key = read_key(&keyv);
         assert_eq!(orig_key, key);
