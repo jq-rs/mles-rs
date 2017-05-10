@@ -399,7 +399,6 @@ pub fn addr2str(addr: &SocketAddr) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
@@ -407,12 +406,12 @@ mod tests {
 
     #[test]
     fn test_encode_decode_msg() {
-        let uid =  "User".to_string();
-        let channel =  "Channel".to_string();
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
         let msg =  "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
-        let cbor_msg = message_encode(&orig_msg);
-        let decoded_msg = message_decode(&cbor_msg);
+        let encoded_msg = message_encode(&orig_msg);
+        let decoded_msg = message_decode(&encoded_msg);
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
