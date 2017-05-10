@@ -349,7 +349,7 @@ pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
 /// let hashable = vec![hashstr1, hashstr2];
 /// let key: u64 = do_hash(&hashable); 
 /// ```
-pub fn do_hash<T: Hash>(t: &Vec<T>) -> u64 {
+pub fn do_hash(t: &Vec<String>) -> u64 {
     let mut s = SipHasher::new();
     for item in t {
         item.hash(&mut s);
