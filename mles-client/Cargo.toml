@@ -8,7 +8,7 @@ repository = "https://github.com/jq-rs/mles-rs"
 documentation = "http://mles.io"
 readme = "../README.md"
 categories = ["network-programming"]
-keywords = ["mles", "publish", "subscribe", "network", "cbor", "websocket"]
+keywords = ["mles", "publish", "subscribe", "cbor", "websocket"]
 
 [dependencies]
 mles-utils = "0.9"
