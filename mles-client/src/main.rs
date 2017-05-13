@@ -39,8 +39,7 @@ extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
 
-/* websocket proxy support */
-extern crate websocket;
+mod ws;
 
 use std::{env, process};
 use std::io::{self, Read, Write};
@@ -57,12 +56,9 @@ use tokio_io::AsyncRead;
 use tokio_io::codec::{Encoder, Decoder};
 use mles_utils::*;
 
-/* websocket proxy support */
-use websocket::{Server, Message};
-use websocket::message::Type;
+use ws::*;
 
 const SRVPORT: &str = ":8077";
-const WSPORT: &str = ":8076";
 
 const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
@@ -111,178 +107,85 @@ fn main() {
     };
 
     if let Some(_) = ws_enabled {
+        //let (ws_tx, ws_rx) = mpsc::channel(16);
+        //let (mles_tx, mles_rx) = mpsc::channel(16);
+
         /* Websocket proxy support */
-        if let Ok(ws_server) = Server::bind("0.0.0.0".to_string() + WSPORT) {
-            println!("Listening Websockets clients at port{}", WSPORT);
-            for connection in ws_server.filter_map(Result::ok) {
-                let keyval = keyval.clone();
-                let keyaddr = keyaddr.clone();
-                thread::spawn(move || {
-                    // Handle stdin in a separate thread
-                    let (ws_tx, ws_rx) = mpsc::channel(16);
-                    let (mles_tx_ws, mles_rx_ws) = std::sync::mpsc::channel();
+        thread::spawn(move || process_ws_proxy());
 
-                    let mut core = Core::new().unwrap();
-                    let handle = core.handle();
-                    let tcp = TcpStream::connect(&raddr, &handle);
-                    let mut key: Option<u64> = None;
-                    let mut keys = Vec::new();
+        /*
+        let mut core = Core::new().unwrap();
+        let handle = core.handle();
+        let tcp = TcpStream::connect(&raddr, &handle);
+        let mut key: Option<u64> = None;
+        let mut keys = Vec::new();
 
-                    if !connection
-                            .protocols()
-                            .contains(&"mles-websocket".to_string()) {
-                        let _ = connection.reject().map_err(|_| ());
-                        println!("Protocol rejected");
-                        return;
-                    }
-                    let mut client = match connection.use_protocol("mles-websocket").accept() {
-                        Ok(client) => client,
-                        Err(_) => {
-                            println!("Connection rejected");
-                            return;
-                        }
-                    };
+        //process messages from ws, in case new channel, spawn a connection
 
-                    let ip = client.peer_addr().unwrap();
-                    println!("Connection from {}", ip);
-                    let _val = client.set_nodelay(true)
-                                     .map_err(|_| panic!("Cannot set to no delay"));
-                    let (mut receiver, mut sender) = client.split().unwrap();
-                    let mles_tx_ws_inner = mles_tx_ws.clone();
-                    thread::spawn(move || for message in receiver.incoming_messages() {
-                        let ws_tx_msg = ws_tx.clone();
-                        let mles_tx_ws_msg = mles_tx_ws_inner.clone();
-                        let message: Message = match message {
-                            Ok(message) => message,
-                            Err(_) => {
-                                //Sometimes message just fails..
-                                let empty_msg = Vec::new();
-                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, empty_msg).map_err(|_| {});
-                                println!("Message failed, client {} disconnected", ip);
-                                return;
-                            }
-                        };
-                        match message.opcode {
-                            Type::Close => {
-                                let message = Message::close();
-                                let msg = message.payload.into_owned().to_vec();
-                                let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
-                                println!("Close: Client {} disconnected", ip);
-                                return;
-                            }
-                            Type::Ping => {
-                                let message = Message::pong(message.payload);
-                                let msg = message.payload.into_owned().to_vec();
-                                let _ = message_forward_mles(mles_tx_ws_msg, ws_tx_msg, msg).map_err(|_| {
-                                    println!("Client {} disconnected", ip);
-                                    return;
-                                });
-                            }
-                            _ => {
-                                let msg = message.payload.into_owned().to_vec();
-                                let _ = message_forward_all(mles_tx_ws_msg.clone(), ws_tx_msg.clone(), msg).map_err(|_| {
-                                    let message = Message::close();
-                                    let msg = message.payload.into_owned().to_vec();
-                                    let _ = message_forward_all(mles_tx_ws_msg, ws_tx_msg, msg);
-                                    println!("Client {} disconnected", ip);
-                                    return;
-                                });
-                            }
-                        }
-                    });
-                    thread::spawn(move || loop {
-                        if let Ok(mles_msg) = mles_rx_ws.recv() {
-                            if 0 == mles_msg.len() {
-                                let message = Message::close();
-                                match sender.send_message(&message) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        println!("Client tx error: {}", err);
-                                    }
-                                }
-                                return;
-                            }
-                            let message: Message = Message::binary(mles_msg);
-                            match sender.send_message(&message) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    println!("Client tx error: {}", err);
-                                }
-                            }
-                        } else {
-                            return;
-                        }
-                    });
-
-                    let client = tcp.and_then(|stream| {
-                        let _val = stream.set_nodelay(true)
-                                         .map_err(|_| panic!("Cannot set to no delay"));
-                        let laddr = match stream.local_addr() {
-                            Ok(laddr) => laddr,
-                            Err(_) => {
-                                let addr = "0.0.0.0:0";
-                                let addr = addr.parse::<SocketAddr>().unwrap();
-                                addr
-                            }
-                        };
-                        if  keyval.len() > 0 {
-                            keys.push(keyval.clone());
-                        } else {            
-                            keys.push(addr2str(&laddr));
-                            if keyaddr.len() > 0 {
-                                keys.push(keyaddr.clone());
-                            }
-                        }
-                        let (sink, stream) = stream.framed(Bytes).split();
-                        let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
-                        let ws_rx = ws_rx.and_then(|buf| {
-                            if 0 == buf.len() {
-                                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-                            }
-                            if None == key {
-                                //create hash for verification
-                                let decoded_message = message_decode(buf.as_slice());
-                                keys.push(decoded_message.get_uid().to_string());
-                                keys.push(decoded_message.get_channel().to_string());
-                                key = Some(do_hash(&keys));
-                            }
-                            let mut keyv = write_key(key.unwrap());
-                            keyv.extend(buf);
-                            Ok(keyv)
-                        });
-
-                        let send_wsrx = ws_rx.forward(sink);
-                        let write_wstx = stream.for_each(move |buf| {
-                            // send to websocket
-                            match mles_tx_ws.send(buf.to_vec()) {
-                                Ok(_) => {}
-                                Err(_) => {
-                                    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-                                }
-                            }
-                            if 0 == buf.len() {
-                                return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
-                            }
-                            Ok(())
-                        });
-
-                        send_wsrx
-                            .map(|_| ())
-                            .select(write_wstx.map(|_| ()))
-                            .then(|_| Ok(()))
-                    });
-
-                    let _run = match core.run(client) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            println!("Error: {}", err);
-                        }
-                    };
-                });
+        let client = tcp.and_then(|stream| {
+            let _val = stream.set_nodelay(true)
+            .map_err(|_| panic!("Cannot set to no delay"));
+        let laddr = match stream.local_addr() {
+            Ok(laddr) => laddr,
+            Err(_) => {
+                let addr = "0.0.0.0:0";
+                let addr = addr.parse::<SocketAddr>().unwrap();
+                addr
             }
-        } else {
-            println!("Could not bind to websockets port");
+        };
+        if  keyval.len() > 0 {
+            keys.push(keyval.clone());
+        } else {            
+            keys.push(addr2str(&laddr));
+            if keyaddr.len() > 0 {
+                keys.push(keyaddr.clone());
+            }
         }
+        let (sink, stream) = stream.framed(Bytes).split();
+        let ws_rx = ws_rx.map_err(|_| panic!()); // errors not possible on rx XXX
+        let ws_rx = ws_rx.and_then(|buf| {
+            //if 0 == buf.len() {
+            //    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+            //}
+            //if None == key {
+                //create hash for verification
+            //    let decoded_message = message_decode(buf.as_slice());
+            //    keys.push(decoded_message.get_uid().to_string());
+            //    keys.push(decoded_message.get_channel().to_string());
+            //    key = Some(do_hash(&keys));
+            //}
+            let mut keyv = write_key(64);
+            keyv.extend(buf);
+            Ok(keyv)
+        });
+
+        let send_wsrx = ws_rx.forward(sink);
+        let write_wstx = stream.for_each(move |buf| {
+            // send to websocket
+            //match mles_tx.send(buf.to_vec()) {
+            //    Ok(_) => {}
+            //    Err(_) => {
+            //        return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+            //    }
+            //}
+            //if 0 == buf.len() {
+            //    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+            //}
+            Ok(())
+        });
+
+        send_wsrx
+            .map(|_| ())
+            .select(write_wstx.map(|_| ()))
+            .then(|_| Ok(()))
+        });
+
+        let _run = match core.run(client) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("Error: {}", err);
+            }
+        };*/
     } else {
         // Handle stdin in a separate thread
         let (stdin_tx, stdin_rx) = mpsc::channel(16);
