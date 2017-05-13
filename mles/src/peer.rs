@@ -27,6 +27,7 @@ use std::io::Error;
 use std::net::SocketAddr;
 use std::thread;
 use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 use tokio_core::net::TcpStream;
 use tokio_core::reactor::Core;
@@ -53,15 +54,12 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: St
                  tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
-    let waittime = WAITTIME;
-    let mut loopcnt = 1;
+    let loopcnt = Arc::new(Mutex::new(1));
 
-    println!("Peer channel thread for channel {}", channel);
     loop {
         let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new(hist_limit)));
         let handle = core.handle();
         let channel = channel.clone();
-        let channel2 = channel.clone();
         let tx_peer_for_msgs = tx_peer_for_msgs.clone();
         let msg = msg.clone();
 
@@ -74,8 +72,16 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: St
         let _res = tx_peer_for_msgs.send((peer_key, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
         let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
+        let loopcnt_inner = loopcnt.clone();
         let client = tcp.and_then(move |pstream| {
-            let _val = pstream.set_nodelay(true).map_err(|_| panic!("Cannot set peer to no delay"));
+            let _val = pstream.set_nodelay(true)
+                              .map_err(|_| panic!("Cannot set peer to no delay"));
+            let _val = pstream.set_keepalive_ms(::KEEPALIVEMS)
+                              .map_err(|_| panic!("Cannot set keepalive"));
+            {
+                let mut loopcnt = loopcnt_inner.lock().unwrap();
+                *loopcnt = 1;
+            }
             println!("Successfully connected to peer");
 
             let (reader, writer) = pstream.split();
@@ -143,14 +149,15 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: St
 
         // execute server
         let _res = core.run(client).map_err(|err| { println!("Peer: {}", err); () });
-
-        let mut wait = waittime * loopcnt;
+         
+        let mut loopcnt = loopcnt.lock().unwrap();
+        let mut wait = WAITTIME * *loopcnt;
         if wait > MAXWAIT {
             wait = MAXWAIT;
         }
-        loopcnt *= 2;
+        *loopcnt *= 2;
 
-        println!("Connection for channel {} failed. Please check for proper key. Retrying in {} s.", channel2, wait);
+        println!("Connection failed. Please check for proper key. Retrying in {} s.", wait);
         thread::sleep(Duration::from_secs(wait));
     }
 }
