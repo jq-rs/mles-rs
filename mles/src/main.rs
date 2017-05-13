@@ -58,6 +58,8 @@ const HISTLIMIT: usize = 100;
 
 const KEYAND: u64 = 0x0000ffffffffffff;
 
+const KEEPALIVEMS: Option<u32> = Some(5000);
+
 fn main() {
     let mut peer: Option<SocketAddr> = None;
     let mut argcnt = 0;
@@ -132,7 +134,10 @@ fn main() {
     let mut cnt = 0;
 
     let srv = socket.incoming().for_each(move |(stream, addr)| {
-        let _val = stream.set_nodelay(true).map_err(|_| panic!("Cannot set to no delay"));
+        let _val = stream.set_nodelay(true)
+                         .map_err(|_| panic!("Cannot set to no delay"));
+        let _val = stream.set_keepalive_ms(KEEPALIVEMS)
+                         .map_err(|_| panic!("Cannot set keepalive"));
         cnt += 1;
 
         println!("New Connection: {}", addr);

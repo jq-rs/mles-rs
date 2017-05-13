@@ -1,3 +1,28 @@
+/**
+ * Copyright (c) 2017 Daniel Abramov
+ * Copyright (c) 2017 Alexey Galakhov
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ * 
+ * Mles-support Copyright (c) 2017 Mles developers
+ */
+
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_tungstenite;
@@ -27,6 +52,10 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     let mut cnt = 0;
 
     let srv = socket.incoming().for_each(|(stream, addr)| {
+        let _val = stream.set_nodelay(true)
+                         .map_err(|_| panic!("Cannot set to no delay"));
+        let _val = stream.set_keepalive_ms(::KEEPALIVEMS)
+                         .map_err(|_| panic!("Cannot set keepalive"));
         let handle_inner = handle.clone();
         cnt += 1;
 
@@ -38,7 +67,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let ws_tx_inner = ws_tx.clone();
         accept_async(stream).and_then(move |ws_stream| {
             let ws_tx_own = ws_tx_inner.clone();
-            println!("New WebSocket connection: {}", addr);
+            println!("New WebSocket connection {}: {}", cnt, addr);
 
             thread::spawn(move || ::process_mles_client(raddr, keyval_inner, keyaddr_inner, 
                                                         ws_tx_inner, mles_rx));
@@ -68,7 +97,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
 
             Ok(())
         }).map_err(|e| {
-            println!("Error during the websocket handshake occurred: {}", e);
+            println!("Error during the WebSocket handshake occurred: {}", e);
             Error::new(ErrorKind::Other, e)
         })
     });
@@ -78,5 +107,4 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
             println!("Error: {}", err);
         }
     };
-    println!("Returning from ws");
 }
