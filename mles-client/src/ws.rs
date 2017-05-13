@@ -47,7 +47,13 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     let addr = addr.parse().unwrap();
     let mut core = Core::new().unwrap();
     let handle = core.handle();
-    let socket = TcpListener::bind(&addr, &handle).unwrap();
+    let socket = match TcpListener::bind(&addr, &handle) {
+        Ok(listener) => listener,
+        Err(err) => {
+            println!("Proxy error: {}", err);
+            return;
+        },
+    };
     println!("Listening WebSockets on: {}", addr);
     let mut cnt = 0;
 
@@ -78,13 +84,19 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
                 let ws_tx = ws_tx_own.clone();
                 let mles_tx = mles_tx.clone();
                 let mles_message = message.into_data();
-                let _ = mles_tx.send(mles_message.clone()).wait();
-                let _ = ws_tx.send(mles_message).wait();
+                let _ = mles_tx.send(mles_message.clone()).wait().map_err(|err| {
+                    return Error::new(ErrorKind::Other, err);
+                });
+                let _ = ws_tx.send(mles_message).wait().map_err(|err| {
+                    return Error::new(ErrorKind::Other, err);
+                });
                 Ok(())
             });            
 
             let ws_writer = ws_rx.fold(sink, |mut sink, msg| {
-                sink.start_send(Message::binary(msg)).unwrap();
+                let _ = sink.start_send(Message::binary(msg)).map_err(|err| {
+                    return Error::new(ErrorKind::Other, err);
+                });                                      
                 Ok(sink)
             });
             let connection = ws_reader.map(|_| ()).map_err(|_| ())

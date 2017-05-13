@@ -354,7 +354,9 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
         let write_wstx = stream.for_each(move |buf| {
             let ws_tx_inner = ws_tx.clone();
             // send to websocket
-            let _ = ws_tx_inner.send(buf.to_vec()).wait();
+            let _ = ws_tx_inner.send(buf.to_vec()).wait().map_err(|err| {
+                return Error::new(ErrorKind::Other, err);
+            });              
             Ok(())
         });
 
