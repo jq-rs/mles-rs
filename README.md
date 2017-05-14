@@ -56,6 +56,26 @@ pub struct Msg {
     message: Vec<u8>,
 }
 ```
+## Usage
+
+```
+mles [peer-address] [--history-limit=N]
+```
+
+```
+mles-client <server-address> [--use-websockets]
+```
+Server use example:
+```
+MLES_KEY=validkey target/debug/mles
+```
+
+Client use example:
+```
+MLES_KEY=validkey target/debug/mles-client 127.0.0.1
+```
+
+
 ## References:
 
  1. Concise Binary Object Representation (CBOR), https://tools.ietf.org/html/rfc7049
