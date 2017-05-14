@@ -50,6 +50,10 @@ impl MlesDb {
         &self.tx_db
     }
 
+    pub fn clear_tx_db(&mut self) {
+        self.tx_db = Vec::new();
+    }
+
     pub fn add_tx_db(&mut self, tx: UnboundedSender<Vec<u8>>) {
         &self.tx_db.push(tx);
     }
@@ -129,6 +133,10 @@ impl MlesPeerDb {
 
     pub fn add_channel(&mut self, channel: UnboundedSender<Vec<u8>>) {
         self.channels.push(channel);
+    }
+
+    pub fn clear_channels(&mut self) {
+        self.channels = Vec::new();
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
