@@ -63,6 +63,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let _val = stream.set_keepalive_ms(::KEEPALIVEMS)
                          .map_err(|_| panic!("Cannot set keepalive"));
         let handle_inner = handle.clone();
+        let handle_out = handle.clone();
         cnt += 1;
 
         let (ws_tx, ws_rx) = futures::sync::mpsc::unbounded();
@@ -71,7 +72,8 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let keyval_inner = keyval.clone();
         let keyaddr_inner = keyaddr.clone();
         let ws_tx_inner = ws_tx.clone();
-        accept_async(stream).and_then(move |ws_stream| {
+        let accept = accept_async(stream).map_err(|err| Error::new(ErrorKind::Other, err));
+        let accept = accept.and_then(move |ws_stream| {
             let ws_tx_own = ws_tx_inner.clone();
             println!("New WebSocket connection {}: {}", cnt, addr);
 
@@ -108,10 +110,13 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
             }));
 
             Ok(())
-        }).map_err(|e| {
-            println!("Error during the WebSocket handshake occurred: {}", e);
-            Error::new(ErrorKind::Other, e)
-        })
+        });
+        handle_out.spawn(accept.then(move |_| {
+            println!("Connection {} closed.", cnt);
+            Ok(())
+        }));
+        //keep accepting connections
+        Ok(())
     });
     let _run = match core.run(srv) {
         Ok(_) => {}
