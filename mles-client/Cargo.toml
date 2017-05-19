@@ -2,7 +2,7 @@
 name = "mles-client"
 version = "0.9.13"
 authors = ["jq-rs"]
-description = "Mles-client, a distributed data protocol example (chat) client"
+description = "Mles-client, a distributed data protocol example (chat) client/ws-proxy"
 license = "GPL-3.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "http://mles.io"
@@ -18,8 +18,8 @@ tokio-io = "0.1"
 bytes = "0.4"
 tokio-proto = "0.1"
 tokio-service = "0.1"
-tungstenite = { path = "/home/jkettune/jq-rs/tungstenite-rs" } 
-tokio-tungstenite = { path = "/home/jkettune/jq-rs/tokio-tungstenite" }
+tungstenite = "0.2"
+tokio-tungstenite = "0.1"
 
 [badges]
 travis-ci = { repository = "jq-rs/mles-rs" }
