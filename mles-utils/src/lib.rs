@@ -151,6 +151,7 @@ impl Msg {
 /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
 /// let encoded_msg: Vec<u8> = message_encode(&msg);
 /// ```
+#[inline]
 pub fn message_encode(msg: &Msg) -> Vec<u8> {
     let encoded = serde_cbor::to_vec(msg);
     match encoded {
@@ -175,6 +176,7 @@ pub fn message_encode(msg: &Msg) -> Vec<u8> {
 /// let encoded_msg: Vec<u8> = message_encode(&msg);
 /// let decoded_msg: Msg = message_decode(&encoded_msg);
 /// ```
+#[inline]
 pub fn message_decode(slice: &[u8]) -> Msg {
     let value = serde_cbor::from_slice(slice);
     match value {
@@ -199,6 +201,7 @@ pub fn message_decode(slice: &[u8]) -> Msg {
 /// let hdr_type = read_hdr_type(&hdr);
 /// assert_eq!('M' as u32, hdr_type);
 /// ```
+#[inline]
 pub fn read_hdr_type(hdr: &Vec<u8>) -> u32 { 
     if hdr.len() < HDRL {
         return 0;
@@ -221,6 +224,7 @@ pub fn read_hdr_type(hdr: &Vec<u8>) -> u32 {
 /// let hdr_len = read_hdr_len(&hdr);
 /// assert_eq!(515, hdr_len);
 /// ```
+#[inline]
 pub fn read_hdr_len(hdr: &Vec<u8>) -> usize { 
     if hdr.len() < HDRL {
         return 0;
@@ -240,6 +244,7 @@ pub fn read_hdr_len(hdr: &Vec<u8>) -> usize {
 /// let hdr_len = read_hdr_len(&hdr);
 /// assert_eq!(515, hdr_len);
 /// ```
+#[inline]
 pub fn write_hdr(len: usize) -> Vec<u8> {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = vec![];
@@ -258,6 +263,7 @@ pub fn write_hdr(len: usize) -> Vec<u8> {
 /// let key = do_hash(&hashable); 
 /// let keyhdr: Vec<u8> = write_key(key);
 /// ```
+#[inline]
 pub fn write_key(val: u64) -> Vec<u8> {
     let key = val;
     let mut msgv = vec![];
@@ -280,6 +286,7 @@ pub fn write_key(val: u64) -> Vec<u8> {
 /// let keyx = read_key_from_hdr(&hdr);
 /// assert_eq!(key, keyx);
 /// ```
+#[inline]
 pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
     let mut hdrv = write_hdr(len);
     hdrv.extend(write_key(key));
@@ -302,6 +309,7 @@ pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
 /// let read_key = read_key(&keyhdr);
 /// assert_eq!(key, read_key);
 /// ```
+#[inline]
 pub fn read_key(keyv: &Vec<u8>) -> u64 {
     if keyv.len() < KEYL {
         return 0;
@@ -329,6 +337,7 @@ pub fn read_key(keyv: &Vec<u8>) -> u64 {
 /// let read_key = read_key_from_hdr(&hdr);
 /// assert_eq!(key, read_key);
 /// ```
+#[inline]
 pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
     if keyv.len() < HDRKEYL {
         return 0;
@@ -349,6 +358,7 @@ pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
 /// let hashable = vec![hashstr1, hashstr2];
 /// let key: u64 = do_hash(&hashable); 
 /// ```
+#[inline]
 pub fn do_hash(t: &Vec<String>) -> u64 {
     let mut s = SipHasher::new();
     for item in t {
@@ -378,6 +388,7 @@ pub fn do_hash(t: &Vec<String>) -> u64 {
 ///
 /// assert_eq!("[ff03:0:0:0:0:0:0:1]:8077", addrstr);
 /// ```
+#[inline]
 pub fn addr2str(addr: &SocketAddr) -> String {
     let ipaddr = addr.ip();
     match ipaddr {
