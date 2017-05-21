@@ -1,7 +1,7 @@
 #!/bin/sh 
 
 start() {
-  exec MLES_KEY=mles-devel /home/ubuntu/mles/mles-rs/mles-client/target/release/mles-client 127.0.0.1 --use-websockets
+  exec /home/ubuntu/mles/mles-rs/mles-client/target/release/mles-client 127.0.0.1 --use-websockets
 }
 
 stop() {
