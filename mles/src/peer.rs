@@ -19,6 +19,7 @@
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
+extern crate mles_utils;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -39,6 +40,7 @@ use futures::sync::mpsc::{unbounded, UnboundedSender};
 
 use local_db::*;
 use frame::*;
+use mles_utils::*;
 
 const HDRL: usize = 4; //hdr len
 const KEYL: usize = 8; //key len
@@ -49,7 +51,7 @@ const PEERAND: u64 = !(::KEYAND);
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 2;
 
-pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: String, msg: Vec<u8>, 
+pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
@@ -60,27 +62,58 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: St
         let handle = core.handle();
         let channel = channel.clone();
         let tx_peer_for_msgs = tx_peer_for_msgs.clone();
-        let msg = msg.clone();
+        let mut msg = msg.clone();
+        let keyaddr = keyaddr.clone();
 
         let tcp = TcpStream::connect(&peer, &handle);
 
         let (tx_orig_chan, rx_orig_chan) = unbounded();
         let (tx, rx) = unbounded();
 
+        //set peer key
+        let peer_key = set_peer_key(read_key_from_hdr(&msg));
+
         //distribute channels
         let _res = tx_peer_for_msgs.send((peer_key, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
-        let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
         let loopcnt_inner = loopcnt.clone();
         let mles_peer_db_inner = mles_peer_db.clone();
         let client = tcp.and_then(move |pstream| {
+            let laddr = match pstream.local_addr() {
+                Ok(laddr) => laddr,
+                Err(_) => {
+                    let addr = "0.0.0.0:0";
+                    let addr = addr.parse::<SocketAddr>().unwrap();
+                    addr
+                }
+            };
             let _val = pstream.set_nodelay(true)
                               .map_err(|_| panic!("Cannot set peer to no delay"));
             let _val = pstream.set_keepalive_ms(::KEEPALIVEMS)
                               .map_err(|_| panic!("Cannot set keepalive"));
             let mut loopcnt = loopcnt_inner.borrow_mut();
             *loopcnt = 1;
+
             println!("Successfully connected to peer");
+            //update key in message in case needed
+            if is_addr_set {
+                let mut keys = Vec::new();
+                keys.push(addr2str(&laddr));
+                if keyaddr.len() > 0 {
+                   keys.push(keyaddr.clone());
+                }
+                let message = msg.split_off(HDRKEYL);
+                //create hash for verification
+                let decoded_message = message_decode(message.as_slice());
+                keys.push(decoded_message.get_uid().to_string());
+                keys.push(decoded_message.get_channel().to_string());
+                let key = Some(do_hash(&keys));
+                msg = write_hdr_with_key(read_hdr_len(&msg), key.unwrap());
+                msg.extend(message);
+            }
+
+            //send message to peer
+            let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
             let (reader, writer) = pstream.split();
 
@@ -166,7 +199,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, peer_key: u64, channel: St
     }
 }
 
-pub fn set_peer_key(peer_key: u64) -> u64 {
+fn set_peer_key(peer_key: u64) -> u64 {
     let mut val = peer_key;
     val &= PEERAND;
     val

@@ -149,12 +149,14 @@ fn main() {
                     addr
                 }
         };
+        let mut is_addr_set = false;
         let mut keys = Vec::new();
         if keyval.len() > 0 {
             keys.push(keyval.clone());
         }
         else {
             keys.push(addr2str(&paddr));
+            is_addr_set = true;
             if keyaddr.len() > 0 {
                 keys.push(keyaddr.clone());
             }
@@ -178,6 +180,7 @@ fn main() {
         let tx_inner = tx.clone();
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
+        let keyaddr_inner = keyaddr.clone();
         let socket_once = frame.and_then(move |(reader, mut hdr_key, message, decoded_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
@@ -194,9 +197,8 @@ fn main() {
                     if peer::has_peer(&peer) {
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
-                        let peer_key = set_peer_key(key);
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(hist_limit, peer, peer_key, chan, msg, tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, tx_peer_for_msgs));
                     }
 
                     let mut mles_db_entry = MlesDb::new(hist_limit);
