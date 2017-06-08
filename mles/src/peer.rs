@@ -89,7 +89,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             };
             let _val = pstream.set_nodelay(true)
                               .map_err(|_| panic!("Cannot set peer to no delay"));
-            let _val = pstream.set_keepalive_ms(::KEEPALIVEMS)
+            let _val = pstream.set_keepalive(Some(Duration::new(::KEEPALIVE, 0)))
                               .map_err(|_| panic!("Cannot set keepalive"));
             let mut loopcnt = loopcnt_inner.borrow_mut();
             *loopcnt = 1;
