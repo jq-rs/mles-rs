@@ -10,6 +10,9 @@ readme = "../README.md"
 categories = ["network-programming"]
 keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 
+[profile.release]
+lto = true
+
 [dependencies]
 mles-utils = "0.9"
 futures = "0.1"

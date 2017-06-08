@@ -47,6 +47,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::thread;
 use std::io::{Error, ErrorKind};
 use futures::sync::mpsc::{UnboundedSender, UnboundedReceiver};
+use std::time::Duration;
 
 use bytes::{BufMut, BytesMut};
 use futures::{Sink, Future, Stream};
@@ -65,7 +66,7 @@ const KEYL: usize = 8; //key len
 const HDRKEYL: usize = 4 + KEYL; //hdr + key len
 const USAGE: &str = "Usage: mles-client <server-address> [--use-websockets]";
 
-const KEEPALIVEMS: Option<u32> = Some(5000);
+const KEEPALIVE: u64 = 5;
 
 fn main() {
     let mut ws_enabled: Option<bool> = None;
@@ -130,7 +131,7 @@ fn main() {
         let client = tcp.and_then(|stream| {
             let _val = stream.set_nodelay(true)
                              .map_err(|_| panic!("Cannot set to no delay"));
-            let _val = stream.set_keepalive_ms(KEEPALIVEMS)
+            let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                              .map_err(|_| panic!("Cannot set keepalive"));
             let laddr = match stream.local_addr() {
                 Ok(laddr) => laddr,
@@ -314,7 +315,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
     let client = tcp.and_then(|stream| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
-        let _val = stream.set_keepalive_ms(KEEPALIVEMS)
+        let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                          .map_err(|_| panic!("Cannot set keepalive"));
         let laddr = match stream.local_addr() {
             Ok(laddr) => laddr,

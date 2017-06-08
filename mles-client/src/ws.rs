@@ -25,6 +25,7 @@ extern crate tungstenite;
 use std::io::{Error, ErrorKind};
 use std::thread;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use futures::stream::Stream;
 use futures::sync::mpsc::unbounded;
@@ -55,7 +56,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     let srv = socket.incoming().for_each(|(stream, addr)| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
-        let _val = stream.set_keepalive_ms(::KEEPALIVEMS)
+        let _val = stream.set_keepalive(Some(Duration::new(::KEEPALIVE, 0)))
                          .map_err(|_| panic!("Cannot set keepalive"));
         let handle_inner = handle.clone();
         let handle_out = handle.clone();

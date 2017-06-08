@@ -33,6 +33,7 @@ use std::io::{Error, ErrorKind};
 use std::{process, env};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::thread;
+use std::time::Duration;
 
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
@@ -58,7 +59,7 @@ const HISTLIMIT: usize = 100;
 
 const KEYAND: u64 = 0x0000ffffffffffff;
 
-const KEEPALIVEMS: Option<u32> = Some(5000);
+const KEEPALIVE: u64 = 5;
 
 fn main() {
     let mut peer: Option<SocketAddr> = None;
@@ -136,7 +137,7 @@ fn main() {
     let srv = socket.incoming().for_each(move |(stream, addr)| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
-        let _val = stream.set_keepalive_ms(KEEPALIVEMS)
+        let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                          .map_err(|_| panic!("Cannot set keepalive"));
         cnt += 1;
 
