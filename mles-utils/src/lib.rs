@@ -480,7 +480,7 @@ fn write_ts() -> Vec<u8> {
 }
 
 /// Returns milliseconds from the beginning of current month UTC.
-fn ms_since_this_month(utc: DateTime<Utc>) -> u32 {
+pub fn ms_since_this_month(utc: DateTime<Utc>) -> u32 {
     let monthly: DateTime<Utc> = Utc.ymd(utc.year(), utc.month(), 1).and_hms(0, 0, 0);
     let secs = utc.timestamp() - monthly.timestamp();
     let nsecs = utc.timestamp_subsec_nanos();
