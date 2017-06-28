@@ -36,10 +36,14 @@ use std::net::SocketAddr;
 use std::net::IpAddr;
 use chrono::prelude::*;
 
-const HDRL: usize = 8; //hdr len
-const TSL:  usize = 4; //timestamp len
-const KEYL: usize = 8; //key len
-const HDRKEYL: usize = HDRL + KEYL;
+/// HDRL defines the size of the header including version, length and timestamp
+pub const HDRL: usize = 8; 
+/// TSL defines the size of the timestamp
+pub const TSL:  usize = 4; 
+/// KEYL defines the size of the key
+pub const KEYL: usize = 8; 
+/// HDRKEYL defines the size of the header + key
+pub const HDRKEYL: usize = HDRL + KEYL;
 
 /// Msg structure
 ///
