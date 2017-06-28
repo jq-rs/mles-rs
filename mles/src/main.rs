@@ -51,9 +51,6 @@ use peer::*;
 
 const SRVPORT: &str = ":8077";
 
-const HDRL: usize = 4; //hdr len
-const KEYL: usize = 8; //key len
-const HDRKEYL: usize = HDRL + KEYL;
 const USAGE: &str = "Usage: mles [peer-address] [--history-limit=N]";
 const HISTLIMIT: usize = 100;
 
@@ -168,7 +165,7 @@ fn main() {
 
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
 
-        let frame = io::read_exact(reader, vec![0;HDRKEYL]);
+        let frame = io::read_exact(reader, vec![0;mles_utils::HDRKEYL]);
         let frame = frame.and_then(move |(reader, hdr_key)| process_hdr(reader, hdr_key));
         let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| { 
             let tframe = io::read_exact(reader, vec![0;hdr_len]);
@@ -254,7 +251,7 @@ fn main() {
             let channel_next = channel.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
-                let frame = io::read_exact(reader, vec![0;HDRKEYL]);
+                let frame = io::read_exact(reader, vec![0;mles_utils::HDRKEYL]);
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
