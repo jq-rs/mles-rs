@@ -278,11 +278,11 @@ pub fn write_ts_to_hdr(mut hdrv: Vec<u8>) -> Vec<u8> {
     if hdrv.len() < HDRL {
         return vec![];
     }
-    let mut header = hdrv.split_off(HDRL);
-    header.truncate(HDRL - TSL); //drop existing timestamp
-    header.extend(write_ts()); //add new timestamp
-    header.extend(hdrv);
-    header
+    let tail = hdrv.split_off(HDRL);
+    hdrv.truncate(HDRL - TSL); //drop existing timestamp
+    hdrv.extend(write_ts()); //add new timestamp
+    hdrv.extend(tail);
+    hdrv
 }
 
 /// Write a valid key to network byte order.
@@ -527,6 +527,24 @@ mod tests {
         let keyv = write_key(orig_key);
         let key = read_key(&keyv);
         assert_eq!(orig_key, key);
+    }
+
+    #[test]
+    fn test_ts() {
+        let orig_key = 0xffeffe;
+        let mut hdrv = write_hdr_with_key(64, orig_key);
+        let orig_len = hdrv.len();
+        let key = read_key_from_hdr(&hdrv);
+        assert_eq!(orig_key, key);
+        let read_ts = read_ts_from_hdr(&hdrv);
+        assert_eq!(0, read_ts);
+        hdrv = write_ts_to_hdr(hdrv);
+        let read_ts = read_ts_from_hdr(&hdrv);
+        assert_ne!(0, read_ts);
+        let key = read_key_from_hdr(&hdrv);
+        assert_eq!(orig_key, key);
+        let len = hdrv.len();
+        assert_eq!(orig_len, len);
     }
 
     #[test]
