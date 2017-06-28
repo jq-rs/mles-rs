@@ -62,8 +62,6 @@ use ws::*;
 
 const SRVPORT: &str = ":8077";
 
-const KEYL: usize = 8; //key len
-const HDRKEYL: usize = 4 + KEYL; //hdr + key len
 const USAGE: &str = "Usage: mles-client <server-address> [--use-websockets]";
 
 const KEEPALIVE: u64 = 5;
@@ -200,7 +198,7 @@ impl Decoder for Bytes {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
-        if buf.len() >= HDRKEYL {
+        if buf.len() >= mles_utils::HDRKEYL {
             // HDRKEYL is header min size
             if read_hdr_type(&buf.to_vec()) != 'M' as u32 {
                 let len = buf.len();
@@ -214,14 +212,14 @@ impl Decoder for Bytes {
                 return Ok(None);
             }
             let len = buf.len();
-            if len < (HDRKEYL + hdr_len) {
+            if len < (mles_utils::HDRKEYL + hdr_len) {
                 return Ok(None);
             }
             if HDRKEYL + hdr_len < len {
-                buf.split_to(HDRKEYL);
+                buf.split_to(mles_utils::HDRKEYL);
                 return Ok(Some(buf.split_to(hdr_len)));
             }
-            buf.split_to(HDRKEYL);
+            buf.split_to(mles_utils::HDRKEYL);
             Ok(Some(buf.split_to(hdr_len)))
         } else {
             Ok(None)
@@ -238,7 +236,8 @@ impl Encoder for Bytes {
     type Error = io::Error;
 
     fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
-        let mut msgv = write_hdr(data.len() - KEYL);
+        let mut msgv = write_hdr(data.len() - mles_utils::KEYL);
+        msgv = write_ts_to_hdr(msgv);
         msgv.extend(data);
         buf.put(&msgv[..]);
         Ok(())
