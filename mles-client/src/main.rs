@@ -38,6 +38,7 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
+extern crate chrono;
 
 mod ws;
 
@@ -57,6 +58,7 @@ use tokio_core::net::TcpStream;
 use tokio_io::AsyncRead;
 use tokio_io::codec::{Encoder, Decoder};
 use mles_utils::*;
+//use chrono::offset::Utc;
 
 use ws::*;
 
@@ -215,7 +217,10 @@ impl Decoder for Bytes {
             if len < (mles_utils::HDRKEYL + hdr_len) {
                 return Ok(None);
             }
-            if HDRKEYL + hdr_len < len {
+            //Msg delay functionality is available, but disabled
+            //let timestamp = read_ts_from_hdr(&buf.to_vec());
+            //println!("Msg delay {}", mles_utils::ms_since_this_month(Utc::now()) - timestamp);
+            if mles_utils::HDRKEYL + hdr_len < len {
                 buf.split_to(mles_utils::HDRKEYL);
                 return Ok(Some(buf.split_to(hdr_len)));
             }
