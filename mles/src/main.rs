@@ -54,8 +54,6 @@ const SRVPORT: &str = ":8077";
 const USAGE: &str = "Usage: mles [peer-address] [--history-limit=N]";
 const HISTLIMIT: usize = 100;
 
-const KEYAND: u64 = 0x0000ffffffffffff;
-
 const KEEPALIVE: u64 = 5;
 
 fn main() {
@@ -184,9 +182,8 @@ fn main() {
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
 
-                //pick the verified key from header and use it as an identifier
-                let key = read_key_from_hdr(&hdr_key);
-                let key = set_key(key);
+                //pick the verified cid from header and use it as an identifier
+                let cid = read_cid_from_hdr(&hdr_key);
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
@@ -200,17 +197,17 @@ fn main() {
                     }
 
                     let mut mles_db_entry = MlesDb::new(hist_limit);
-                    mles_db_entry.add_channel(key, tx_inner.clone());
+                    mles_db_entry.add_channel(cid, tx_inner.clone());
                     mles_db_once.insert(channel.clone(), mles_db_entry);
 
                 }
                 else {
                     if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
-                        if mles_db_entry.check_for_duplicate_key(key) {
-                            println!("Duplicate key {:x} detected", key);
-                            return Err(Error::new(ErrorKind::BrokenPipe, "duplicate key"));
+                        if mles_db_entry.check_for_duplicate_cid(cid) {
+                            println!("Duplicate cid {:x} detected", cid);
+                            return Err(Error::new(ErrorKind::BrokenPipe, "duplicate cid"));
                         }
-                        mles_db_entry.add_channel(key, tx_inner.clone());
+                        mles_db_entry.add_channel(cid, tx_inner.clone());
                         if peer::has_peer(&peer) {
                             if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
                                 //sending tx to peer
@@ -241,13 +238,13 @@ fn main() {
                     }
                     mles_db_entry.add_tx_db(tx_inner.clone());
                 }
-                channel_db.insert(cnt, (key, channel.clone()));
-                println!("User {}:{:x} joined.", cnt, key);
-                Ok((reader, key, channel))
+                channel_db.insert(cnt, (cid, channel.clone()));
+                println!("User {}:{:x} joined.", cnt, cid);
+                Ok((reader, cid, channel))
         });
 
         let mles_db_inner = mles_db.clone();
-        let socket_next = socket_once.and_then(move |(reader, key, channel)| {
+        let socket_next = socket_once.and_then(move |(reader, cid, channel)| {
             let channel_next = channel.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
@@ -272,8 +269,8 @@ fn main() {
                         }
 
                         if let Some(channels) = mles_db_entry.get_channels() {
-                            for (okey, tx) in channels.iter() {
-                                if *okey != key {
+                            for (ocid, tx) in channels.iter() {
+                                if *ocid != cid {
                                     let _res = tx.send(hdr_key.clone()).map_err(|_| { 
                                         //just ignore failures for now
                                         () 
@@ -292,11 +289,11 @@ fn main() {
         });
 
         let mles_db_inner = mles_db.clone();
-        let peer_writer = rx_peer_for_msgs.for_each(move |(peer_key, channel, peer_tx, tx_orig_chan)| {
+        let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cid, channel, peer_tx, tx_orig_chan)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
             if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
                 //setting peer tx
-                mles_db_entry.add_channel(peer_key, peer_tx);  
+                mles_db_entry.add_channel(peer_cid, peer_tx);  
                 mles_db_entry.set_peer_tx(tx_orig_chan.clone());
                 //sending all tx's to (possibly restarted) peer
                 for tx_entry in mles_db_entry.get_tx_db() {
@@ -325,12 +322,12 @@ fn main() {
         handle.spawn(connection.then(move |_| {
             let mut mles_db = mles_db_conn.borrow_mut();
             let mut channel_db = channel_db_conn.borrow_mut();
-            let mut chan_to_rem: Option<u64> = None;
+            let mut chan_to_rem: Option<u32> = None;
             let mut chan_drop = false;
-            if let Some(&mut (key, ref channel)) = channel_db.get_mut(&cnt) {
+            if let Some(&mut (cid, ref channel)) = channel_db.get_mut(&cnt) {
                 if let Some(mles_db_entry) = mles_db.get_mut(channel) {
-                    mles_db_entry.rem_channel(key);
-                    chan_to_rem = Some(key);
+                    mles_db_entry.rem_channel(cid);
+                    chan_to_rem = Some(cid);
                     if 0 == mles_db_entry.get_channels_len() {
                         mles_db_entry.clear_tx_db();
                         if 0 == mles_db_entry.get_history_limit() {
@@ -342,9 +339,9 @@ fn main() {
                     mles_db.remove(channel);
                 }
             }
-            if let Some(key) = chan_to_rem {
-                channel_db.remove(&key);
-                println!("Connection {} for user {}:{:x} closed.", addr, cnt, key);
+            if let Some(cid) = chan_to_rem {
+                channel_db.remove(&cid);
+                println!("Connection {} for user {}:{:x} closed.", addr, cnt, cid);
             }
             Ok(())
         }));
@@ -355,19 +352,7 @@ fn main() {
     let _res = core.run(srv).map_err(|err| { println!("Main: {}", err); ()});
 }
 
-fn set_key(orig_key: u64) -> u64 {
-    let mut val = orig_key;
-    val &= KEYAND;
-    val 
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn test_set_key() {
-        let val: u64 = 1;
-        assert_eq!(val & KEYAND, set_key(val));
-    }
+    //use super::*;
 }

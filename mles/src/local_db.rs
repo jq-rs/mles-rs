@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
 
 pub struct MlesDb {
-    channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
+    channels: Option<HashMap<u32, UnboundedSender<Vec<u8>>>>,
     messages: Vec<Vec<u8>>,
     peer_tx: Option<UnboundedSender<UnboundedSender<Vec<u8>>>>, 
     history_limit: usize,
@@ -38,7 +38,7 @@ impl MlesDb {
         }
     }
 
-    pub fn get_channels(&self) -> Option<&HashMap<u64, UnboundedSender<Vec<u8>>>> {
+    pub fn get_channels(&self) -> Option<&HashMap<u32, UnboundedSender<Vec<u8>>>> {
         self.channels.as_ref()
     }
 
@@ -66,27 +66,27 @@ impl MlesDb {
         self.peer_tx.as_ref()
     }
 
-    pub fn add_channel(&mut self, key: u64, sender: UnboundedSender<Vec<u8>>) {
+    pub fn add_channel(&mut self, cid: u32, sender: UnboundedSender<Vec<u8>>) {
         if self.channels.is_none() {
             self.channels = Some(HashMap::new());
         }
         if let Some(ref mut channels) = self.channels {
-            channels.insert(key, sender);
+            channels.insert(cid, sender);
         }
     }
 
-    pub fn check_for_duplicate_key(&self, key: u64) -> bool {
+    pub fn check_for_duplicate_cid(&self, cid: u32) -> bool {
         if let Some(ref channels) = self.channels {
-            if channels.contains_key(&key) {
+            if channels.contains_key(&cid) {
                 return true;
             }
         }
         false
     }
 
-    pub fn rem_channel(&mut self, cnt: u64) {
+    pub fn rem_channel(&mut self, cid: u32) {
         if let Some(ref mut channels) = self.channels {
-            channels.remove(&cnt);
+            channels.remove(&cid);
         }
     }
 
