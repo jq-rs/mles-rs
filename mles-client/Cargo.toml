@@ -1,6 +1,6 @@
 [package]
 name = "mles-client"
-version = "0.10.1"
+version = "0.11.0"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed data protocol example (chat) client/ws-proxy"
 license = "GPL-3.0"
@@ -14,7 +14,7 @@ keywords = ["mles", "publish", "subscribe", "cbor", "websocket"]
 lto = true
 
 [dependencies]
-mles-utils = "0.10"
+mles-utils = "0.11"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
@@ -23,7 +23,6 @@ tokio-proto = "0.1"
 tokio-service = "0.1"
 tungstenite = "0.2"
 tokio-tungstenite = "0.2"
-chrono = "0.4"
 
 [badges]
 travis-ci = { repository = "jq-rs/mles-rs" }
