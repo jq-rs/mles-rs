@@ -1,6 +1,6 @@
 [package]
 name = "mles-client"
-version = "0.11.0"
+version = "1.0.0-beta"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed data protocol example (chat) client/ws-proxy"
 license = "GPL-3.0"
@@ -14,7 +14,7 @@ keywords = ["mles", "publish", "subscribe", "cbor", "websocket"]
 lto = true
 
 [dependencies]
-mles-utils = "0.11"
+mles-utils = "1.0.0-beta"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
