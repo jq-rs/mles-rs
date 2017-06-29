@@ -26,7 +26,7 @@ extern crate serde_cbor;
 extern crate serde_bytes;
 extern crate byteorder;
 extern crate siphasher;
-extern crate chrono;
+extern crate rand;
 
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
@@ -34,12 +34,11 @@ use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::net::IpAddr;
-use chrono::prelude::*;
 
 /// HDRL defines the size of the header including version, length and timestamp
 pub const HDRL: usize = 8; 
-/// TSL defines the size of the timestamp
-pub const TSL:  usize = 4; 
+/// CIDL defines the size of the connection id
+pub const CIDL:  usize = 4; 
 /// KEYL defines the size of the key
 pub const KEYL: usize = 8; 
 /// HDRKEYL defines the size of the header + key
@@ -254,36 +253,55 @@ pub fn read_hdr_len(hdr: &Vec<u8>) -> usize {
 #[inline]
 pub fn write_hdr(len: usize) -> Vec<u8> {
     let hdr = (('M' as u32) << 24) | len as u32;
-    let ts = 0 as u32;
+    let cid = 0 as u32;
     let mut msgv = vec![];
-    let mut tsv = vec![];
+    let mut cidv = vec![];
     msgv.write_u32::<BigEndian>(hdr).unwrap();
-    tsv.write_u32::<BigEndian>(ts).unwrap();
-    msgv.extend(tsv);
+    cidv.write_u32::<BigEndian>(cid).unwrap();
+    msgv.extend(cidv);
     msgv
 }
 
-/// Write a valid timestamp to network byte order to the header.
+/// Write a random connection id in network byte order.
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_hdr, write_ts_to_hdr};
+/// use mles_utils::write_cid;
 ///
-/// let mut hdr = write_hdr(515);
-/// //just before sending to line, update timestamp
-/// let hdr = write_ts_to_hdr(hdr);
+/// let cidv = write_cid();
 /// ```
 #[inline]
-pub fn write_ts_to_hdr(mut hdrv: Vec<u8>) -> Vec<u8> {
+pub fn write_cid() -> Vec<u8> {
+    let mut cidv = vec![];
+    let mut rnd: u32 = rand::random();
+    if 0 == rnd { //skip zero
+        rnd = 1;
+    }
+    cidv.write_u32::<BigEndian>(rnd).unwrap();
+    cidv
+}
+
+/// Write a random connection id in network byte order to the header.
+///
+/// # Example
+/// ```
+/// use mles_utils::{write_hdr, write_cid_to_hdr};
+///
+/// let mut hdr = write_hdr(515);
+/// let hdr = write_cid_to_hdr(hdr);
+/// ```
+#[inline]
+pub fn write_cid_to_hdr(mut hdrv: Vec<u8>) -> Vec<u8> {
     if hdrv.len() < HDRL {
         return vec![];
     }
     let tail = hdrv.split_off(HDRL);
-    hdrv.truncate(HDRL - TSL); //drop existing timestamp
-    hdrv.extend(write_ts()); //add new timestamp
+    hdrv.truncate(HDRL - CIDL); //drop existing timestamp
+    hdrv.extend(write_cid()); //add new timestamp
     hdrv.extend(tail);
     hdrv
 }
+
 
 /// Write a valid key to network byte order.
 ///
@@ -380,29 +398,30 @@ pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
     num
 }
 
-/// Read a timestamp from header.
+/// Read a connection id from header.
 ///
 /// # Errors
 /// If input vector length is smaller than needed, zero is returned.
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_hdr_with_key, write_ts_to_hdr, read_ts_from_hdr};
+/// use mles_utils::{write_hdr_with_key, write_cid_to_hdr, read_cid_from_hdr};
 ///
-/// let mut hdr: Vec<u8> = write_hdr_with_key(12, 0x3f3f3); //timestamp set to zero
-/// let read_ts = read_ts_from_hdr(&hdr);
-/// assert_eq!(0, read_ts);
+/// let mut hdr: Vec<u8> = write_hdr_with_key(12, 0x3f3f3); //cid set to zero
+/// let read_cid = read_cid_from_hdr(&hdr);
+/// assert_eq!(0, read_cid);
 ///
-/// hdr = write_ts_to_hdr(hdr); //timestamp updated
-/// let read_ts = read_ts_from_hdr(&hdr);
-/// assert_ne!(0, read_ts);
+/// hdr = write_cid_to_hdr(hdr);
+/// let read_cid = read_cid_from_hdr(&hdr);
+/// assert_ne!(0, read_cid);
+///
 /// ```
 #[inline]
-pub fn read_ts_from_hdr(hdrv: &Vec<u8>) -> u32 {
+pub fn read_cid_from_hdr(hdrv: &Vec<u8>) -> u32 {
     if hdrv.len() < HDRL {
         return 0;
     }
-    let mut buf = Cursor::new(&hdrv[(HDRL-TSL)..]);
+    let mut buf = Cursor::new(&hdrv[(HDRL-CIDL)..]);
     let num = buf.read_u32::<BigEndian>().unwrap();
     num
 }
@@ -471,22 +490,6 @@ pub fn addr2str(addr: &SocketAddr) -> String {
     }
 }
 
-/// Write a valid timestamp to network byte order.
-fn write_ts() -> Vec<u8> {
-    let mut tsv = vec![];
-    let ts = ms_since_this_month(Utc::now()); //calculate ms from this month
-    tsv.write_u32::<BigEndian>(ts).unwrap();
-    tsv
-}
-
-/// Returns milliseconds from the beginning of current month UTC.
-pub fn ms_since_this_month(utc: DateTime<Utc>) -> u32 {
-    let monthly: DateTime<Utc> = Utc.ymd(utc.year(), utc.month(), 1).and_hms(0, 0, 0);
-    let secs = utc.timestamp() - monthly.timestamp();
-    let nsecs = utc.timestamp_subsec_nanos();
-    (secs as u32 * 1000 + nsecs / 1_000_000) as u32
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
@@ -530,29 +533,21 @@ mod tests {
     }
 
     #[test]
-    fn test_ts() {
+    fn test_cid() {
         let orig_key = 0xffeffe;
         let mut hdrv = write_hdr_with_key(64, orig_key);
         let orig_len = hdrv.len();
         let key = read_key_from_hdr(&hdrv);
         assert_eq!(orig_key, key);
-        let read_ts = read_ts_from_hdr(&hdrv);
-        assert_eq!(0, read_ts);
-        hdrv = write_ts_to_hdr(hdrv);
-        let read_ts = read_ts_from_hdr(&hdrv);
-        assert_ne!(0, read_ts);
+        let read_cid = read_cid_from_hdr(&hdrv);
+        assert_eq!(0, read_cid);
+        hdrv = write_cid_to_hdr(hdrv);
+        let read_cid = read_cid_from_hdr(&hdrv);
+        assert_ne!(0, read_cid);
         let key = read_key_from_hdr(&hdrv);
         assert_eq!(orig_key, key);
         let len = hdrv.len();
         assert_eq!(orig_len, len);
-    }
-
-    #[test]
-    fn test_ms_since_this_month() {
-        let utc: DateTime<Utc> = Utc.ymd(2017, 1, 1).and_hms_nano(9, 10, 11, 12_000_000); 
-        let ms = ms_since_this_month(utc);
-        let real_ms = 9*60*60*1000 + 10*60*1000 + 11*1000 + 12;
-        assert_eq!(real_ms, ms);
     }
 }
 
