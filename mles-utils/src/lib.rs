@@ -274,6 +274,7 @@ pub fn write_hdr(len: usize) -> Vec<u8> {
 pub fn write_cid() -> Vec<u8> {
     let mut cidv = vec![];
     let mut rnd: u32 = rand::random();
+    rnd = rnd >> 1; //skip values larger than 0x7fffffff
     if 0 == rnd { //skip zero
         rnd = 1;
     }
