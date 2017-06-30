@@ -60,7 +60,7 @@ fn main() {
     let mut peer: Option<SocketAddr> = None;
     let mut hist_limit = HISTLIMIT;
     for (argcnt, item) in env::args().enumerate() {
-        if 1 == argcnt {
+        if argcnt < 1 {
             continue;
         }
         let this_arg = item.clone();
@@ -92,7 +92,7 @@ fn main() {
                 println!("Unable to resolve peer domain {}", peerarg); 
             }
         }
-        if argcnt > 3 {
+        if argcnt > 2 {
             println!("{}", USAGE);
             process::exit(1);
         }
