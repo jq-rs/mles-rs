@@ -58,14 +58,12 @@ const KEEPALIVE: u64 = 5;
 
 fn main() {
     let mut peer: Option<SocketAddr> = None;
-    let mut argcnt = 0;
     let mut hist_limit = HISTLIMIT;
-    for arg in env::args() {
-        argcnt += 1;
+    for (argcnt, item) in env::args().enumerate() {
         if 1 == argcnt {
             continue;
         }
-        let this_arg = arg.clone();
+        let this_arg = item.clone();
         let v: Vec<&str> = this_arg.split("--history-limit=").collect();
         if v.len() > 1 {
             if let Some(limitstr) = v.get(1) {
@@ -79,9 +77,9 @@ fn main() {
             process::exit(1);
         }
         else {
-            let peerarg = arg + SRVPORT;
+            let peerarg = item + SRVPORT;
             let rpeer: Vec<_> = peerarg.to_socket_addrs()
-                                       .unwrap_or(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+                                       .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
                                        .collect();
             let rpeer = *rpeer.first().unwrap();
             let rpeer = Some(rpeer);
@@ -141,19 +139,18 @@ fn main() {
                 Ok(paddr) => paddr,
                 Err(_) => {
                     let addr = "0.0.0.0:0";
-                    let addr = addr.parse::<SocketAddr>().unwrap();
-                    addr
+                    addr.parse::<SocketAddr>().unwrap()
                 }
         };
         let mut is_addr_set = false;
         let mut keys = Vec::new();
-        if keyval.len() > 0 {
+        if !keyval.is_empty() {
             keys.push(keyval.clone());
         }
         else {
             keys.push(addr2str(&paddr));
             is_addr_set = true;
-            if keyaddr.len() > 0 {
+            if !keyaddr.is_empty() {
                 keys.push(keyaddr.clone());
             }
         }
@@ -193,7 +190,7 @@ fn main() {
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
                     }
 
                     let mut mles_db_entry = MlesDb::new(hist_limit);
@@ -201,33 +198,31 @@ fn main() {
                     mles_db_once.insert(channel.clone(), mles_db_entry);
 
                 }
-                else {
-                    if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
-                        if mles_db_entry.check_for_duplicate_cid(cid) {
-                            println!("Duplicate cid {:x} detected", cid);
-                            return Err(Error::new(ErrorKind::BrokenPipe, "duplicate cid"));
-                        }
-                        mles_db_entry.add_channel(cid, tx_inner.clone());
-                        if peer::has_peer(&peer) {
-                            if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
-                                //sending tx to peer
-                                let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
-                            }
-                            else {
-                                println!("Cannot find channel peer for channel {}", channel);
-                            }
+                else if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
+                    if mles_db_entry.check_for_duplicate_cid(cid) {
+                        println!("Duplicate cid {:x} detected", cid);
+                        return Err(Error::new(ErrorKind::BrokenPipe, "duplicate cid"));
+                    }
+                    mles_db_entry.add_channel(cid, tx_inner.clone());
+                    if peer::has_peer(&peer) {
+                        if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
+                            //sending tx to peer
+                            let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                         }
                         else {
-                            // send history to client if peer is not set
-                            for msg in mles_db_entry.get_messages() {
-                                let _res = tx_inner.send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
-                            }
+                            println!("Cannot find channel peer for channel {}", channel);
                         }
                     }
                     else {
-                        println!("Channel {} not found", channel);
-                        return Err(Error::new(ErrorKind::BrokenPipe, "internal error"));
+                        // send history to client if peer is not set
+                        for msg in mles_db_entry.get_messages() {
+                            let _res = tx_inner.send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
+                        }
                     }
+                }
+                else {
+                    println!("Channel {} not found", channel);
+                    return Err(Error::new(ErrorKind::BrokenPipe, "internal error"));
                 }
 
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {

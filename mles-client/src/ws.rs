@@ -86,17 +86,17 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
                 let mles_tx = mles_tx.clone();
                 let mles_message = message.into_data();
                 let _ = mles_tx.send(mles_message.clone()).wait().map_err(|err| {
-                    return Error::new(ErrorKind::Other, err);
+                    Error::new(ErrorKind::Other, err)
                 });
                 let _ = ws_tx.send(mles_message).wait().map_err(|err| {
-                    return Error::new(ErrorKind::Other, err);
+                    Error::new(ErrorKind::Other, err)
                 });
                 Ok(())
             });            
 
             let ws_writer = ws_rx.fold(sink, |mut sink, msg| {
                 let _ = sink.start_send(Message::binary(msg)).map_err(|err| {
-                    return Error::new(ErrorKind::Other, err);
+                    Error::new(ErrorKind::Other, err)
                 });                                      
                 Ok(sink)
             });
@@ -117,7 +117,8 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         //keep accepting connections
         Ok(())
     });
-    let _run = match core.run(srv) {
+
+    match core.run(srv) {
         Ok(_) => {}
         Err(err) => {
             println!("Error: {}", err);

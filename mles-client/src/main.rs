@@ -79,7 +79,7 @@ fn main() {
 
     let raddr = addr + SRVPORT;
     let raddr: Vec<_> = raddr.to_socket_addrs()
-        .unwrap_or(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+        .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
         .collect();
     let raddr = *raddr.first().unwrap();
     let raddr = Some(raddr).unwrap();
@@ -108,7 +108,7 @@ fn main() {
         Err(_) => "".to_string(),
     };
 
-    if let Some(_) = ws_enabled {
+    if ws_enabled.is_some() {
         /* Websocket proxy support */
         process_ws_proxy(raddr, keyval, keyaddr);
     } else {
@@ -135,15 +135,14 @@ fn main() {
                 Ok(laddr) => laddr,
                 Err(_) => {
                     let addr = "0.0.0.0:0";
-                    let addr = addr.parse::<SocketAddr>().unwrap();
-                    addr
+                    addr.parse::<SocketAddr>().unwrap()
                 }
             };
-            if  keyval.len() > 0 {
+            if  !keyval.is_empty() {
                 keys.push(keyval.clone());
             } else {            
                 keys.push(addr2str(&laddr));
-                if keyaddr.len() > 0 {
+                if !keyaddr.is_empty() {
                     keys.push(keyaddr.clone());
                 }
             }
@@ -165,7 +164,7 @@ fn main() {
             let write_stdout = stream.for_each(move |buf| {
                 let decoded = message_decode(buf.to_vec().as_slice());
                 let mut msg = "".to_string();
-                if decoded.get_message().len() > 0 {
+                if !decoded.get_message().is_empty() {
                     msg.push_str(decoded.get_uid());
                     msg.push_str(":");
                     msg.push_str(String::from_utf8_lossy(decoded.get_message().as_slice())
@@ -181,7 +180,7 @@ fn main() {
                 .then(|_| Ok(()))
         });
 
-        let _run = match core.run(client) {
+        match core.run(client) {
             Ok(_) => {}
             Err(err) => {
                 println!("Error: {}", err);
@@ -256,7 +255,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     };
     buf.truncate(n - 1);
     let mut userstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
-    if userstr.ends_with("\r") {
+    if userstr.ends_with('\r') {
         let len = userstr.len();
         userstr.truncate(len - 1);
     }
@@ -270,7 +269,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     };
     buf.truncate(n - 1);
     let mut channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
-    if channelstr.ends_with("\r") {
+    if channelstr.ends_with('\r') {
         let len = channelstr.len();
         channelstr.truncate(len - 1);
     }
@@ -320,22 +319,21 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             Ok(laddr) => laddr,
             Err(_) => {
                 let addr = "0.0.0.0:0";
-                let addr = addr.parse::<SocketAddr>().unwrap();
-                addr
+                addr.parse::<SocketAddr>().unwrap()
             }
         };
-        if  keyval.len() > 0 {
+        if  !keyval.is_empty() {
             keys.push(keyval);
         } else {            
             keys.push(addr2str(&laddr));
-            if keyaddr.len() > 0 {
+            if !keyaddr.is_empty() {
                 keys.push(keyaddr);
             }
         }
         let (sink, stream) = stream.framed(Bytes).split();
         let mles_rx = mles_rx.map_err(|_| panic!()); // errors not possible on rx XXX
         let mles_rx = mles_rx.and_then(|buf| {
-            if 0 == buf.len() {
+            if buf.is_empty() {
                 return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
             }
             if None == key {
@@ -355,7 +353,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             let ws_tx_inner = ws_tx.clone();
             // send to websocket
             let _ = ws_tx_inner.send(buf.to_vec()).wait().map_err(|err| {
-                return Error::new(ErrorKind::Other, err);
+                Error::new(ErrorKind::Other, err)
             });              
             Ok(())
         });
@@ -366,7 +364,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             .then(|_| Ok(()))
     });
 
-    let _run = match core.run(client) {
+    match core.run(client) {
         Ok(_) => {}
         Err(err) => {
             println!("Error: {}", err);
