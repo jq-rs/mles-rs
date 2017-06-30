@@ -33,7 +33,7 @@ pub fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) 
 }
 
 pub fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
-    if hdr.len() == 0 {
+    if hdr.is_empty() {
         return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
     }
     if read_hdr_type(&hdr) != 'M' as u32 {
@@ -47,7 +47,7 @@ pub fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io:
 }
 
 pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>), Error> { 
-    if 0 == message.len() { 
+    if message.is_empty() { 
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
     }
     Ok((reader, hdr_key, message))

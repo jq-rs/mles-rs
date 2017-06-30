@@ -55,7 +55,7 @@ impl MlesDb {
     }
 
     pub fn add_tx_db(&mut self, tx: UnboundedSender<Vec<u8>>) {
-        &self.tx_db.push(tx);
+        self.tx_db.push(tx);
     }
 
     pub fn get_history_limit(&self) -> usize {

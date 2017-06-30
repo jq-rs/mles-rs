@@ -46,7 +46,7 @@ const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
 pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
-                 tx_peer_for_msgs: UnboundedSender<(u32, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
+                 tx_peer_for_msgs: &UnboundedSender<(u32, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
@@ -77,8 +77,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 Ok(laddr) => laddr,
                 Err(_) => {
                     let addr = "0.0.0.0:0";
-                    let addr = addr.parse::<SocketAddr>().unwrap();
-                    addr
+                    addr.parse::<SocketAddr>().unwrap()
                 }
             };
             let _val = pstream.set_nodelay(true)
@@ -93,8 +92,8 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             if is_addr_set {
                 let mut keys = Vec::new();
                 keys.push(addr2str(&laddr));
-                if keyaddr.len() > 0 {
-                   keys.push(keyaddr.clone());
+                if !keyaddr.is_empty() {
+                   keys.push(keyaddr);
                 }
                 let message = msg.split_off(mles_utils::HDRKEYL);
                 //create hash for verification
@@ -202,7 +201,7 @@ pub fn has_peer(peer: &Option<SocketAddr>) -> bool {
    if let Some(peer) = *peer {
        return peer.port() != 0;
    }
-   return false;
+   false
 }
 
 #[cfg(test)]

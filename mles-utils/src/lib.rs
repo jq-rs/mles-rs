@@ -208,7 +208,7 @@ pub fn message_decode(slice: &[u8]) -> Msg {
 /// assert_eq!('M' as u32, hdr_type);
 /// ```
 #[inline]
-pub fn read_hdr_type(hdr: &Vec<u8>) -> u32 { 
+pub fn read_hdr_type(hdr: &[u8]) -> u32 { 
     if hdr.len() < HDRL {
         return 0;
     }
@@ -231,7 +231,7 @@ pub fn read_hdr_type(hdr: &Vec<u8>) -> u32 {
 /// assert_eq!(515, hdr_len);
 /// ```
 #[inline]
-pub fn read_hdr_len(hdr: &Vec<u8>) -> usize { 
+pub fn read_hdr_len(hdr: &[u8]) -> usize { 
     if hdr.len() < HDRL {
         return 0;
     }
@@ -274,7 +274,7 @@ pub fn write_hdr(len: usize) -> Vec<u8> {
 pub fn write_cid() -> Vec<u8> {
     let mut cidv = vec![];
     let mut rnd: u32 = rand::random();
-    rnd = rnd >> 1; //skip values larger than 0x7fffffff
+    rnd >>= 1; //skip values larger than 0x7fffffff
     if 0 == rnd { //skip zero
         rnd = 1;
     }
@@ -362,13 +362,12 @@ pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
 /// assert_eq!(key, read_key);
 /// ```
 #[inline]
-pub fn read_key(keyv: &Vec<u8>) -> u64 {
+pub fn read_key(keyv: &[u8]) -> u64 {
     if keyv.len() < KEYL {
         return 0;
     }
     let mut buf = Cursor::new(&keyv[..]);
-    let num = buf.read_u64::<BigEndian>().unwrap();
-    num
+    buf.read_u64::<BigEndian>().unwrap()
 }
 
 /// Read a key from header.
@@ -390,13 +389,12 @@ pub fn read_key(keyv: &Vec<u8>) -> u64 {
 /// assert_eq!(key, read_key);
 /// ```
 #[inline]
-pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
+pub fn read_key_from_hdr(keyv: &[u8]) -> u64 {
     if keyv.len() < HDRKEYL {
         return 0;
     }
     let mut buf = Cursor::new(&keyv[HDRL..]);
-    let num = buf.read_u64::<BigEndian>().unwrap();
-    num
+    buf.read_u64::<BigEndian>().unwrap()
 }
 
 /// Read a connection id from header.
@@ -418,13 +416,12 @@ pub fn read_key_from_hdr(keyv: &Vec<u8>) -> u64 {
 ///
 /// ```
 #[inline]
-pub fn read_cid_from_hdr(hdrv: &Vec<u8>) -> u32 {
+pub fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
     if hdrv.len() < HDRL {
         return 0;
     }
     let mut buf = Cursor::new(&hdrv[(HDRL-CIDL)..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
-    num
+    buf.read_u32::<BigEndian>().unwrap()
 }
 
 
@@ -440,7 +437,7 @@ pub fn read_cid_from_hdr(hdrv: &Vec<u8>) -> u32 {
 /// let key: u64 = do_hash(&hashable); 
 /// ```
 #[inline]
-pub fn do_hash(t: &Vec<String>) -> u64 {
+pub fn do_hash(t: &[String]) -> u64 {
     let mut s = SipHasher::new();
     for item in t {
         item.hash(&mut s);
@@ -448,7 +445,7 @@ pub fn do_hash(t: &Vec<String>) -> u64 {
     s.finish()
 }
 
-/// Do a valid UTF-8 string from a SocketAddr.
+/// Do a valid UTF-8 string from a `SocketAddr`.
 ///
 /// For IPv4 the format is "x.x.x.x:y", where x is u8 and y is u16
 /// For IPv6 the format is "[z:z:z:z:z:z:z:z]:y", where z is u16 in hexadecimal format and y is u16
@@ -478,7 +475,7 @@ pub fn addr2str(addr: &SocketAddr) -> String {
             let v4str = format!("{}.{}.{}.{}:{}", 
                                 v4oct[0], v4oct[1], v4oct[2], v4oct[3], 
                                 addr.port());
-            return v4str;
+            v4str
         }
         IpAddr::V6(v6) => {
             let v6seg = v6.segments();
@@ -486,7 +483,7 @@ pub fn addr2str(addr: &SocketAddr) -> String {
                                 v6seg[0], v6seg[1], v6seg[2], v6seg[3], 
                                 v6seg[4], v6seg[5], v6seg[6], v6seg[7], 
                                 addr.port());
-            return v6str;
+            v6str
         }
     }
 }
