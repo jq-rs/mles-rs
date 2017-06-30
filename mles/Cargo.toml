@@ -14,7 +14,7 @@ keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 lto = true
 
 [dependencies]
-mles-utils = "1.0.0-beta"
+mles-utils = "0.11"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
