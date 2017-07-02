@@ -279,6 +279,25 @@ pub fn write_hdr_without_cid(len: usize) -> Vec<u8> {
     msgv
 }
 
+/// Return a random connection id.
+///
+/// # Example
+/// ```
+/// use mles_utils::select_cid;
+///
+/// let cid = select_cid();
+/// assert!(cid >= 0x1 && cid <= 0x7fffffff);
+/// ```
+#[inline]
+pub fn select_cid() -> u32 {
+    let mut rnd: u32 = rand::random();
+    rnd >>= 1; //skip values larger than 0x7fffffff
+    if 0 == rnd { //skip zero
+        rnd = 1;
+    }
+    rnd
+}
+
 /// Write a random connection id in network byte order.
 ///
 /// # Example
@@ -291,11 +310,7 @@ pub fn write_hdr_without_cid(len: usize) -> Vec<u8> {
 #[inline]
 pub fn write_cid() -> Vec<u8> {
     let mut cidv = vec![];
-    let mut rnd: u32 = rand::random();
-    rnd >>= 1; //skip values larger than 0x7fffffff
-    if 0 == rnd { //skip zero
-        rnd = 1;
-    }
+    let rnd = select_cid();
     cidv.write_u32::<BigEndian>(rnd).unwrap();
     cidv
 }
@@ -446,7 +461,7 @@ pub fn read_key_from_hdr(keyv: &[u8]) -> u64 {
 ///
 /// hdr = write_cid_to_hdr(hdr);
 /// let read_cid = read_cid_from_hdr(&hdr);
-/// assert_ne!(0, read_cid);
+/// assert!(read_cid >= 0x1 && read_cid <= 0x7fffffff);
 ///
 /// ```
 #[inline]
