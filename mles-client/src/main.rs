@@ -118,6 +118,7 @@ fn main() {
         let mut core = Core::new().unwrap();
         let handle = core.handle();
         let tcp = TcpStream::connect(&raddr, &handle);
+        let mut cid: Option<u32> = None;
         let mut key: Option<u64> = None;
         let mut keys = Vec::new();
 
@@ -154,10 +155,13 @@ fn main() {
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
                     key = Some(do_hash(&keys));
+                    cid = Some(select_cid());
                 }
-                let mut keyv = write_key(key.unwrap());
-                keyv.extend(buf);
-                Ok(keyv)
+                let mut cidv = write_selected_cid(cid.unwrap());
+                let keyv = write_key(key.unwrap());
+                cidv.extend(keyv);
+                cidv.extend(buf);
+                Ok(cidv)
             });
 
             let send_stdin = stdin_rx.forward(sink);
@@ -235,8 +239,7 @@ impl Encoder for Bytes {
     type Error = io::Error;
 
     fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
-        let mut msgv = write_hdr(data.len() - mles_utils::KEYL);
-        msgv = write_cid_to_hdr(msgv);
+        let mut msgv = write_hdr_without_cid(data.len() - mles_utils::KEYL - mles_utils::CIDL);
         msgv.extend(data);
         buf.put(&msgv[..]);
         Ok(())
@@ -307,6 +310,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let tcp = TcpStream::connect(&raddr, &handle);
+    let mut cid: Option<u32> = None;
     let mut key: Option<u64> = None;
     let mut keys = Vec::new();
 
@@ -342,10 +346,13 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                 keys.push(decoded_message.get_uid().to_string());
                 keys.push(decoded_message.get_channel().to_string());
                 key = Some(do_hash(&keys));
+                cid = Some(select_cid());
             }
-            let mut keyv = write_key(key.unwrap());
-            keyv.extend(buf);
-            Ok(keyv)
+            let mut cidv = write_selected_cid(cid.unwrap());
+            let keyv = write_key(key.unwrap());
+            cidv.extend(keyv);
+            cidv.extend(buf);
+            Ok(cidv)
         });
 
         let send_wsrx = mles_rx.forward(sink);
