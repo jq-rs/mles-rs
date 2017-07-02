@@ -262,13 +262,31 @@ pub fn write_hdr(len: usize) -> Vec<u8> {
     msgv
 }
 
+/// Write a valid Mles header with specified length to network byte order without cid.
+///
+/// # Example
+/// ```
+/// use mles_utils::{write_hdr_without_cid, read_hdr_len, HDRL, CIDL};
+///
+/// let hdr = write_hdr_without_cid(515);
+/// assert_eq!(HDRL-CIDL, hdr.len());
+/// ```
+#[inline]
+pub fn write_hdr_without_cid(len: usize) -> Vec<u8> {
+    let hdr = (('M' as u32) << 24) | len as u32;
+    let mut msgv = vec![];
+    msgv.write_u32::<BigEndian>(hdr).unwrap();
+    msgv
+}
+
 /// Write a random connection id in network byte order.
 ///
 /// # Example
 /// ```
-/// use mles_utils::write_cid;
+/// use mles_utils::{write_cid, CIDL};
 ///
 /// let cidv = write_cid();
+/// assert_eq!(CIDL, cidv.len());
 /// ```
 #[inline]
 pub fn write_cid() -> Vec<u8> {
@@ -279,6 +297,22 @@ pub fn write_cid() -> Vec<u8> {
         rnd = 1;
     }
     cidv.write_u32::<BigEndian>(rnd).unwrap();
+    cidv
+}
+
+/// Write a selected connection id in network byte order.
+///
+/// # Example
+/// ```
+/// use mles_utils::{write_selected_cid, CIDL};
+///
+/// let cidv = write_selected_cid(0x7fefefff);
+/// assert_eq!(CIDL, cidv.len());
+/// ```
+#[inline]
+pub fn write_selected_cid(selected: u32) -> Vec<u8> {
+    let mut cidv = vec![];
+    cidv.write_u32::<BigEndian>(selected).unwrap();
     cidv
 }
 
