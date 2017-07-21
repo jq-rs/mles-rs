@@ -19,14 +19,13 @@
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
-extern crate mles_utils;
 
 use std::io::{Error, ErrorKind};
 
 use tokio_core::net::TcpStream;
 use tokio_io::io;
 
-use mles_utils::*;
+use super::*;
 
 pub fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
     process_hdr(reader, hdr_key)

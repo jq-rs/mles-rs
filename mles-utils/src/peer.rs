@@ -19,7 +19,6 @@
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
-extern crate mles_utils;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -40,7 +39,7 @@ use futures::sync::mpsc::{unbounded, UnboundedSender};
 
 use local_db::*;
 use frame::*;
-use mles_utils::*;
+use super::*;
 
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
@@ -95,7 +94,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 if !keyaddr.is_empty() {
                    keys.push(keyaddr);
                 }
-                let message = msg.split_off(mles_utils::HDRKEYL);
+                let message = msg.split_off(HDRKEYL);
                 //create hash for verification
                 let decoded_message = message_decode(message.as_slice());
                 keys.push(decoded_message.get_uid().to_string());
@@ -149,7 +148,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             let mles_peer_db = mles_peer_db_inner.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
-                let frame = io::read_exact(reader, vec![0;mles_utils::HDRKEYL]);
+                let frame = io::read_exact(reader, vec![0;HDRKEYL]);
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
