@@ -34,6 +34,10 @@ use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::net::IpAddr;
+use std::net::TcpStream;
+use std::io::Write;
+use std::io::{Read, Error};
+
 
 /// HDRL defines the size of the header including version, length and timestamp
 pub const HDRL: usize = 8; 
@@ -142,6 +146,160 @@ impl Msg {
     /// ```
     pub fn get_message(&self) -> &Vec<u8> {
         &self.message
+    }
+}
+
+pub struct MsgConn {
+    uid:     String,
+    channel: String,
+    key:     Option<u64>,
+    stream:  Option<TcpStream>,
+}
+
+impl MsgConn {
+
+    pub fn new(uid: String, channel: String) -> MsgConn {
+        MsgConn {
+            uid: uid,
+            channel: channel,
+            key: None,
+            stream: None
+        }
+    }
+
+    pub fn get_uid(&self) -> String {
+        self.uid.clone()
+    }
+
+    pub fn get_channel(&self) -> String {
+        self.channel.clone()
+    }
+
+    pub fn get_key(&self) -> Option<u64> {
+        self.key
+    }
+
+    pub fn connect(mut self, raddr: SocketAddr) -> MsgConn {
+        let msg = Msg::new(self.get_uid(), self.get_channel(), Vec::new());
+        match TcpStream::connect(raddr) {
+            Ok(mut stream) => {
+                let _val = stream.set_nodelay(true);
+
+                if self.get_key().is_none() {
+                    let mut keys = Vec::new();
+
+                    let laddr = match stream.local_addr() {
+                        Ok(laddr) => laddr,
+                            Err(_) => {
+                                let addr = "0.0.0.0:0";
+                                addr.parse::<SocketAddr>().unwrap()
+                            }
+                    };
+                    keys.push(addr2str(&laddr));
+                    keys.push(self.get_uid());
+                    keys.push(self.get_channel());
+                    let key = do_hash(&keys);
+                    println!("Key {:x}", key);
+                    self.key = Some(key);
+                }
+                let encoded_msg = message_encode(&msg);
+                let key = self.get_key().unwrap();
+                let keyv = write_key(key);
+                let mut msgv = write_hdr(encoded_msg.len());
+                msgv = write_cid_to_hdr(msgv);
+                msgv.extend(keyv);
+                msgv.extend(encoded_msg);
+                stream.write(msgv.as_slice()).unwrap();
+                self.stream = Some(stream);
+                self
+            },
+            Err(_) => {
+                println!("Could not connect to server {}", raddr);
+                self
+            },
+        }
+    }
+
+    pub fn send_message(mut self, msg: Vec<u8>) -> MsgConn {
+        let encoded_msg = message_encode(&Msg::new(self.get_uid(), self.get_channel(), msg));
+        let key = self.get_key().unwrap();
+        let keyv = write_key(key);
+        let mut msgv = write_hdr(encoded_msg.len());
+        msgv = write_cid_to_hdr(msgv);
+        msgv.extend(keyv);
+        msgv.extend(encoded_msg);
+        let mut stream = self.stream.unwrap();
+        stream.write(msgv.as_slice()).unwrap();
+        self.stream = Some(stream);
+        self
+    }
+
+    pub fn read_message(mut self) -> (MsgConn, Vec<u8>) {
+        let stream = self.stream.unwrap();
+        let tuple = read_n(&stream, HDRL);
+        let status = tuple.0;
+        match status {
+            Ok(0) => {               
+                self.stream = Some(stream);
+                return (self, Vec::new());
+            },
+            _ => {}
+        }
+        let buf = tuple.1;
+        if 0 == buf.len() {
+            self.stream = Some(stream);
+            return (self, Vec::new());
+        }
+        if read_hdr_type(buf.as_slice()) != 'M' as u32 {
+            self.stream = Some(stream);
+            return (self, Vec::new());
+        }
+        let hdr_len = read_hdr_len(buf.as_slice());
+        if 0 == hdr_len {
+            self.stream = Some(stream);
+            return (self, Vec::new());
+        }
+        //read key
+        let tuple = read_n(&stream, KEYL);
+        let status = tuple.0;
+        match status {
+            Ok(0) => {
+                self.stream = Some(stream);
+                return (self, Vec::new());
+            },
+            Ok(_) => {},
+            _ => {
+               self.stream = Some(stream);
+               return (self, Vec::new());
+            },
+        }
+        let tuple = read_n(&stream, hdr_len);
+        let status = tuple.0;
+        match status {
+            Ok(0) => {
+                self.stream = Some(stream);
+                return (self, Vec::new());
+            },
+            _ => {}
+        }
+        let payload = tuple.1;
+        if payload.len() != (hdr_len as usize) {
+            self.stream = Some(stream);
+            return (self, Vec::new());
+        }
+        if 0 == payload.len() {
+            self.stream = Some(stream);
+            return (self, Vec::new());
+        }
+        let decoded_message = message_decode(payload.as_slice());
+        self.stream = Some(stream);
+        (self, decoded_message.get_message().to_owned())
+    }
+
+    pub fn close(self) {
+        if self.stream.is_some() {
+            drop(self.stream.unwrap());
+        }
     }
 }
 
@@ -302,32 +460,16 @@ pub fn select_cid() -> u32 {
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_cid, CIDL};
+/// use mles_utils::{write_cid, select_cid, CIDL};
 ///
-/// let cidv = write_cid();
+/// let cidv = write_cid(select_cid());
 /// assert_eq!(CIDL, cidv.len());
 /// ```
 #[inline]
-pub fn write_cid() -> Vec<u8> {
+pub fn write_cid(cid: u32) -> Vec<u8> {
     let mut cidv = vec![];
-    let rnd = select_cid();
-    cidv.write_u32::<BigEndian>(rnd).unwrap();
-    cidv
-}
-
-/// Write a selected connection id in network byte order.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_selected_cid, CIDL};
-///
-/// let cidv = write_selected_cid(0x7fefefff);
-/// assert_eq!(CIDL, cidv.len());
-/// ```
-#[inline]
-pub fn write_selected_cid(selected: u32) -> Vec<u8> {
-    let mut cidv = vec![];
-    cidv.write_u32::<BigEndian>(selected).unwrap();
+    assert!(cid >= 0x1 && cid <= 0x7fffffff);
+    cidv.write_u32::<BigEndian>(cid).unwrap();
     cidv
 }
 
@@ -346,8 +488,8 @@ pub fn write_cid_to_hdr(mut hdrv: Vec<u8>) -> Vec<u8> {
         return vec![];
     }
     let tail = hdrv.split_off(HDRL);
-    hdrv.truncate(HDRL - CIDL); //drop existing timestamp
-    hdrv.extend(write_cid()); //add new timestamp
+    hdrv.truncate(HDRL - CIDL); //drop existing cid
+    hdrv.extend(write_cid(select_cid())); //add new cid
     hdrv.extend(tail);
     hdrv
 }
@@ -537,9 +679,20 @@ pub fn addr2str(addr: &SocketAddr) -> String {
     }
 }
 
+fn read_n<R>(reader: R, bytes_to_read: usize) -> (Result<usize, Error>, Vec<u8>)
+where R: Read,
+{
+    let mut buf = vec![];
+    let mut chunk = reader.take(bytes_to_read as u64);
+    let status = chunk.read_to_end(&mut buf);
+    (status, buf)
+}
+
+
 #[cfg(test)]
 mod tests {
-    use std::net::SocketAddr;
+    use std::net::{SocketAddr, ToSocketAddrs};
+    use std::net::{IpAddr, Ipv4Addr};
     use super::*;
 
     #[test]
@@ -596,6 +749,39 @@ mod tests {
         let len = hdrv.len();
         assert_eq!(orig_len, len);
     }
+
+    #[test]
+    fn test_msgconn_api() {
+        let raddr = "127.0.0.1:8077";
+        let raddr: Vec<_> = raddr.to_socket_addrs()
+            .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+            .collect();
+        let raddr = *raddr.first().unwrap();
+        let raddr = Some(raddr).unwrap();
+        assert_ne!(0, raddr.port());
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let message = "Hello World!".to_string();
+        let mut conn = MsgConn::new(uid.clone(), channel.clone());
+        conn = conn.connect(raddr);
+        conn = conn.send_message(message.into_bytes());
+        conn.close();
+        let mut conn = MsgConn::new(uid.clone(), channel.clone());
+        conn = conn.connect(raddr);
+        let (conn, msg) = conn.read_message();
+        println!("{:?}", msg);
+        let msg = String::from_utf8_lossy(msg.as_slice());
+        println!("{:?}", msg);
+        assert_eq!("", msg);
+        let (conn, msg) = conn.read_message();
+        conn.close();
+        println!("{:?}", msg);
+        let msg = String::from_utf8_lossy(msg.as_slice());
+        println!("{:?}", msg);
+        assert_eq!("Hello World!", msg);
+    }
+
 }
+
 
 
