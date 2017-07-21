@@ -76,6 +76,7 @@ pub const KEYL: usize = 8;
 pub const HDRKEYL: usize = HDRL + KEYL;
 
 const KEEPALIVE: u64 = 5;
+const HISTLIMIT: usize = 100;
 
 /// Msg structure
 ///
@@ -703,6 +704,7 @@ where R: Read,
 }
 
 pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<SocketAddr>, hist_limit: usize) {
+    let mut history_limit = HISTLIMIT;
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -715,6 +717,10 @@ pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<Sock
             process::exit(1);
         },
     };
+    if hist_limit != 0 {
+        history_limit = hist_limit;
+    }
+
     println!("Listening on: {}", address);
 
     let mles_db_hash: HashMap<String, MlesDb> = HashMap::new();
@@ -786,10 +792,10 @@ pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<Sock
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(history_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
                     }
 
-                    let mut mles_db_entry = MlesDb::new(hist_limit);
+                    let mut mles_db_entry = MlesDb::new(history_limit);
                     mles_db_entry.add_channel(cid, tx_inner.clone());
                     mles_db_once.insert(channel.clone(), mles_db_entry);
 
