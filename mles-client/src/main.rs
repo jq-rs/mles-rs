@@ -157,7 +157,7 @@ fn main() {
                     key = Some(do_hash(&keys));
                     cid = Some(select_cid());
                 }
-                let mut cidv = write_selected_cid(cid.unwrap());
+                let mut cidv = write_cid(cid.unwrap());
                 let keyv = write_key(key.unwrap());
                 cidv.extend(keyv);
                 cidv.extend(buf);
@@ -348,7 +348,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                 key = Some(do_hash(&keys));
                 cid = Some(select_cid());
             }
-            let mut cidv = write_selected_cid(cid.unwrap());
+            let mut cidv = write_cid(cid.unwrap());
             let keyv = write_key(key.unwrap());
             cidv.extend(keyv);
             cidv.extend(buf);

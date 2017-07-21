@@ -1,10 +1,10 @@
 [package]
 name = "mles-utils"
-version = "0.11.3"
+version = "0.12.0"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
-license = "GPL-3.0"
+license = "MPL-2.0"
 repository = "https://github.com/jq-rs/mles-rs"
 documentation = "https://docs.rs/mles-utils"
 readme = "../README.md"
@@ -22,6 +22,9 @@ serde_bytes = "0.10"
 byteorder = "1.0"
 siphasher = "0.2"
 rand = "0.3"
+futures = "0.1"
+tokio-core = "0.1"
+tokio-io = "0.1"
  
 [lib]
 test = true

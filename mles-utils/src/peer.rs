@@ -1,25 +1,12 @@
-/**
- *   Mles server peer
- *
- *   Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+*  License, v. 2.0. If a copy of the MPL was not distributed with this
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*
+*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+* */
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
-extern crate mles_utils;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -40,11 +27,12 @@ use futures::sync::mpsc::{unbounded, UnboundedSender};
 
 use local_db::*;
 use frame::*;
-use mles_utils::*;
+use super::*;
 
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
+/// Initiate peer connection
 pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: &UnboundedSender<(u32, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
@@ -95,7 +83,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 if !keyaddr.is_empty() {
                    keys.push(keyaddr);
                 }
-                let message = msg.split_off(mles_utils::HDRKEYL);
+                let message = msg.split_off(HDRKEYL);
                 //create hash for verification
                 let decoded_message = message_decode(message.as_slice());
                 keys.push(decoded_message.get_uid().to_string());
@@ -149,7 +137,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             let mles_peer_db = mles_peer_db_inner.clone();
             let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
-                let frame = io::read_exact(reader, vec![0;mles_utils::HDRKEYL]);
+                let frame = io::read_exact(reader, vec![0;HDRKEYL]);
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
@@ -197,6 +185,15 @@ fn set_peer_cid(peer_cid: u32) -> u32 {
     x as u32 
 }
 
+/// Check if an peer is defined
+///
+/// # Example
+/// ```
+/// use mles_utils::peer::has_peer;
+///
+/// let sockaddr = None;
+/// assert_eq!(false, has_peer(&sockaddr));
+/// ```
 pub fn has_peer(peer: &Option<SocketAddr>) -> bool {
    if let Some(peer) = *peer {
        return peer.port() != 0;
