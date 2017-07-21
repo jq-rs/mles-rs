@@ -2,24 +2,13 @@
 //! `Mles utils` library is provided for Mles client and server implementations for easy handling of 
 //! proper header and message structures.
 
-/**
- *   Mles-utils to be used with Mles client or server.
- *
- *   Copyright (C) 2017 Juhamatti Kuusisaari / Mles developers
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+*  License, v. 2.0. If a copy of the MPL was not distributed with this
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*
+*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+* */
+
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_cbor;
@@ -33,6 +22,8 @@ extern crate futures;
 
 mod local_db;
 mod frame;
+
+/// Peer module provides peer-related public functions
 pub mod peer;
 
 use std::io::Cursor;
@@ -179,6 +170,10 @@ impl Msg {
     }
 }
 
+/// Msg connection structure
+///
+/// This structure defines the Mles connection for simple synchronous connections. 
+///
 pub struct MsgConn {
     uid:     String,
     channel: String,
@@ -188,6 +183,14 @@ pub struct MsgConn {
 
 impl MsgConn {
 
+    /// Create a new MsgConn object for a connection.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgConn;
+    ///
+    /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
+    /// ```
     pub fn new(uid: String, channel: String) -> MsgConn {
         MsgConn {
             uid: uid,
@@ -197,18 +200,48 @@ impl MsgConn {
         }
     }
 
+    /// Gets the defined uid.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgConn;
+    ///
+    /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
+    /// assert_eq!("My uid".to_string(), conn.get_uid());
+    /// ```
     pub fn get_uid(&self) -> String {
         self.uid.clone()
     }
 
+    /// Gets the defined channel.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgConn;
+    ///
+    /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
+    /// assert_eq!("My channel".to_string(), conn.get_channel());
+    /// ```
     pub fn get_channel(&self) -> String {
         self.channel.clone()
     }
 
+    /// Gets the defined key.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgConn;
+    ///
+    /// //key is set only when connection is initiated..
+    /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
+    /// assert_eq!(true, conn.get_key().is_none());
+    /// ```
     pub fn get_key(&self) -> Option<u64> {
         self.key
     }
 
+    /// Connects to the defined address with a message.
+    /// 
     pub fn connect_with_msg(mut self, raddr: SocketAddr, msg: Vec<u8>) -> MsgConn {
         let msg = Msg::new(self.get_uid(), self.get_channel(), msg);
         match TcpStream::connect(raddr) {
@@ -249,10 +282,17 @@ impl MsgConn {
         }
     }
 
+    /// Connects to the defined address (without a message).
+    /// 
     pub fn connect(self, raddr: SocketAddr) -> MsgConn {
         self.connect_with_msg(raddr, Vec::new())
     }
 
+    /// Send a message. Blocks until a message is sent.
+    /// 
+    /// # Errors
+    /// If a message cannot be sent, stream is set to None.
+    /// 
     pub fn send_message(mut self, msg: Vec<u8>) -> MsgConn {
         let encoded_msg = message_encode(&Msg::new(self.get_uid(), self.get_channel(), msg));
         let key = self.get_key().unwrap();
@@ -262,11 +302,25 @@ impl MsgConn {
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
         let mut stream = self.stream.unwrap();
-        stream.write(msgv.as_slice()).unwrap();
-        self.stream = Some(stream);
+        match stream.write(msgv.as_slice()) {
+            Ok(0) => { 
+                println!("Send zero");
+                self.stream = None;
+            },
+            Ok(_) => self.stream = Some(stream),
+            Err(err) => { 
+                println!("Send error {}", err);
+                self.stream = None;
+            }
+        }
         self
     }
 
+    /// Reads a message with non-zero message content. Blocks until a message is received.
+    /// 
+    /// # Errors
+    /// If message cannot be read, an empty message is returned.
+    /// 
     pub fn read_message(mut self) -> (MsgConn, Vec<u8>) {
         let stream = self.stream.unwrap();
         loop {
@@ -275,7 +329,7 @@ impl MsgConn {
             match status {
                 Ok(0) => {
                     println!("Read failed: eof");
-                    self.stream = Some(stream);
+                    self.stream = None;
                     return (self, Vec::new());
                 },
                 _ => {}
@@ -311,10 +365,14 @@ impl MsgConn {
         }
     }
 
-    pub fn close(self) {
+    /// Closes the connection.
+    /// 
+    pub fn close(mut self) -> MsgConn {
         if self.stream.is_some() {
             drop(self.stream.unwrap());
         }
+        self.stream = None;
+        self
     }
 }
 
@@ -703,8 +761,35 @@ where R: Read,
     (status, buf)
 }
 
+/// Run an Mles server
+///
+/// # Example
+/// ```
+/// use std::thread;
+/// use std::net::{IpAddr, Ipv4Addr};
+/// use std::net::{SocketAddr, ToSocketAddrs};
+/// use mles_utils::server_run;
+///
+/// let raddr = "127.0.0.1:8077";
+/// let raddr: Vec<_> = raddr.to_socket_addrs()
+///                    .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+///                    .collect();
+/// let raddr = *raddr.first().unwrap();
+/// let raddr = Some(raddr).unwrap();
+/// assert_ne!(0, raddr.port());
+/// let uid = "User".to_string();
+/// let channel = "Channel".to_string();
+/// let message = "Hello World!".to_string();
+        
+/// let child = thread::spawn(|| server_run(":8077", "".to_string(), "".to_string(), None, 100));
+/// drop(child);
+/// ```
 pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<SocketAddr>, hist_limit: usize) {
     let mut history_limit = HISTLIMIT;
+    if 0 != hist_limit {
+        history_limit = hist_limit;
+    }
+
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -717,10 +802,6 @@ pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<Sock
             process::exit(1);
         },
     };
-    if hist_limit != 0 {
-        history_limit = hist_limit;
-    }
-
     println!("Listening on: {}", address);
 
     let mles_db_hash: HashMap<String, MlesDb> = HashMap::new();
