@@ -67,7 +67,6 @@ pub const KEYL: usize = 8;
 pub const HDRKEYL: usize = HDRL + KEYL;
 
 const KEEPALIVE: u64 = 5;
-const HISTLIMIT: usize = 100;
 
 /// Msg structure
 ///
@@ -785,12 +784,6 @@ where R: Read,
 /// drop(child);
 /// ```
 pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<SocketAddr>, hist_limit: usize) {
-    let mut history_limit = HISTLIMIT;
-    if 0 != hist_limit {
-        history_limit = hist_limit;
-    }
-
-
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let address = "0.0.0.0".to_string() + port;
@@ -873,10 +866,10 @@ pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<Sock
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(history_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
                     }
 
-                    let mut mles_db_entry = MlesDb::new(history_limit);
+                    let mut mles_db_entry = MlesDb::new(hist_limit);
                     mles_db_entry.add_channel(cid, tx_inner.clone());
                     mles_db_once.insert(channel.clone(), mles_db_entry);
 
@@ -912,7 +905,18 @@ pub fn server_run(port: &str, keyval: String, keyaddr: String, peer: Option<Sock
                     // add to history if no peer
                     if !peer::has_peer(&peer) {
                         hdr_key.extend(message);
-                        mles_db_entry.add_message(hdr_key);
+                        mles_db_entry.add_message(hdr_key.clone());
+                    }
+                    //distribute to all
+                    if let Some(channels) = mles_db_entry.get_channels() {
+                        for (ocid, tx) in channels.iter() {
+                            if *ocid != cid {
+                                let _res = tx.send(hdr_key.clone()).map_err(|_| { 
+                                    //just ignore failures for now
+                                    () 
+                                });
+                            }
+                        }
                     }
                     mles_db_entry.add_tx_db(tx_inner.clone());
                 }
@@ -1092,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn test_msgconn_api() {
+    fn test_msgconn_send_read() {
         let sec = Duration::new(1,0);
         let raddr = "127.0.0.1:8077";
         let raddr: Vec<_> = raddr.to_socket_addrs()
@@ -1126,8 +1130,47 @@ mod tests {
 
         //drop server
         drop(child);
-
     }
+
+    #[test]
+    fn test_msgconn_read_send() {
+        let sec = Duration::new(1,0);
+        let raddr = "127.0.0.1:8076";
+        let raddr: Vec<_> = raddr.to_socket_addrs()
+            .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+            .collect();
+        let raddr = *raddr.first().unwrap();
+        let raddr = Some(raddr).unwrap();
+        assert_ne!(0, raddr.port());
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let message = "Hello World!".to_string();
+         
+        //create server
+        let child = thread::spawn(|| server_run(":8076", "".to_string(), "".to_string(), None, 100));
+        thread::sleep(sec);
+
+        //read connect
+        let mut conn = MsgConn::new(uid.clone(), channel.clone());
+        conn = conn.connect(raddr);
+
+        //send hello world
+        let mut sconn = MsgConn::new(uid.clone(), channel.clone());
+        sconn = sconn.connect_with_msg(raddr, message.into_bytes());
+        sconn.close();
+
+        //read hello world
+        let (conn, msg) = conn.read_message();
+        let msg = String::from_utf8_lossy(msg.as_slice());
+        assert_eq!("Hello World!", msg);
+
+        //close connection
+        conn.close();
+
+        //drop server
+        drop(child);
+    }
+
 
 }
 
