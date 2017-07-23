@@ -27,10 +27,10 @@ fn main() {
     let mut childs = Vec::new();
 
     //create server
-    let server = thread::spawn(|| server_run(":8077", "".to_string(), "".to_string(), None, 100));
+    let server = thread::spawn(|| server_run(":8077", "".to_string(), "".to_string(), None, 0));
     thread::sleep(sec);
 
-    for _ in 0..10 {
+    for _ in 0..2 {
         let uid = uid.clone();
         let channel = channel.clone();
         let child = thread::spawn(move || {
@@ -39,15 +39,14 @@ fn main() {
             conn = conn.connect(raddr);
             let (conn, msg) = conn.read_message();
             let msg = String::from_utf8_lossy(msg.as_slice());
-            println!("A message: {}", msg);
-            //assert_eq!("Hello World!", msg);
+            assert_eq!("Hello World!", msg);
             //close connection
             conn.close();
         });
         childs.push(child);
     }
 
-    let send = thread::spawn(move || {
+    let _send = thread::spawn(move || {
         let raddr = raddr.clone();
         //send hello world
         let mut conn = MsgConn::new(uid.clone(), channel.clone());
@@ -55,9 +54,9 @@ fn main() {
         conn.close();
     });
 
-    for _ in 0..10 {
+    for _ in 0..2 {
         let child = childs.pop().unwrap();
-        let res = child.join();
+        let _res = child.join();
     }
 
     //drop server
