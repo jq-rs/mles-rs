@@ -55,7 +55,7 @@ fn main() {
     }
 
     let endtime = now.elapsed();
-    println!("{}.{}", endtime.as_secs(), endtime.subsec_nanos());
+    println!("{}.{:09}", endtime.as_secs(), endtime.subsec_nanos());
 
     conn.close();
 
