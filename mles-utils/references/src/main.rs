@@ -47,7 +47,7 @@ fn main() {
     //send hello world
     let mut conn = MsgConn::new(uid.clone(), channel.clone());
     now = Instant::now();
-    conn = conn.connect_with_msg(raddr, message.into_bytes());
+    conn = conn.connect_with_message(raddr, message.into_bytes());
 
     for _ in 0..100 {
         let child = childs.remove(0);

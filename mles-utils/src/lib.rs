@@ -232,7 +232,7 @@ impl MsgConn {
 
     /// Connects to the defined address with a message.
     /// 
-    pub fn connect_with_msg(mut self, raddr: SocketAddr, msg: Vec<u8>) -> MsgConn {
+    pub fn connect_with_message(mut self, raddr: SocketAddr, msg: Vec<u8>) -> MsgConn {
         let msg = Msg::new(self.get_uid(), self.get_channel(), msg);
         match TcpStream::connect(raddr) {
             Ok(mut stream) => {
@@ -275,7 +275,7 @@ impl MsgConn {
     /// Connects to the defined address (without a message).
     /// 
     pub fn connect(self, raddr: SocketAddr) -> MsgConn {
-        self.connect_with_msg(raddr, Vec::new())
+        self.connect_with_message(raddr, Vec::new())
     }
 
     /// Send a message. Blocks until a message is sent.
@@ -864,7 +864,7 @@ mod tests {
 
         //send hello world
         let mut conn = MsgConn::new(uid.clone(), channel.clone());
-        conn = conn.connect_with_msg(raddr, message.into_bytes());
+        conn = conn.connect_with_message(raddr, message.into_bytes());
         conn.close();
 
         //read hello world
@@ -901,7 +901,7 @@ mod tests {
 
         //send hello world
         let mut sconn = MsgConn::new(uid.clone(), channel.clone());
-        sconn = sconn.connect_with_msg(raddr, message.into_bytes());
+        sconn = sconn.connect_with_message(raddr, message.into_bytes());
         sconn.close();
 
         //read hello world
