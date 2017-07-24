@@ -189,7 +189,7 @@ fn set_peer_cid(peer_cid: u32) -> u32 {
 ///
 /// # Example
 /// ```
-/// use mles_utils::peer::has_peer;
+/// use mles_utils::has_peer;
 ///
 /// let sockaddr = None;
 /// assert_eq!(false, has_peer(&sockaddr));

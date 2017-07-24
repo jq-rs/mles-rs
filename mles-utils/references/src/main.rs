@@ -7,30 +7,27 @@
 extern crate mles_utils;
 
 use std::thread;
-use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::{Duration, Instant};
+use std::net::SocketAddr;
 
 use mles_utils::*;
 
 fn main() {
-    let sec = Duration::new(1,0);
-    let raddr = "127.0.0.1:8077";
-    let raddr: Vec<_> = raddr.to_socket_addrs()
-        .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
-        .collect();
-    let raddr = *raddr.first().unwrap();
-    let raddr = Some(raddr).unwrap();
+    let sec = Duration::new(2,0);
+    let addr = "127.0.0.1:8077";
+    let addr = addr.parse::<SocketAddr>().unwrap();
+    let raddr = addr.clone();
     let uid = "User".to_string();
     let channel = "Channel".to_string();
     let message = "Hello World!".to_string();
     let mut childs = Vec::new();
+    let now;
 
     //create server
-    let server = thread::spawn(|| server_run(":8077", "".to_string(), "".to_string(), None, 0));
+    let server = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
     thread::sleep(sec);
 
-    for _ in 0..2 {
+    for _ in 0..100 {
         let uid = uid.clone();
         let channel = channel.clone();
         let child = thread::spawn(move || {
@@ -45,19 +42,22 @@ fn main() {
         });
         childs.push(child);
     }
+    thread::sleep(sec);
 
-    let _send = thread::spawn(move || {
-        let raddr = raddr.clone();
-        //send hello world
-        let mut conn = MsgConn::new(uid.clone(), channel.clone());
-        conn = conn.connect_with_msg(raddr, message.into_bytes());
-        conn.close();
-    });
+    //send hello world
+    let mut conn = MsgConn::new(uid.clone(), channel.clone());
+    now = Instant::now();
+    conn = conn.connect_with_msg(raddr, message.into_bytes());
 
-    for _ in 0..2 {
-        let child = childs.pop().unwrap();
+    for _ in 0..100 {
+        let child = childs.remove(0);
         let _res = child.join();
     }
+
+    let endtime = now.elapsed();
+    println!("{}.{}", endtime.as_secs(), endtime.subsec_nanos());
+
+    conn.close();
 
     //drop server
     drop(server);

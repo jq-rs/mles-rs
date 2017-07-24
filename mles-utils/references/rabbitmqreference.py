@@ -8,23 +8,6 @@ THREADCNT = 100
 
 start = 0
 
-def a_sender():
-    global start
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-    channel = connection.channel()
-
-    channel.exchange_declare(exchange='logs',
-                             type='fanout')
-
-    start = time.time()
-
-    channel.basic_publish(exchange='logs',
-                          routing_key='',
-                          body='Hello World!')
-    #print(" [x] Sent 'Hello World!'")
-    connection.close()
-    sys.exit()
-
 def a_daemon():
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     channel = connection.channel()
@@ -57,12 +40,24 @@ for i in range(THREADCNT):
     t.start()
     tlist.append(t)
 
-time.sleep(1)
-s = threading.Thread(name='sender', target=a_sender)
-s.start()
+time.sleep(2)
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+channel = connection.channel()
+
+channel.exchange_declare(exchange='logs',
+                             type='fanout')
+
+start = time.time()
+
+channel.basic_publish(exchange='logs',
+                      routing_key='',
+                       body='Hello World!')
+#print(" [x] Sent 'Hello World!'")
 
 for i in range(THREADCNT):
     tlist[i].join()
 
 end = time.time()
 print(end - start)
+
+connection.close()

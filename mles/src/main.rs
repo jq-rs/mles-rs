@@ -16,6 +16,8 @@ const USAGE: &str = "Usage: mles [peer-address] [--history-limit=N]";
 const HISTLIMIT: usize = 100;
 
 fn main() {
+    let addr = "0.0.0.0:8077";
+    let addr = addr.parse::<SocketAddr>().unwrap();
     let mut peer: Option<SocketAddr> = None;
     let mut hist_limit = HISTLIMIT;
     for (argcnt, item) in env::args().enumerate() {
@@ -43,7 +45,7 @@ fn main() {
             let rpeer = *rpeer.first().unwrap();
             let rpeer = Some(rpeer);
             // check that we really got a proper peer
-            if mles_utils::peer::has_peer(&rpeer) {
+            if mles_utils::has_peer(&rpeer) {
                 println!("Using peer domain {}", peerarg); 
                 peer = rpeer;
             }
@@ -67,7 +69,7 @@ fn main() {
         Err(_) => "".to_string(),
     };
 
-    server_run(SRVPORT, keyval, keyaddr, peer, hist_limit);
+    server_run(addr, peer, keyval, keyaddr, hist_limit, 1);
 }
 
 
