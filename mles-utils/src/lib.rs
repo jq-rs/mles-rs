@@ -15,7 +15,6 @@ extern crate serde_cbor;
 extern crate serde_bytes;
 extern crate byteorder;
 extern crate siphasher;
-extern crate rand;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
