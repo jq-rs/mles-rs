@@ -1,6 +1,6 @@
 [package]
 name = "mles-utils"
-version = "1.0.0-beta2"
+version = "0.15.0"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
@@ -21,7 +21,6 @@ serde_cbor = "0.6"
 serde_bytes = "0.10"
 byteorder = "1.0"
 siphasher = "0.2"
-rand = "0.3"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"

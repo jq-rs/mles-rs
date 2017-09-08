@@ -15,7 +15,6 @@ extern crate serde_cbor;
 extern crate serde_bytes;
 extern crate byteorder;
 extern crate siphasher;
-extern crate rand;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
@@ -258,7 +257,7 @@ impl MsgConn {
                 let key = self.get_key().unwrap();
                 let keyv = write_key(key);
                 let mut msgv = write_hdr(encoded_msg.len());
-                msgv = write_cid_to_hdr(msgv);
+                msgv = write_cid_to_hdr(key, msgv);
                 msgv.extend(keyv);
                 msgv.extend(encoded_msg);
                 stream.write(msgv.as_slice()).unwrap();
@@ -288,7 +287,7 @@ impl MsgConn {
         let key = self.get_key().unwrap();
         let keyv = write_key(key);
         let mut msgv = write_hdr(encoded_msg.len());
-        msgv = write_cid_to_hdr(msgv);
+        msgv = write_cid_to_hdr(key, msgv);
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
         let mut stream = self.stream.unwrap();
@@ -499,38 +498,35 @@ pub fn write_hdr_without_cid(len: usize) -> Vec<u8> {
     msgv
 }
 
-/// Return a random connection id.
+/// Return a connection id from key.
 ///
 /// # Example
 /// ```
 /// use mles_utils::select_cid;
 ///
-/// let cid = select_cid();
-/// assert!(cid >= 0x1 && cid <= 0x7fffffff);
+/// let cid = select_cid(0x1000000100000001);
+/// assert_eq!(cid, 0x00000001);
 /// ```
 #[inline]
-pub fn select_cid() -> u32 {
-    let mut rnd: u32 = rand::random();
-    rnd >>= 1; //skip values larger than 0x7fffffff
-    if 0 == rnd { //skip zero
-        rnd = 1;
-    }
-    rnd
+pub fn select_cid(key: u64) -> u32 {
+    key as u32 
 }
 
 /// Write a random connection id in network byte order.
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_cid, select_cid, CIDL};
+/// use mles_utils::{write_cid, select_cid, CIDL, do_hash};
 ///
-/// let cidv = write_cid(select_cid());
+/// let hashstr = "A string".to_string();
+/// let hashable = vec![hashstr];
+/// let key = do_hash(&hashable); 
+/// let cidv = write_cid(select_cid(key));
 /// assert_eq!(CIDL, cidv.len());
 /// ```
 #[inline]
 pub fn write_cid(cid: u32) -> Vec<u8> {
     let mut cidv = vec![];
-    assert!(cid >= 0x1 && cid <= 0x7fffffff);
     cidv.write_u32::<BigEndian>(cid).unwrap();
     cidv
 }
@@ -539,19 +535,22 @@ pub fn write_cid(cid: u32) -> Vec<u8> {
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_hdr, write_cid_to_hdr};
+/// use mles_utils::{write_hdr, write_cid_to_hdr, do_hash};
 ///
+/// let hashstr = "A string".to_string();
+/// let hashable = vec![hashstr];
+/// let key = do_hash(&hashable); 
 /// let mut hdr = write_hdr(515);
-/// let hdr = write_cid_to_hdr(hdr);
+/// let hdr = write_cid_to_hdr(key, hdr);
 /// ```
 #[inline]
-pub fn write_cid_to_hdr(mut hdrv: Vec<u8>) -> Vec<u8> {
+pub fn write_cid_to_hdr(key: u64, mut hdrv: Vec<u8>) -> Vec<u8> {
     if hdrv.len() < HDRL {
         return vec![];
     }
     let tail = hdrv.split_off(HDRL);
     hdrv.truncate(HDRL - CIDL); //drop existing cid
-    hdrv.extend(write_cid(select_cid())); //add new cid
+    hdrv.extend(write_cid(select_cid(key))); //add new cid
     hdrv.extend(tail);
     hdrv
 }
@@ -657,13 +656,16 @@ pub fn read_key_from_hdr(keyv: &[u8]) -> u64 {
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_hdr_with_key, write_cid_to_hdr, read_cid_from_hdr};
+/// use mles_utils::{write_hdr_with_key, write_cid_to_hdr, read_cid_from_hdr, do_hash};
 ///
 /// let mut hdr: Vec<u8> = write_hdr_with_key(12, 0x3f3f3); //cid set to zero
 /// let read_cid = read_cid_from_hdr(&hdr);
 /// assert_eq!(0, read_cid);
 ///
-/// hdr = write_cid_to_hdr(hdr);
+/// let hashstr = "Another string".to_string();
+/// let hashable = vec![hashstr];
+/// let key = do_hash(&hashable); 
+/// hdr = write_cid_to_hdr(key, hdr);
 /// let read_cid = read_cid_from_hdr(&hdr);
 /// assert!(read_cid >= 0x1 && read_cid <= 0x7fffffff);
 ///
@@ -839,9 +841,9 @@ mod tests {
         assert_eq!(orig_key, key);
         let read_cid = read_cid_from_hdr(&hdrv);
         assert_eq!(0, read_cid);
-        hdrv = write_cid_to_hdr(hdrv);
+        hdrv = write_cid_to_hdr(key, hdrv);
         let read_cid = read_cid_from_hdr(&hdrv);
-        assert_ne!(0, read_cid);
+        assert_eq!(key as u32, read_cid);
         let key = read_key_from_hdr(&hdrv);
         assert_eq!(orig_key, key);
         let len = hdrv.len();

@@ -34,7 +34,7 @@ const WAITTIME: u64 = 5;
 
 /// Initiate peer connection
 pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
-                 tx_peer_for_msgs: &UnboundedSender<(u32, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
+                 tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
 {
     let mut core = Core::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
@@ -52,11 +52,11 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         let (tx_orig_chan, rx_orig_chan) = unbounded();
         let (tx, rx) = unbounded();
 
-        //set peer cid
+        //save cid
         let peer_cid = set_peer_cid(read_cid_from_hdr(&msg));
 
         //distribute channels
-        let _res = tx_peer_for_msgs.send((peer_cid, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
+        let _res = tx_peer_for_msgs.unbounded_send((peer_cid, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
 
         let loopcnt_inner = loopcnt.clone();
         let mles_peer_db_inner = mles_peer_db.clone();
@@ -94,7 +94,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             }
 
             //send message to peer
-            let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+            let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
             let (reader, writer) = pstream.split();
 
@@ -122,7 +122,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 //push history to client if not the first one (as peer will send the history then)
                 if mles_peer_db_once.get_messages_len() > 1 {
                     for msg in mles_peer_db_once.get_messages().iter() {
-                        let _res = tx_orig.send(msg.clone()).map_err(|_| { 
+                        let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
                             //just ignore for now
                             () 
                         });
@@ -135,7 +135,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             }));
 
             let mles_peer_db = mles_peer_db_inner.clone();
-            let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
+            let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, vec![0;HDRKEYL]);
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
@@ -152,7 +152,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                     //send message forward
                     let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
                     for tx_orig in mles_peer_db.get_channels().iter() {
-                        let _res = tx_orig.send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
+                        let _res = tx_orig.unbounded_send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
                     }
                     //push message to history
                     mles_peer_db.add_message(hdr_key);
@@ -180,9 +180,8 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
     }
 }
 
-fn set_peer_cid(peer_cid: u32) -> u32 {
-    let x: i32 = -(peer_cid as i32);
-    x as u32 
+pub fn set_peer_cid(cid: u32) -> u64 {
+    (cid as u64) | 1 << 32
 }
 
 /// Check if an peer is defined
@@ -209,7 +208,7 @@ mod tests {
     #[test]
     fn test_peer_set_cid() {
         let val: u32 = 1;
-        assert_eq!((-1 as i32) as u32, set_peer_cid(val));
+        assert_eq!(0x0000000100000001, set_peer_cid(val));
     }
 
     #[test]
