@@ -155,7 +155,7 @@ fn main() {
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
                     key = Some(do_hash(&keys));
-                    cid = Some(select_cid());
+                    cid = Some(select_cid(key));
                 }
                 let mut cidv = write_cid(cid.unwrap());
                 let keyv = write_key(key.unwrap());
@@ -346,7 +346,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                 keys.push(decoded_message.get_uid().to_string());
                 keys.push(decoded_message.get_channel().to_string());
                 key = Some(do_hash(&keys));
-                cid = Some(select_cid());
+                cid = Some(select_cid(key));
             }
             let mut cidv = write_cid(cid.unwrap());
             let keyv = write_key(key.unwrap());
