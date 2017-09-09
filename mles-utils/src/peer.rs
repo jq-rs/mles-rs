@@ -89,7 +89,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                         keys.push(keyaddr);
                     }
                     //create hash for verification
-                    let decoded_message = message_decode(message.as_slice());
+                    let decoded_message = Msg::decode(message.as_slice());
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
                     let key = Some(do_hash(&keys));
@@ -97,7 +97,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 }
                 //send resync message to peer
                 let rmsg = ResyncMsg::new(mles_peer_db.get_messages());
-                let resync_message = resync_message_encode(&rmsg);
+                let resync_message = rmsg.encode();
                 let size = resync_message.len();
                 if size <= MSGMAXSIZE {
                     msg = write_len_to_hdr(size, msg);
@@ -119,7 +119,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                         keys.push(keyaddr);
                     }
                     //create hash for verification
-                    let decoded_message = message_decode(message.as_slice());
+                    let decoded_message = Msg::decode(message.as_slice());
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
                     let key = Some(do_hash(&keys));

@@ -151,7 +151,7 @@ fn main() {
             let stdin_rx = stdin_rx.and_then(|buf| {
                 if None == key {
                     //create hash for verification
-                    let decoded_message = message_decode(buf.as_slice());
+                    let decoded_message = Msg::decode(buf.as_slice());
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
                     key = Some(do_hash(&keys));
@@ -166,7 +166,7 @@ fn main() {
 
             let send_stdin = stdin_rx.forward(sink);
             let write_stdout = stream.for_each(move |buf| {
-                let decoded = message_decode(buf.to_vec().as_slice());
+                let decoded = Msg::decode(buf.to_vec().as_slice());
                 let mut msg = "".to_string();
                 if !decoded.get_message().is_empty() {
                     msg.push_str(decoded.get_uid());
@@ -342,7 +342,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             }
             if None == key {
                 //create hash for verification
-                let decoded_message = message_decode(buf.as_slice());
+                let decoded_message = Msg::decode(buf.as_slice());
                 keys.push(decoded_message.get_uid().to_string());
                 keys.push(decoded_message.get_channel().to_string());
                 key = Some(do_hash(&keys));

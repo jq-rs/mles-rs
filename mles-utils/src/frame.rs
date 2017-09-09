@@ -48,14 +48,14 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     let key = read_key_from_hdr(&hdr_key);
 
     //try first decoding as a resync
-    let decoded_resync_message: ResyncMsg = resync_message_decode(message.as_slice());
+    let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_slice());
     let decoded_rvec = decoded_resync_message.first();
     if !decoded_rvec.is_empty() {
-        decoded_message = message_decode(decoded_rvec.as_slice());
+        decoded_message = Msg::decode(decoded_rvec.as_slice());
         is_resync = true;
     }
     else {
-        decoded_message = message_decode(message.as_slice());
+        decoded_message = Msg::decode(message.as_slice());
     }
     //create hash for verification
     keys.push(decoded_message.get_uid().to_string());
