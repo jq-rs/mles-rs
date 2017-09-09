@@ -76,25 +76,56 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             *loopcnt = 1;
 
             println!("Successfully connected to peer");
-            //update key in message in case needed
-            if is_addr_set {
-                let mut keys = Vec::new();
-                keys.push(addr2str(&laddr));
-                if !keyaddr.is_empty() {
-                   keys.push(keyaddr);
-                }
-                let message = msg.split_off(HDRKEYL);
-                //create hash for verification
-                let decoded_message = message_decode(message.as_slice());
-                keys.push(decoded_message.get_uid().to_string());
-                keys.push(decoded_message.get_channel().to_string());
-                let key = Some(do_hash(&keys));
-                msg = write_hdr_with_key(read_hdr_len(&msg), key.unwrap());
-                msg.extend(message);
-            }
 
-            //send message to peer
-            let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+            //if history exists, send resync to peer
+            let mut mles_peer_db = mles_peer_db_inner.borrow_mut();
+            if mles_peer_db.get_messages_len() > 0 {
+                //update key in message in case needed TODO FUNCTION
+                let message = msg.split_off(HDRKEYL);
+                if is_addr_set {
+                    let mut keys = Vec::new();
+                    keys.push(addr2str(&laddr));
+                    if !keyaddr.is_empty() {
+                        keys.push(keyaddr);
+                    }
+                    //create hash for verification
+                    let decoded_message = message_decode(message.as_slice());
+                    keys.push(decoded_message.get_uid().to_string());
+                    keys.push(decoded_message.get_channel().to_string());
+                    let key = Some(do_hash(&keys));
+                    msg = write_hdr_with_key(read_hdr_len(&msg), key.unwrap());
+                }
+                //send resync message to peer
+                let rmsg = ResyncMsg::new(mles_peer_db.get_messages());
+                let message = resync_message_encode(&rmsg);
+                msg.extend(message);
+
+                let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+            }
+            else {
+                //update key in message in case needed TODO FUNCTION
+                let message = msg.split_off(HDRKEYL);
+                if is_addr_set {
+                    let mut keys = Vec::new();
+                    keys.push(addr2str(&laddr));
+                    if !keyaddr.is_empty() {
+                        keys.push(keyaddr);
+                    }
+                    //create hash for verification
+                    let decoded_message = message_decode(message.as_slice());
+                    keys.push(decoded_message.get_uid().to_string());
+                    keys.push(decoded_message.get_channel().to_string());
+                    let key = Some(do_hash(&keys));
+                    msg = write_hdr_with_key(read_hdr_len(&msg), key.unwrap());
+                }
+                msg.extend(message);
+
+                //send message to peer
+                let _res = tx.unbounded_send(msg.clone()).map_err(|err| { println!("Cannot write to tx: {}", err); });
+
+                //push message to history
+                mles_peer_db.add_message(msg);
+            }
 
             let (reader, writer) = pstream.split();
 

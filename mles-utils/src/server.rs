@@ -98,7 +98,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
         let keyaddr_inner = keyaddr.clone();
-        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, decoded_message)| {
+        let socket_once = frame.and_then(move |(reader, mut hdr_key, is_resync, message, decoded_message, decoded_resync_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
@@ -138,6 +138,15 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                         }
                     }
                     else {
+
+                        if is_resync && 0 == mles_db_entry.get_messages_len() {
+                            // add resync messages to history
+                            let messages = decoded_resync_message.get_messages();
+                            for msg in messages {
+                                mles_db_entry.add_message(msg.clone());
+                            } 
+                        }
+
                         // send history to client if peer is not set
                         for msg in mles_db_entry.get_messages() {
                             let _res = tx_inner.unbounded_send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});

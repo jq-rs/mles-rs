@@ -159,6 +159,83 @@ impl Msg {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct MsgVec {
+    #[serde(with = "serde_bytes")]
+    messages: Vec<u8>,
+}
+
+impl MsgVec {
+    pub fn new(messages: &Vec<u8>) -> MsgVec {
+        MsgVec {
+            messages: messages.clone(),
+        }
+    }
+
+    pub fn get(&self) -> &Vec<u8> {
+        &self.messages
+    }
+}
+
+/// ResyncMsg structure
+///
+/// This structure defines resynchronization Msg structure that can be used 
+/// to resynchronize history state to root server from peers. The resynchronization 
+/// message can be sent only during initial connection message and packs the 
+/// history into one message that can be taken into account by Mles root server. 
+///
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResyncMsg {
+    resync_message: Vec<MsgVec>,
+}
+
+
+impl ResyncMsg {
+    /// Create a new ResyncMsg object with encoded message vector.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{Msg, ResyncMsg, message_encode};
+    ///
+    /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
+    /// let msg = message_encode(&msg);
+    /// let vec = vec![msg];
+    /// let rmsg = ResyncMsg::new(&vec);
+    /// ```
+    pub fn new(messages: &Vec<Vec<u8>>) -> ResyncMsg {
+        let mut rmsg = ResyncMsg {
+            resync_message: Vec::new(),
+        };
+        //transform to correct format 
+        for msg in messages {
+            rmsg.resync_message.push(MsgVec::new(&msg));
+        }
+        rmsg
+    }
+
+    pub fn len(&self) -> usize {
+        self.resync_message.len()
+    }
+
+    pub fn get_first(&self) -> Vec<u8> {
+        let first = self.resync_message.first();
+        match first {
+            Some(msgvec) => msgvec.get().clone(),
+            None => Vec::new(),
+        }
+    } 
+
+    pub fn get_messages(&self) -> Vec<Vec<u8>> {
+        //transform to correct format 
+        let mut messages = Vec::new();
+        for msg in self.resync_message.iter() {
+            let msg = msg.get();
+            messages.push(msg.clone());
+        }
+        messages
+    }
+}
+
 /// Msg connection structure
 ///
 /// This structure defines the Mles connection for simple synchronous connections. 
@@ -409,6 +486,61 @@ pub fn message_decode(slice: &[u8]) -> Msg {
         Err(err) => {
             println!("Error on decode: {}", err);
             Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
+        }
+    }
+}
+
+/// Encode ResyncMsg object to CBOR.
+///
+/// # Errors
+/// If resync message cannot be encoded, an empty vector is returned.
+///
+/// # Example
+/// ```
+/// use mles_utils::{ResyncMsg, Msg, resync_message_encode, message_encode};
+///
+/// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
+/// let msg = message_encode(&msg);
+/// let vec = vec![msg];
+/// let rmsg = ResyncMsg::new(&vec);
+/// let encoded_msg: Vec<u8> = resync_message_encode(&rmsg);
+/// ```
+#[inline]
+pub fn resync_message_encode(rmsg: &ResyncMsg) -> Vec<u8> {
+    let encoded = serde_cbor::to_vec(rmsg);
+    match encoded {
+        Ok(encoded) => encoded,
+        Err(err) => {
+            println!("Error on encode: {}", err);
+            Vec::new()
+        }
+    }
+}
+
+/// Decode CBOR byte string to ResyncMsg object.
+///
+/// # Errors
+/// If message cannot be decoded, a ResyncMsg structure with empty items is returned.
+///
+/// # Example
+/// ```
+/// use mles_utils::{ResyncMsg, Msg, resync_message_encode, resync_message_decode, message_encode};
+///
+/// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
+/// let msg = message_encode(&msg);
+/// let vec = vec![msg];
+/// let rmsg = ResyncMsg::new(&vec);
+/// let encoded_msg: Vec<u8> = resync_message_encode(&rmsg);
+/// let decoded_msg: ResyncMsg = resync_message_decode(&encoded_msg);
+/// assert_eq!(vec[0], decoded_msg.get_first());
+/// ```
+#[inline]
+pub fn resync_message_decode(slice: &[u8]) -> ResyncMsg {
+    let value = serde_cbor::from_slice(slice);
+    match value {
+        Ok(value) => value,
+        Err(_) => {
+            ResyncMsg { resync_message: Vec::new() } // return empty vec in case of error
         }
     }
 }
@@ -806,6 +938,39 @@ mod tests {
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
+    }
+
+    #[test]
+    fn test_encode_decode_resync_msg() {
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let msg =  "a test msg".to_string().into_bytes();
+        let orig_msg = Msg::new(uid, channel, msg);
+        let encoded_msg = message_encode(&orig_msg);
+        let uid2 = "User two".to_string();
+        let channel2 = "Channel two".to_string();
+        let msg2 =  "a test msg two".to_string().into_bytes();
+        let orig_msg2 = Msg::new(uid2, channel2, msg2);
+        let encoded_msg2 = message_encode(&orig_msg2);
+        let vec = vec![encoded_msg, encoded_msg2];
+        let rmsg = ResyncMsg::new(&vec);
+        let encoded_resync_msg: Vec<u8> = resync_message_encode(&rmsg);
+        let decoded_resync_msg: ResyncMsg = resync_message_decode(&encoded_resync_msg);
+        let mut cnt = 0;
+        for msg in decoded_resync_msg.get_messages() {
+            let decoded_msg = message_decode(&msg);
+            if 0 == cnt {
+                assert_eq!(decoded_msg.uid, orig_msg.uid);
+                assert_eq!(decoded_msg.channel, orig_msg.channel);
+                assert_eq!(decoded_msg.message, orig_msg.message);
+            }
+            else {
+                assert_eq!(decoded_msg.uid, orig_msg2.uid);
+                assert_eq!(decoded_msg.channel, orig_msg2.channel);
+                assert_eq!(decoded_msg.message, orig_msg2.message);
+            }
+            cnt += 1;
+        }
     }
 
     #[test]

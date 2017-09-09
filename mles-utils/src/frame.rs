@@ -40,13 +40,24 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, Msg), Error> { 
+pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, bool, Vec<u8>, Msg, ResyncMsg), Error> { 
+    let decoded_message;
+    let mut is_resync = false;
 
     //read hash from message
     let key = read_key_from_hdr(&hdr_key);
 
+    //try first decoding as a resync
+    let decoded_resync_message: ResyncMsg = resync_message_decode(message.as_slice());
+    let decoded_rvec = decoded_resync_message.get_first();
+    if !decoded_rvec.is_empty() {
+        decoded_message = message_decode(decoded_rvec.as_slice());
+        is_resync = true;
+    }
+    else {
+        decoded_message = message_decode(message.as_slice());
+    }
     //create hash for verification
-    let decoded_message = message_decode(message.as_slice());
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
 
@@ -55,7 +66,7 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
         println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    Ok((reader, hdr_key, message, decoded_message))
+    Ok((reader, hdr_key, is_resync, message, decoded_message, decoded_resync_message))
 }
 
 
