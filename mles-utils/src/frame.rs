@@ -49,7 +49,7 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
 
     //try first decoding as a resync
     let decoded_resync_message: ResyncMsg = resync_message_decode(message.as_slice());
-    let decoded_rvec = decoded_resync_message.get_first();
+    let decoded_rvec = decoded_resync_message.first();
     if !decoded_rvec.is_empty() {
         decoded_message = message_decode(decoded_rvec.as_slice());
         is_resync = true;

@@ -43,7 +43,11 @@ pub const KEYL: usize = 8;
 /// HDRKEYL defines the size of the header + key
 pub const HDRKEYL: usize = HDRL + KEYL;
 
+/// Max message size
+pub const MSGMAXSIZE: usize = 0xffffff;
+
 const KEEPALIVE: u64 = 5;
+
 
 /// Msg structure
 ///
@@ -213,11 +217,36 @@ impl ResyncMsg {
         rmsg
     }
 
+    /// Get the length of the resync message vector
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{Msg, ResyncMsg, message_encode};
+    ///
+    /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
+    /// let msg = message_encode(&msg);
+    /// let vec = vec![msg];
+    /// let rmsg = ResyncMsg::new(&vec);
+    /// assert_eq!(1, rmsg.len());
+    /// ```
     pub fn len(&self) -> usize {
         self.resync_message.len()
     }
 
-    pub fn get_first(&self) -> Vec<u8> {
+    /// Get the first item of the resync message vector
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{Msg, ResyncMsg, message_encode};
+    ///
+    /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
+    /// let msg = message_encode(&msg);
+    /// let vec = vec![msg];
+    /// let rmsg = ResyncMsg::new(&vec);
+    /// let rvec: Vec<u8> = rmsg.first();
+    /// assert_eq!(vec[0], rvec);
+    /// ```
+    pub fn first(&self) -> Vec<u8> {
         let first = self.resync_message.first();
         match first {
             Some(msgvec) => msgvec.get().clone(),
@@ -225,6 +254,19 @@ impl ResyncMsg {
         }
     } 
 
+    /// Get all items of the resync message vector
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{Msg, ResyncMsg, message_encode};
+    ///
+    /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
+    /// let msg = message_encode(&msg);
+    /// let vec = vec![msg];
+    /// let rmsg = ResyncMsg::new(&vec);
+    /// let rvec = rmsg.get_messages();
+    /// assert_eq!(vec[0], rvec[0]);
+    /// ```
     pub fn get_messages(&self) -> Vec<Vec<u8>> {
         //transform to correct format 
         let mut messages = Vec::new();
@@ -511,7 +553,7 @@ pub fn resync_message_encode(rmsg: &ResyncMsg) -> Vec<u8> {
     match encoded {
         Ok(encoded) => encoded,
         Err(err) => {
-            println!("Error on encode: {}", err);
+            println!("Error on resync encode: {}", err);
             Vec::new()
         }
     }
@@ -532,7 +574,7 @@ pub fn resync_message_encode(rmsg: &ResyncMsg) -> Vec<u8> {
 /// let rmsg = ResyncMsg::new(&vec);
 /// let encoded_msg: Vec<u8> = resync_message_encode(&rmsg);
 /// let decoded_msg: ResyncMsg = resync_message_decode(&encoded_msg);
-/// assert_eq!(vec[0], decoded_msg.get_first());
+/// assert_eq!(vec[0], decoded_msg.first());
 /// ```
 #[inline]
 pub fn resync_message_decode(slice: &[u8]) -> ResyncMsg {
@@ -663,7 +705,7 @@ pub fn write_cid(cid: u32) -> Vec<u8> {
     cidv
 }
 
-/// Write a random connection id in network byte order to the header.
+/// Write a connection id in network byte order to the header.
 ///
 /// # Example
 /// ```
@@ -685,6 +727,30 @@ pub fn write_cid_to_hdr(key: u64, mut hdrv: Vec<u8>) -> Vec<u8> {
     hdrv.extend(write_cid(select_cid(key))); //add new cid
     hdrv.extend(tail);
     hdrv
+}
+
+/// Write a length in network byte order to the header.
+///
+/// # Example
+/// ```
+/// use mles_utils::{write_hdr, write_len_to_hdr, do_hash, read_hdr_len};
+///
+/// let hashstr = "A string".to_string();
+/// let hashable = vec![hashstr];
+/// let key = do_hash(&hashable); 
+/// let mut hdr = write_hdr(515);
+/// let hdr = write_len_to_hdr(750, hdr);
+/// assert_eq!(750, read_hdr_len(&hdr));
+/// ```
+#[inline]
+pub fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
+    if hdrv.len() < HDRL {
+        return vec![];
+    }
+    let tail = hdrv.split_off(HDRL-CIDL);
+    let mut nhdrv = write_hdr_without_cid(len);
+    nhdrv.extend(tail);
+    nhdrv
 }
 
 

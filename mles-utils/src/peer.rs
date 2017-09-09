@@ -97,8 +97,15 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 }
                 //send resync message to peer
                 let rmsg = ResyncMsg::new(mles_peer_db.get_messages());
-                let message = resync_message_encode(&rmsg);
-                msg.extend(message);
+                let resync_message = resync_message_encode(&rmsg);
+                let size = resync_message.len();
+                if size <= MSGMAXSIZE {
+                    msg = write_len_to_hdr(size, msg);
+                    msg.extend(resync_message);
+                }
+                else {
+                    msg.extend(message);
+                }
 
                 let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
             }
