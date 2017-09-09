@@ -184,7 +184,7 @@ impl Msg {
     /// ```
 #[inline]
     pub fn encode(&self) -> Vec<u8> {
-        let encoded = serde_cbor::to_vec(&self);
+        let encoded = serde_cbor::to_vec(self);
         match encoded {
             Ok(encoded) => encoded,
                 Err(err) => {

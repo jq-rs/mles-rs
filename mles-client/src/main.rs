@@ -278,7 +278,8 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     }
 
     /* Join channel */
-    let msg = message_encode(&Msg::new(userstr.clone(), channelstr.clone(), Vec::new()));
+    let msg = Msg::new(userstr.clone(), channelstr.clone(), Vec::new());
+    let msg = msg.encode();
     rx = rx.send(msg).wait().unwrap();
 
     let mut msg = userstr.clone();
@@ -300,7 +301,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         buf.truncate(n);
         let str = String::from_utf8_lossy(buf.as_slice()).into_owned();
         let msg = Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes());
-        let msg = message_encode(&msg);
+        let msg = msg.encode();
         rx = rx.send(msg).wait().unwrap();
     }
 }
