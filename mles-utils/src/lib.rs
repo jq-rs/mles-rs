@@ -1112,6 +1112,7 @@ mod tests {
         let addr = addr.parse::<SocketAddr>().unwrap();
         let raddr = addr.clone();
         let uid = "User".to_string();
+        let uid2 = "User two".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
          
@@ -1120,7 +1121,7 @@ mod tests {
         thread::sleep(sec);
 
         //send hello world
-        let mut conn = MsgConn::new(uid.clone(), channel.clone());
+        let mut conn = MsgConn::new(uid2.clone(), channel.clone());
         conn = conn.connect_with_message(raddr, message.into_bytes());
         conn.close();
 
@@ -1145,6 +1146,7 @@ mod tests {
         let addr = addr.parse::<SocketAddr>().unwrap();
         let raddr = addr.clone();
         let uid = "User".to_string();
+        let uid2 = "User two".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
          
@@ -1157,7 +1159,7 @@ mod tests {
         conn = conn.connect(raddr);
 
         //send hello world
-        let mut sconn = MsgConn::new(uid.clone(), channel.clone());
+        let mut sconn = MsgConn::new(uid2.clone(), channel.clone());
         sconn = sconn.connect_with_message(raddr, message.into_bytes());
         sconn.close();
 
@@ -1173,6 +1175,95 @@ mod tests {
         drop(child);
     }
 
+    #[test]
+    fn test_msgconn_peer_send_read() {
+        let sec = Duration::new(1,0);
+        let addr = "127.0.0.1:8075";
+        let addr = addr.parse::<SocketAddr>().unwrap();
+        let paddr = "127.0.0.1:8074";
+        let paddr = paddr.parse::<SocketAddr>().unwrap();
+        let praddr = paddr.clone();
+        let uid = "User".to_string();
+        let uid2 = "User two".to_string();
+        let channel = "Channel".to_string();
+        let message = "Hello World!".to_string();
+         
+        //create server
+        let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
+        thread::sleep(sec);
+
+        //create peer server
+        let pchild = thread::spawn(move || server_run(paddr, Some(addr), "".to_string(), "".to_string(), 100, 0));
+        thread::sleep(sec);
+
+        //send hello world
+        let mut conn = MsgConn::new(uid.clone(), channel.clone());
+        conn = conn.connect_with_message(praddr, message.into_bytes());
+        conn.close();
+
+        //read hello world
+        let mut conn = MsgConn::new(uid2.clone(), channel.clone());
+        conn = conn.connect(praddr);
+        let (conn, msg) = conn.read_message();
+        let msg = String::from_utf8_lossy(msg.as_slice());
+        assert_eq!("Hello World!", msg);
+
+        //close connection
+        conn.close();
+
+        //drop peer server
+        drop(pchild);
+
+        //drop server
+        drop(child);
+    }
+
+    /* This fails for some reason TODO 
+    #[test]
+    fn test_msgconn_peer_read_send() {
+        let sec = Duration::new(1,0);
+        let addr = "127.0.0.1:8073";
+        let addr = addr.parse::<SocketAddr>().unwrap();
+        let paddr = "127.0.0.1:8072";
+        let paddr = paddr.parse::<SocketAddr>().unwrap();
+        let praddr = paddr.clone();
+        let uid = "User".to_string();
+        let uid2 = "User two".to_string();
+        let channel = "Channel".to_string();
+        let message = "Hello World!".to_string();
+         
+        //create server
+        let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
+        thread::sleep(sec);
+
+        //create peer server
+        let pchild = thread::spawn(move || server_run(paddr, Some(addr), "".to_string(), "".to_string(), 100, 0));
+        thread::sleep(sec);
+
+        //read connect
+        let mut conn = MsgConn::new(uid.clone(), channel.clone());
+        conn = conn.connect(praddr);
+
+        //send hello world
+        let mut sconn = MsgConn::new(uid2.clone(), channel.clone());
+        sconn = sconn.connect_with_message(praddr, message.into_bytes());
+        sconn.close();
+
+        //read hello world
+        let (conn, msg) = conn.read_message();
+        let msg = String::from_utf8_lossy(msg.as_slice());
+        assert_eq!("Hello World!", msg);
+
+        //close connection
+        conn.close();
+
+        //drop peer server
+        drop(pchild);
+
+        //drop server
+        drop(child);
+    }
+    */
 
 }
 
