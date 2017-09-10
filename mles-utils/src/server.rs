@@ -98,23 +98,23 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
         let keyaddr_inner = keyaddr.clone();
-        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, decoded_message)| {
+        let socket_once = frame.and_then(move |(reader, messages, decoded_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
+                let message = messages[0].clone();
 
                 //pick the verified cid from header and use it as an identifier
-                let cid = read_cid_from_hdr(&hdr_key) as u64;
+                let cid = read_cid_from_hdr(&message) as u64;
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
 
                     //if peer is set, create peer channel thread
                     if peer::has_peer(&peer) {
-                        let mut msg = hdr_key.clone();
-                        msg.extend(message.clone());
+                        let msg = message.clone();
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs, debug_flags));
                     }
 
                     let mut mles_db_entry = MlesDb::new(hist_limit);
@@ -134,7 +134,9 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                             let _res = channelpeer_entry.unbounded_send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                         }
                         else {
-                            println!("Cannot find channel peer for channel {}", channel);
+                            if debug_flags != 0 {
+                                println!("Cannot find channel peer for channel {}", channel);
+                            }
                         }
                     }
                     else {
@@ -150,22 +152,32 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 }
 
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
-                    // add to history if no peer
-                    if !peer::has_peer(&peer) {
-                        hdr_key.extend(message);
-                        mles_db_entry.add_message(hdr_key.clone());
-                    }
-                    //distribute to all
                     if let Some(channels) = mles_db_entry.get_channels() {
-                        for (ocid, tx) in channels.iter() {
-                            if *ocid != cid {
-                                let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
-                                    //just ignore failures for now
-                                    () 
-                                });
+                        for msg in &messages {
+                            for (ocid, tx) in channels.iter() {
+                                if *ocid != cid {
+                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| { 
+                                        //just ignore failures for now
+                                        () 
+                                    });
+                                }
                             }
                         }
                     }
+                    // add to history if no peer
+                    if !peer::has_peer(&peer) {
+                        if messages.len() > 1 && 0 == mles_db_entry.get_messages_len() {
+                            // resync messages to history
+                            for msg in &messages {
+                                // add resync to history
+                                mles_db_entry.add_message(msg.clone());
+                            } 
+                        }
+                        else {
+                            mles_db_entry.add_message(message);
+                        }
+                    }
+
                     mles_db_entry.add_tx_db(tx_inner.clone());
                 }
                 channel_db.insert(cnt, (cid, channel.clone()));

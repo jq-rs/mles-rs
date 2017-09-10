@@ -35,6 +35,10 @@ impl MlesDb {
         &self.messages
     }
 
+    pub fn get_messages_len(&self) -> usize {
+        self.messages.len()
+    }
+
     pub fn get_tx_db(&self) -> &Vec<UnboundedSender<Vec<u8>>> {
         &self.tx_db
     }

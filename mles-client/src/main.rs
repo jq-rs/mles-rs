@@ -151,7 +151,7 @@ fn main() {
             let stdin_rx = stdin_rx.and_then(|buf| {
                 if None == key {
                     //create hash for verification
-                    let decoded_message = message_decode(buf.as_slice());
+                    let decoded_message = Msg::decode(buf.as_slice());
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
                     key = Some(do_hash(&keys));
@@ -166,8 +166,14 @@ fn main() {
 
             let send_stdin = stdin_rx.forward(sink);
             let write_stdout = stream.for_each(move |buf| {
-                let decoded = message_decode(buf.to_vec().as_slice());
                 let mut msg = "".to_string();
+                let buf = buf.to_vec();
+                /* Just ignore Resyncs */
+                let rdecoded = ResyncMsg::decode(buf.as_slice());
+                if rdecoded.get_messages().len() > 0 {
+                    return stdout.write_all(&msg.into_bytes());
+                }
+                let decoded = Msg::decode(buf.as_slice());
                 if !decoded.get_message().is_empty() {
                     msg.push_str(decoded.get_uid());
                     msg.push_str(":");
@@ -223,10 +229,9 @@ impl Decoder for Bytes {
                 return Ok(Some(buf.split_to(hdr_len)));
             }
             buf.split_to(mles_utils::HDRKEYL);
-            Ok(Some(buf.split_to(hdr_len)))
-        } else {
-            Ok(None)
+            return Ok(Some(buf.split_to(hdr_len)));
         }
+        Ok(None)
     }
 
     fn decode_eof(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
@@ -278,7 +283,8 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     }
 
     /* Join channel */
-    let msg = message_encode(&Msg::new(userstr.clone(), channelstr.clone(), Vec::new()));
+    let msg = Msg::new(userstr.clone(), channelstr.clone(), Vec::new());
+    let msg = msg.encode();
     rx = rx.send(msg).wait().unwrap();
 
     let mut msg = userstr.clone();
@@ -300,7 +306,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         buf.truncate(n);
         let str = String::from_utf8_lossy(buf.as_slice()).into_owned();
         let msg = Msg::new(userstr.clone(), channelstr.clone(), str.into_bytes());
-        let msg = message_encode(&msg);
+        let msg = msg.encode();
         rx = rx.send(msg).wait().unwrap();
     }
 }
@@ -342,7 +348,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             }
             if None == key {
                 //create hash for verification
-                let decoded_message = message_decode(buf.as_slice());
+                let decoded_message = Msg::decode(buf.as_slice());
                 keys.push(decoded_message.get_uid().to_string());
                 keys.push(decoded_message.get_channel().to_string());
                 key = Some(do_hash(&keys));

@@ -34,7 +34,8 @@ const WAITTIME: u64 = 5;
 
 /// Initiate peer connection
 pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
-                 tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
+                 tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>,
+                 debug_flags: u64) 
 {
     let mut core = Core::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
@@ -75,31 +76,50 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             let mut loopcnt = loopcnt_inner.borrow_mut();
             *loopcnt = 1;
 
-            println!("Successfully connected to peer");
-            //update key in message in case needed
-            if is_addr_set {
-                let mut keys = Vec::new();
-                keys.push(addr2str(&laddr));
-                if !keyaddr.is_empty() {
-                   keys.push(keyaddr);
-                }
-                let message = msg.split_off(HDRKEYL);
-                //create hash for verification
-                let decoded_message = message_decode(message.as_slice());
-                keys.push(decoded_message.get_uid().to_string());
-                keys.push(decoded_message.get_channel().to_string());
-                let key = Some(do_hash(&keys));
-                msg = write_hdr_with_key(read_hdr_len(&msg), key.unwrap());
-                msg.extend(message);
+            if debug_flags != 0 {
+                println!("Successfully connected to peer");
             }
 
-            //send message to peer
-            let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+            //if history exists, send resync to peer
+            let mut mles_peer_db = mles_peer_db_inner.borrow_mut();
+            if mles_peer_db.get_messages_len() > 1 {
+                let message = msg.split_off(HDRKEYL);
+                if is_addr_set {
+                    msg = update_key(Msg::decode(message.as_slice()), read_hdr_len(&msg), keyaddr, laddr);
+                }
+                //send resync message to peer
+                let rmsg = ResyncMsg::new(mles_peer_db.get_messages());
+                let resync_message = rmsg.encode();
+                let size = resync_message.len();
+                if size <= MSGMAXSIZE {
+                    msg = write_len_to_hdr(size, msg);
+                    msg.extend(resync_message);
+                }
+                else {
+                    msg.extend(message);
+                }
+
+                let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+            }
+            else { 
+                let message = msg.split_off(HDRKEYL);
+                if is_addr_set {
+                    msg = update_key(Msg::decode(message.as_slice()), read_hdr_len(&msg), keyaddr, laddr);
+                }
+                msg.extend(message);
+
+                //send message to peer
+                let _res = tx.unbounded_send(msg.clone()).map_err(|err| { println!("Cannot write to tx: {}", err); });
+
+                //push message to history
+                mles_peer_db.add_message(msg);
+            }
 
             let (reader, writer) = pstream.split();
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let psocket_writer = rx.fold(writer, move |writer, msg| {
+
                 //push message to history
                 let mut mles_peer_db = mles_peer_db.borrow_mut();
                 mles_peer_db.add_message(msg.clone());
@@ -119,14 +139,12 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 let mut mles_peer_db_once = mles_peer_db.borrow_mut();
                 mles_peer_db_once.add_channel(tx_orig.clone());  
 
-                //push history to client if not the first one (as peer will send the history then)
-                if mles_peer_db_once.get_messages_len() > 1 {
-                    for msg in mles_peer_db_once.get_messages().iter() {
-                        let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
-                            //just ignore for now
-                            () 
-                        });
-                    }
+                //push history always to client
+                for msg in mles_peer_db_once.get_messages().iter() {
+                    let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
+                        //just ignore for now
+                        () 
+                    });
                 }
                 Ok(())
             });
@@ -182,6 +200,20 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
 
 pub fn set_peer_cid(cid: u32) -> u64 {
     (cid as u64) | 1 << 32
+}
+
+fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net::SocketAddr) -> Vec<u8> {
+    let mut keys = Vec::new();
+    keys.push(addr2str(&laddr));
+    if !keyaddr.is_empty() {
+        keys.push(keyaddr);
+    }
+    //create hash for verification
+    keys.push(decoded_message.get_uid().to_string());
+    keys.push(decoded_message.get_channel().to_string());
+    let key = Some(do_hash(&keys));
+    let msg = write_hdr_with_key(len, key.unwrap());
+    msg
 }
 
 /// Check if an peer is defined
