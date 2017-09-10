@@ -166,8 +166,14 @@ fn main() {
 
             let send_stdin = stdin_rx.forward(sink);
             let write_stdout = stream.for_each(move |buf| {
-                let decoded = Msg::decode(buf.to_vec().as_slice());
                 let mut msg = "".to_string();
+                let buf = buf.to_vec();
+                /* Just ignore Resyncs */
+                let rdecoded = ResyncMsg::decode(buf.as_slice());
+                if rdecoded.get_messages().len() > 0 {
+                    return stdout.write_all(&msg.into_bytes());
+                }
+                let decoded = Msg::decode(buf.as_slice());
                 if !decoded.get_message().is_empty() {
                     msg.push_str(decoded.get_uid());
                     msg.push_str(":");
@@ -202,7 +208,6 @@ impl Decoder for Bytes {
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
         if buf.len() >= mles_utils::HDRKEYL {
-            println!("Client: Rcvd buffer {:?}", buf.to_vec());
             // HDRKEYL is header min size
             if read_hdr_type(&buf.to_vec()) != 'M' as u32 {
                 let len = buf.len();

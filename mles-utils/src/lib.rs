@@ -216,7 +216,6 @@ impl Msg {
             },
             Err(err) => {
                 println!("Error on decode: {}", err);
-                println!("Err buf: {:?}", slice);
                 Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
             }
         }
@@ -1262,13 +1261,13 @@ mod tests {
         //close connection
         conn.close();
 
+        //p
         //drop peer server
         drop(pchild);
 
         //drop server
         drop(child);
     }
-
 }
 
 

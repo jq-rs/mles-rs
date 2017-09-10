@@ -156,7 +156,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                         for msg in &messages {
                             for (ocid, tx) in channels.iter() {
                                 if *ocid != cid {
-                                    println!("Server: Init sending to cid {:x}: {:?}", ocid, msg);
                                     let _res = tx.unbounded_send(msg.clone()).map_err(|_| { 
                                         //just ignore failures for now
                                         () 
@@ -171,12 +170,10 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                             // resync messages to history
                             for msg in &messages {
                                 // add resync to history
-                                println!("Adding resync msg {:?}", msg);
                                 mles_db_entry.add_message(msg.clone());
                             } 
                         }
                         else {
-                            println!("Adding plain msg {:?}", message);
                             mles_db_entry.add_message(message);
                         }
                     }
@@ -218,7 +215,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                         if let Some(channels) = mles_db_entry.get_channels() {
                             for (ocid, tx) in channels.iter() {
                                 if *ocid != cid {
-                                    println!("Server: Sending to cid {:x}:{:?}", ocid, hdr_key); 
                                     let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
                                         //just ignore failures for now
                                         () 
