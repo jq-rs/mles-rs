@@ -98,10 +98,11 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
         let keyaddr_inner = keyaddr.clone();
-        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, is_resync, decoded_message, decoded_resync_message)| {
+        let socket_once = frame.and_then(move |(reader, mut hdr_key, messages, decoded_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
+                let message = messages[0].clone();
 
                 //pick the verified cid from header and use it as an identifier
                 let cid = read_cid_from_hdr(&hdr_key) as u64;
@@ -141,16 +142,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                     }
                     else {
 
-                        if is_resync && 0 == mles_db_entry.get_messages_len() {
-                            // add resync messages to history
-                            let messages = decoded_resync_message.get_messages();
-                            for msg in messages {
-                                // add resync to history
-                                println!("Adding resync msg {:?}", msg);
-                                mles_db_entry.add_message(msg.clone());
-                            } 
-                        }
-
                         // send history to client if peer is not set
                         for msg in mles_db_entry.get_messages() {
                             let _res = tx_inner.unbounded_send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
@@ -163,22 +154,37 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 }
 
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
-                    hdr_key.extend(message);
-
-                    //distribute to all
                     if let Some(channels) = mles_db_entry.get_channels() {
-                        for (ocid, tx) in channels.iter() {
-                            if *ocid != cid {
-                                let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
-                                    //just ignore failures for now
-                                    () 
-                                });
+                        for msg in &messages {
+                            let mut hdr = hdr_key.clone();
+                            hdr.extend(msg);
+
+                            for (ocid, tx) in channels.iter() {
+                                if *ocid != cid {
+                                    let _res = tx.unbounded_send(hdr.clone()).map_err(|_| { 
+                                        //just ignore failures for now
+                                        () 
+                                    });
+                                }
                             }
                         }
                     }
                     // add to history if no peer
                     if !peer::has_peer(&peer) {
-                        mles_db_entry.add_message(hdr_key);
+                        if messages.len() > 1 && 0 == mles_db_entry.get_messages_len() {
+                            // resync messages to history
+                            for msg in &messages {
+                                // add resync to history
+                                let mut hdr = hdr_key.clone();
+                                hdr.extend(msg);
+                                println!("Adding resync msg {:?}", hdr);
+                                mles_db_entry.add_message(hdr);
+                            } 
+                        }
+                        else {
+                            hdr_key.extend(message);
+                            mles_db_entry.add_message(hdr_key);
+                        }
                     }
 
                     mles_db_entry.add_tx_db(tx_inner.clone());

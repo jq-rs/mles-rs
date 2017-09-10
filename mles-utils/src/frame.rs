@@ -40,12 +40,18 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, bool, Msg, ResyncMsg), Error> { 
+pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<Vec<u8>>, Msg), Error> { 
     //read hash from message
     let key = read_key_from_hdr(&hdr_key);
 
     //decode message
-    let (decoded_message, decoded_resync_message, is_resync) = message_decode(&message);
+    let messages = message_decode(message);
+    if messages.is_empty() {
+        println!("Incorrect msg");
+        return Err(Error::new(ErrorKind::BrokenPipe, "incorrect msg"));
+    }
+    let decoded_message = Msg::decode(messages[0].as_slice());
+
     //create hash for verification
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
@@ -55,20 +61,23 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
         println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    Ok((reader, hdr_key, message, is_resync, decoded_message, decoded_resync_message))
+    Ok((reader, hdr_key, messages, decoded_message))
 }
 
-fn message_decode(message: &Vec<u8>) -> (Msg, ResyncMsg, bool) {
+fn message_decode(message: Vec<u8>) -> Vec<Vec<u8>> {
     //try first decoding as a resync
+    let mut msgs = Vec::new();
     let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_slice());
-    let decoded_rvec = decoded_resync_message.first();
-    if !decoded_rvec.is_empty() {
-        let decoded_message = Msg::decode(decoded_rvec.as_slice());
-        println!("Got resync of size {}", decoded_rvec.len());
-        return (decoded_message, decoded_resync_message, true);
+    if 0 != decoded_resync_message.len() {
+        println!("Got resync of size {}", decoded_resync_message.len());
+        for msg in decoded_resync_message.get_messages() { 
+            msgs.push(msg);
+        }
     }
-    let decoded_message = Msg::decode(message.as_slice());
-    (decoded_message, decoded_resync_message, false)
+    else {
+        msgs.push(message);
+    }
+    msgs 
 }
 
 #[cfg(test)]
