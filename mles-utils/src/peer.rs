@@ -91,7 +91,6 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 let rmsg = ResyncMsg::new(mles_peer_db.get_messages());
                 let resync_message = rmsg.encode();
                 let size = resync_message.len();
-                println!("Resync Size {}", size);
                 if size <= MSGMAXSIZE {
                     msg = write_len_to_hdr(size, msg);
                     msg.extend(resync_message);

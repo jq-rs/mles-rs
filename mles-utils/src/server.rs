@@ -109,10 +109,10 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
 
                 if !mles_db_once.contains_key(&channel) {
                     let chan = channel.clone();
-                    let msg = message.clone();
 
                     //if peer is set, create peer channel thread
                     if peer::has_peer(&peer) {
+                        let msg = message.clone();
                         let peer = peer.unwrap();
                         thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs, debug_flags));
                     }
@@ -140,7 +140,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                         }
                     }
                     else {
-
                         // send history to client if peer is not set
                         for msg in mles_db_entry.get_messages() {
                             let _res = tx_inner.unbounded_send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
@@ -176,6 +175,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                             } 
                         }
                         else {
+                            println!("Adding plain msg {:?}", message);
                             mles_db_entry.add_message(message);
                         }
                     }
