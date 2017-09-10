@@ -223,10 +223,9 @@ impl Decoder for Bytes {
                 return Ok(Some(buf.split_to(hdr_len)));
             }
             buf.split_to(mles_utils::HDRKEYL);
-            Ok(Some(buf.split_to(hdr_len)))
-        } else {
-            Ok(None)
+            return Ok(Some(buf.split_to(hdr_len)));
         }
+        Ok(None)
     }
 
     fn decode_eof(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {

@@ -161,11 +161,8 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 }
 
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
-                    // add to history if no peer
-                    if !peer::has_peer(&peer) {
-                        hdr_key.extend(message);
-                        mles_db_entry.add_message(hdr_key.clone());
-                    }
+                    hdr_key.extend(message);
+
                     //distribute to all
                     if let Some(channels) = mles_db_entry.get_channels() {
                         for (ocid, tx) in channels.iter() {
@@ -177,6 +174,11 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                             }
                         }
                     }
+                    // add to history if no peer
+                    if !peer::has_peer(&peer) {
+                        mles_db_entry.add_message(hdr_key);
+                    }
+
                     mles_db_entry.add_tx_db(tx_inner.clone());
                 }
                 channel_db.insert(cnt, (cid, channel.clone()));

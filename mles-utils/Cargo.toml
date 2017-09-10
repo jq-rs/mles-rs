@@ -21,7 +21,7 @@ serde_cbor = "0.6"
 serde_bytes = "0.10"
 byteorder = "1.0"
 siphasher = "0.2"
-futures = "=0.1.14"
+futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
  

@@ -211,11 +211,13 @@ impl Msg {
     pub fn decode(slice: &[u8]) -> Msg {
         let value = serde_cbor::from_slice(slice);
         match value {
-            Ok(value) => value,
-                Err(err) => {
-                    println!("Error on decode: {}", err);
-                    Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
-                }
+            Ok(value) => { 
+                value
+            },
+            Err(err) => {
+                println!("Error on decode: {}", err);
+                Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
+            }
         }
     }
 }
