@@ -114,7 +114,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                         let mut msg = hdr_key.clone();
                         msg.extend(message.clone());
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs));
+                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs, debug_flags));
                     }
 
                     let mut mles_db_entry = MlesDb::new(hist_limit);
@@ -131,10 +131,12 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                     if peer::has_peer(&peer) {
                         if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
                             //sending tx to peer
-                            let _res = channelpeer_entry.unbounded_send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                            let _res = channelpeer_entry.send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                         }
                         else {
-                            println!("Cannot find channel peer for channel {}", channel);
+                            if debug_flags != 0 {
+                                println!("Cannot find channel peer for channel {}", channel);
+                            }
                         }
                     }
                     else {
@@ -149,7 +151,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
 
                         // send history to client if peer is not set
                         for msg in mles_db_entry.get_messages() {
-                            let _res = tx_inner.unbounded_send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
+                            let _res = tx_inner.send(msg.clone()).map_err(|err| {println!("Send history failed: {}", err); ()});
                         }
                     }
                 }
@@ -168,7 +170,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                     if let Some(channels) = mles_db_entry.get_channels() {
                         for (ocid, tx) in channels.iter() {
                             if *ocid != cid {
-                                let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
+                                let _res = tx.send(hdr_key.clone()).map_err(|_| { 
                                     //just ignore failures for now
                                     () 
                                 });
@@ -187,7 +189,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let mles_db_inner = mles_db.clone();
         let socket_next = socket_once.and_then(move |(reader, cid, channel)| {
             let channel_next = channel.clone();
-            let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
+            let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, vec![0;::HDRKEYL]);
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
@@ -212,7 +214,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                         if let Some(channels) = mles_db_entry.get_channels() {
                             for (ocid, tx) in channels.iter() {
                                 if *ocid != cid {
-                                    let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
+                                    let _res = tx.send(hdr_key.clone()).map_err(|_| { 
                                         //just ignore failures for now
                                         () 
                                     });
@@ -238,7 +240,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 mles_db_entry.set_peer_tx(tx_orig_chan.clone());
                 //sending all tx's to (possibly restarted) peer
                 for tx_entry in mles_db_entry.get_tx_db() {
-                    let _res = tx_orig_chan.unbounded_send(tx_entry.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
+                    let _res = tx_orig_chan.send(tx_entry.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                 }
             }
             else {

@@ -41,22 +41,11 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
 }
 
 pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, bool, Vec<u8>, Msg, ResyncMsg), Error> { 
-    let decoded_message;
-    let mut is_resync = false;
-
     //read hash from message
     let key = read_key_from_hdr(&hdr_key);
 
-    //try first decoding as a resync
-    let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_slice());
-    let decoded_rvec = decoded_resync_message.first();
-    if !decoded_rvec.is_empty() {
-        decoded_message = Msg::decode(decoded_rvec.as_slice());
-        is_resync = true;
-    }
-    else {
-        decoded_message = Msg::decode(message.as_slice());
-    }
+    //decode message
+    let (decoded_message, decoded_resync_message, is_resync) = message_decode(&message);
     //create hash for verification
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
@@ -68,5 +57,78 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     }
     Ok((reader, hdr_key, is_resync, message, decoded_message, decoded_resync_message))
 }
+
+fn message_decode(message: &Vec<u8>) -> (Msg, ResyncMsg, bool) {
+    //try first decoding as a resync
+    let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_slice());
+    let decoded_rvec = decoded_resync_message.first();
+    if !decoded_rvec.is_empty() {
+        let decoded_message = Msg::decode(decoded_rvec.as_slice());
+        return (decoded_message, decoded_resync_message, true);
+    }
+    let decoded_message = Msg::decode(message.as_slice());
+    (decoded_message, decoded_resync_message, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_decode() {
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let msg =  "a test msg".to_string().into_bytes();
+        let orig_msg = Msg::new(uid, channel, msg);
+        let encoded_msg = orig_msg.encode();
+        let (decoded_msg, decoded_resync_message, is_resync) = message_decode(&encoded_msg);
+        assert_eq!(decoded_msg.uid, orig_msg.uid);
+        assert_eq!(decoded_msg.channel, orig_msg.channel);
+        assert_eq!(decoded_msg.message, orig_msg.message);
+        assert_eq!(0, decoded_resync_message.len());
+        assert_eq!(false, is_resync);
+    }
+
+    #[test]
+    fn test_message_resync_decode() {
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let msg =  "a test msg".to_string().into_bytes();
+        let orig_msg = Msg::new(uid, channel, msg);
+        let encoded_msg = orig_msg.encode();
+        let vec = vec![encoded_msg];
+        let rmsg = ResyncMsg::new(&vec);
+        let encoded_resync_msg: Vec<u8> = rmsg.encode();
+        let (decoded_msg, decoded_resync_message, is_resync) = message_decode(&encoded_resync_msg);
+        assert_eq!(decoded_msg.uid, orig_msg.uid);
+        assert_eq!(decoded_msg.channel, orig_msg.channel);
+        assert_eq!(decoded_msg.message, orig_msg.message);
+        assert_eq!(1, decoded_resync_message.len());
+        assert_eq!(true, is_resync);
+    }
+
+    #[test]
+    fn test_message_resync_multi_decode() {
+        let uid = "Resync User".to_string();
+        let channel = "Resync Channel".to_string();
+        let msg =  "a resync test msg".to_string().into_bytes();
+        let orig_msg = Msg::new(uid, channel, msg);
+        let encoded_msg = orig_msg.encode();
+        let mut vec = Vec::new();
+        for _ in 0..99 {
+            vec.push(encoded_msg.clone());
+        }
+        vec.push(encoded_msg);
+        let rmsg = ResyncMsg::new(&vec);
+        let encoded_resync_msg: Vec<u8> = rmsg.encode();
+        let (decoded_msg, decoded_resync_message, is_resync) = message_decode(&encoded_resync_msg);
+        assert_eq!(decoded_msg.uid, orig_msg.uid);
+        assert_eq!(decoded_msg.channel, orig_msg.channel);
+        assert_eq!(decoded_msg.message, orig_msg.message);
+        assert_eq!(100, decoded_resync_message.len());
+        assert_eq!(true, is_resync);
+    }
+}
+
 
 

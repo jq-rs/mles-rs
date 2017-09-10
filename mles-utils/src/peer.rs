@@ -34,7 +34,8 @@ const WAITTIME: u64 = 5;
 
 /// Initiate peer connection
 pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
-                 tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>) 
+                 tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>,
+                 debug_flags: u64) 
 {
     let mut core = Core::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
@@ -56,7 +57,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         let peer_cid = set_peer_cid(read_cid_from_hdr(&msg));
 
         //distribute channels
-        let _res = tx_peer_for_msgs.unbounded_send((peer_cid, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
+        let _res = tx_peer_for_msgs.send((peer_cid, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
 
         let loopcnt_inner = loopcnt.clone();
         let mles_peer_db_inner = mles_peer_db.clone();
@@ -75,7 +76,9 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             let mut loopcnt = loopcnt_inner.borrow_mut();
             *loopcnt = 1;
 
-            println!("Successfully connected to peer");
+            if debug_flags != 0 {
+                println!("Successfully connected to peer");
+            }
 
             //if history exists, send resync to peer
             let mut mles_peer_db = mles_peer_db_inner.borrow_mut();
@@ -107,7 +110,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                     msg.extend(message);
                 }
 
-                let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+                let _res = tx.send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
             }
             else {
                 //update key in message in case needed TODO FUNCTION
@@ -128,7 +131,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 msg.extend(message);
 
                 //send message to peer
-                let _res = tx.unbounded_send(msg.clone()).map_err(|err| { println!("Cannot write to tx: {}", err); });
+                let _res = tx.send(msg.clone()).map_err(|err| { println!("Cannot write to tx: {}", err); });
 
                 //push message to history
                 mles_peer_db.add_message(msg);
@@ -157,14 +160,12 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 let mut mles_peer_db_once = mles_peer_db.borrow_mut();
                 mles_peer_db_once.add_channel(tx_orig.clone());  
 
-                //push history to client if not the first one (as peer will send the history then)
-                if mles_peer_db_once.get_messages_len() > 1 {
-                    for msg in mles_peer_db_once.get_messages().iter() {
-                        let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
-                            //just ignore for now
-                            () 
-                        });
-                    }
+                //push history always to client
+                for msg in mles_peer_db_once.get_messages().iter() {
+                    let _res = tx_orig.send(msg.clone()).map_err(|_| { 
+                        //just ignore for now
+                        () 
+                    });
                 }
                 Ok(())
             });
@@ -173,7 +174,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             }));
 
             let mles_peer_db = mles_peer_db_inner.clone();
-            let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
+            let iter = stream::iter(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, vec![0;HDRKEYL]);
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
@@ -190,7 +191,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                     //send message forward
                     let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
                     for tx_orig in mles_peer_db.get_channels().iter() {
-                        let _res = tx_orig.unbounded_send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
+                        let _res = tx_orig.send(hdr_key.clone()).map_err(|err| { println!("Failed to send from peer: {}", err); () });
                     }
                     //push message to history
                     mles_peer_db.add_message(hdr_key);

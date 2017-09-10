@@ -757,14 +757,17 @@ pub fn write_cid_to_hdr(key: u64, mut hdrv: Vec<u8>) -> Vec<u8> {
 ///
 /// # Example
 /// ```
-/// use mles_utils::{write_hdr, write_len_to_hdr, do_hash, read_hdr_len, select_cid};
+/// use mles_utils::{write_hdr, write_len_to_hdr, do_hash, read_hdr_len, select_cid,
+/// read_cid_from_hdr};
 ///
 /// let hashstr = "A string".to_string();
 /// let hashable = vec![hashstr];
 /// let key = do_hash(&hashable); 
-/// let mut hdr = write_hdr(515, select_cid(key));
+/// let cid = select_cid(key);
+/// let mut hdr = write_hdr(515, cid);
 /// let hdr = write_len_to_hdr(750, hdr);
 /// assert_eq!(750, read_hdr_len(&hdr));
+/// assert_eq!(cid, read_cid_from_hdr(&hdr));
 /// ```
 #[inline]
 pub fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
