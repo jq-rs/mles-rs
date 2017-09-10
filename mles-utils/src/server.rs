@@ -98,7 +98,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let channel_db_inner = channel_db.clone();
         let mles_db_inner = mles_db.clone();
         let keyaddr_inner = keyaddr.clone();
-        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, is_resync decoded_message, decoded_resync_message)| {
+        let socket_once = frame.and_then(move |(reader, mut hdr_key, message, is_resync, decoded_message, decoded_resync_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
                 let mut channel_db = channel_db_inner.borrow_mut();
