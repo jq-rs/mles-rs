@@ -119,6 +119,9 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let psocket_writer = rx.fold(writer, move |writer, msg| {
+
+                println!("Peer: Rvcd msg {:?}", msg);
+
                 //push message to history
                 let mut mles_peer_db = mles_peer_db.borrow_mut();
                 mles_peer_db.add_message(msg.clone());
@@ -166,6 +169,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 frame.map(move |(reader, mut hdr_key, message)| {
                     hdr_key.extend(message);
 
+                    println!("Peer: Sending msg {:?}", hdr_key);
                     //send message forward
                     let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
                     for tx_orig in mles_peer_db.get_channels().iter() {

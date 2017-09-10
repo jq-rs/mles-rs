@@ -202,6 +202,7 @@ impl Decoder for Bytes {
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
         if buf.len() >= mles_utils::HDRKEYL {
+            println!("Client: Rcvd buffer {:?}", buf.to_vec());
             // HDRKEYL is header min size
             if read_hdr_type(&buf.to_vec()) != 'M' as u32 {
                 let len = buf.len();

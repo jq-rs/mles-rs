@@ -216,6 +216,7 @@ impl Msg {
             },
             Err(err) => {
                 println!("Error on decode: {}", err);
+                println!("Err buf: {:?}", slice);
                 Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
             }
         }
@@ -1223,7 +1224,6 @@ mod tests {
         drop(child);
     }
 
-    /* This fails for some reason TODO 
     #[test]
     fn test_msgconn_peer_read_send() {
         let sec = Duration::new(1,0);
@@ -1268,7 +1268,6 @@ mod tests {
         //drop server
         drop(child);
     }
-    */
 
 }
 
