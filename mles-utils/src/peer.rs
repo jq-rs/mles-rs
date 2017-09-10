@@ -103,7 +103,6 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
                 let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
             }
             else { 
-                //update key in message in case needed TODO FUNCTION
                 let message = msg.split_off(HDRKEYL);
                 if is_addr_set {
                     msg = update_key(Msg::decode(message.as_slice()), read_hdr_len(&msg), keyaddr, laddr);

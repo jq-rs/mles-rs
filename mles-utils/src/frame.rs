@@ -40,7 +40,7 @@ pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, bool, Vec<u8>, Msg, ResyncMsg), Error> { 
+pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>, bool, Msg, ResyncMsg), Error> { 
     //read hash from message
     let key = read_key_from_hdr(&hdr_key);
 
@@ -55,7 +55,7 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
         println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
     }
-    Ok((reader, hdr_key, is_resync, message, decoded_message, decoded_resync_message))
+    Ok((reader, hdr_key, message, is_resync, decoded_message, decoded_resync_message))
 }
 
 fn message_decode(message: &Vec<u8>) -> (Msg, ResyncMsg, bool) {
@@ -64,6 +64,7 @@ fn message_decode(message: &Vec<u8>) -> (Msg, ResyncMsg, bool) {
     let decoded_rvec = decoded_resync_message.first();
     if !decoded_rvec.is_empty() {
         let decoded_message = Msg::decode(decoded_rvec.as_slice());
+        println!("Got resync of size {}", decoded_rvec.len());
         return (decoded_message, decoded_resync_message, true);
     }
     let decoded_message = Msg::decode(message.as_slice());
