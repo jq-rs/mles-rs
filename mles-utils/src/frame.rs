@@ -70,7 +70,6 @@ fn message_decode(message: Vec<u8>, mut hdr_key: Vec<u8>) -> Vec<Vec<u8>> {
     let mut msgs = Vec::new();
     let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_slice());
     if 0 != decoded_resync_message.len() {
-        println!("Got resync of size {}", decoded_resync_message.len());
         for msg in decoded_resync_message.get_messages() { 
             msgs.push(msg);
         }
