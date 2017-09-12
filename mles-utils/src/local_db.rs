@@ -73,9 +73,6 @@ impl MlesDb {
             if channels.contains_key(&(cid as u64)) {
                 return true;
             }
-            if channels.contains_key(&set_peer_cid(cid)) {
-                return true;
-            }
         }
         false
     }
