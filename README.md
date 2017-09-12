@@ -17,7 +17,7 @@ After Mles server has authenticated the session and moved the connected Mles cli
 
 An Mles server MAY contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers. 
 
-Every connection has also 32-bit connection id (CID) which equals to the lowest 4 bytes of SipHash key. If a Mles server has already the same CID as an active connection, it MUST drop further incoming connections with the same CID. This allows effective autonomous loop protection in case peer servers are configured into a topology that creates a loop.
+Every connection has also 32-bit connection id (CID) which equals to the lowest 4 bytes of SipHash key. If a Mles server has a CID as part of an active connection, it MUST drop further incoming connections with the same CID. This allows effectively autonomous loop protection in case peer servers are configured into a topology that creates a loop.
 
 In case Mles server is restarted, Mles peer server MAY provide history data for the Mles server as a resynchronization for those channels that is has the history available. This allows distributed data protection for the channel information.  
 
