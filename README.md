@@ -7,21 +7,23 @@ Mles (_Modern Lightweight channEl Service_) is a client-server data distribution
 
 ## Mles protocol overview
 
-Mles clients connect to an Mles server using Mles protocol header and (uid, channel, message) value triplet on a TCP session where the triplet is Concise Binary Object Representation (CBOR) [1] encapsulated. An Mles client first subscribes to a channel by sending correct Mles protocol header and value triplet (uid, channel, msg) where _channel_ is the channel to publish/subscribe. The _msg_ may be either empty or include the first published message. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. After joining, the Mles server distributes the value triplet between all clients on the same channel. If an Mles client wants to depart from a channel, it just closes the TCP session. If an Mles client does not want to receive any message, it just closes TCP session receive side.
+Mles clients connect to an Mles server using Mles protocol header and (uid, channel, message) value triplet on a TCP session where the triplet is Concise Binary Object Representation (CBOR) [1] encapsulated. An Mles client first subscribes to a channel by sending correct Mles protocol header and value triplet (uid, channel, msg) where _channel_ is the channel to publish/subscribe. The _msg_ MAY be either empty or include the first published message. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. After joining, the Mles server distributes the value triplet between all clients on the same channel. If an Mles client wants to depart from a channel, it just closes the TCP session. If an Mles client does not want to receive any message, it just closes TCP session receive side.
 
-An Mles server may save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels: therefore a TCP session per (uid, channel) pair is always used.
+An Mles server MAY save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels: therefore a TCP session per (uid, channel) pair is always used.
 
 Every session between Mles server and client is authenticated using 64-bit SipHash [2]. The 64-bit key is hashed over provided UTF-8 strings. These can be combined from user connection endpoint details and/or a shared key and session (uid, channel) values. This allows Mles server to verify that a connecting Mles client is really connecting from the endpoint where it claims to be connecting with proper user and channel details. Mles client sessions behind Network Address Translation (NAT) can use a shared key without session endpoint detail authentication.
 
-After Mles server has authenticated the session and moved the connected Mles client to its channel context, the SipHash key should be ignored by the Mles server. After context change, the SipHash key may be changed and used by Mles clients within the channel context.
+After Mles server has authenticated the session and moved the connected Mles client to its channel context, the SipHash key SHOULD be ignored by the Mles server. After context change, the SipHash key MAY be changed and used by Mles clients within the channel context.
 
-An Mles server may contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers. 
+An Mles server MAY contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers. 
 
-In case Mles server is restarted, Mles peer server may provide history data for the Mles server as a resynchronization for those channels that is has the history available. This allows distributed data protection for the channel information.  
+Every connection has also 32-bit connection id (CID) which equals to the lowest 4 bytes of SipHash key. If a Mles server has already the same CID as an active connection, it MUST drop further incoming connections with the same CID. This allows effective autonomous loop protection in case peer servers are configured into a topology that creates a loop.
 
-Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server may be configured to use IP anycast.
+In case Mles server is restarted, Mles peer server MAY provide history data for the Mles server as a resynchronization for those channels that is has the history available. This allows distributed data protection for the channel information.  
 
-Mles clients may implement WebSocket [4] proxy which allows to do Mles connections over WebSocket protocol. Such simple example proxy implementation is available in the reference client.
+Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server MAY be configured to use IP anycast.
+
+Mles clients MAY implement WebSocket [4] proxy which allows to do Mles connections over WebSocket protocol. Such simple example proxy implementation is available in the reference client.
 
 Mles protocol has Internet Assigned Number Authority (IANA) **port 8077** [3] registered for its use.
 
