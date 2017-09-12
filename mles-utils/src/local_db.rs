@@ -6,7 +6,6 @@
 * */
 use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
-use peer::set_peer_cid;
 
 pub struct MlesDb {
     channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
@@ -106,7 +105,7 @@ impl MlesDb {
 }
 
 pub struct MlesPeerDb {
-    channels: Vec<UnboundedSender<Vec<u8>>>,
+    channels: HashMap<u64, UnboundedSender<Vec<u8>>>,
     messages: Vec<Vec<u8>>,
     history_limit: usize
 }
@@ -114,22 +113,26 @@ pub struct MlesPeerDb {
 impl MlesPeerDb {
     pub fn new(hlim: usize) -> MlesPeerDb {
         MlesPeerDb {
-            channels: Vec::new(),
+            channels: HashMap::new(),
             messages: Vec::new(),
             history_limit: hlim,
         }
     }
 
-    pub fn get_channels(&self) -> &Vec<UnboundedSender<Vec<u8>>> {
+    pub fn get_channels(&self) -> &HashMap<u64, UnboundedSender<Vec<u8>>> {
         &self.channels
     }
 
-    pub fn add_channel(&mut self, channel: UnboundedSender<Vec<u8>>) {
-        self.channels.push(channel);
+    pub fn add_channel(&mut self, cid: u64, channel: UnboundedSender<Vec<u8>>) {
+        self.channels.insert(cid, channel);
+    }
+
+    pub fn rem_channel(&mut self, cid: u64) {
+        self.channels.remove(&cid);
     }
 
     pub fn clear_channels(&mut self) {
-        self.channels = Vec::new();
+        self.channels = HashMap::new();
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
