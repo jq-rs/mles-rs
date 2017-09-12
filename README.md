@@ -15,7 +15,9 @@ Every session between Mles server and client is authenticated using 64-bit SipHa
 
 After Mles server has authenticated the session and moved the connected Mles client to its channel context, the SipHash key should be ignored by the Mles server. After context change, the SipHash key may be changed and used by Mles clients within the channel context.
 
-An Mles server may contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers.
+An Mles server may contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers. 
+
+In case Mles server is restarted, Mles peer server may provide history data for the Mles server as a resynchronization for those channels that is has the history available. This allows distributed data protection for the channel information.  
 
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. An Mles server may be configured to use IP anycast.
 
