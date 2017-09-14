@@ -1280,10 +1280,7 @@ mod tests {
         //set message
         let message = "Hello World!".to_string();
          
-        let child = thread::spawn(move || {
-            let addr = addr.clone();
-            let channel = channel.clone();
-        
+        let child = thread::spawn(|| {
             //connect client to server
             let mut conn = MsgConn::new(uid, channel);
             conn = conn.connect(addr);
