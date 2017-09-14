@@ -1261,11 +1261,44 @@ mod tests {
         //close connection
         conn.close();
 
-        //p
         //drop peer server
         drop(pchild);
 
         //drop server
+        drop(child);
+    }
+
+    #[test]
+    fn test_msgconn_basic_read_send() {
+        //set server address to connect
+        let addr = "127.0.0.1:8077".parse::<SocketAddr>().unwrap();
+        //set users
+        let uid = "User".to_string();
+        let uid2 = "User two".to_string();
+        //set channel
+        let channel = "Channel".to_string();
+        //set message
+        let message = "Hello World!".to_string();
+         
+        let child = thread::spawn(move || {
+            let addr = addr.clone();
+        
+            //connect client to server
+            let mut conn = MsgConn::new(uid, channel.clone());
+            conn = conn.connect(addr);
+        
+            //blocking read for hello world
+            let (conn, msg) = conn.read_message();
+            let msg = String::from_utf8_lossy(msg.as_slice());
+            assert_eq!("Hello World!", msg);
+            conn.close();
+        });
+    
+        //send hello world to awaiting client
+        let mut conn = MsgConn::new(uid2, channel);
+        conn = conn.connect_with_message(addr, message.into_bytes());
+        conn.close();
+        
         drop(child);
     }
 }
