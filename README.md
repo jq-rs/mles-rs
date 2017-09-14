@@ -109,8 +109,8 @@ fn main() {
     let addr2 = addr.clone();
     
     //set users
-    let uid = "User".to_string();
-    let uid2 = "User two".to_string();
+    let uid = "Receiver".to_string();
+    let uid2 = "Sender".to_string();
         
     //set channel
     let channel = "Channel".to_string();
