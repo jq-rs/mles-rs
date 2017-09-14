@@ -1305,7 +1305,8 @@ mod tests {
         conn = conn.connect_with_message(addr2, message.into_bytes());
         conn.close();
         
-        drop(child);
+        drop(child);     
+        drop(serv);
     }
 }
 
