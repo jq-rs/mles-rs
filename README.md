@@ -71,17 +71,8 @@ mles [peer-address] [--history-limit=N]
 ```
 mles-client <server-address> [--use-websockets]
 ```
-Server usage example:
-```
-MLES_KEY=validkey target/debug/mles
-```
 
-Client usage example:
-```
-MLES_KEY=validkey target/debug/mles-client 127.0.0.1
-```
-
-Client API usage example:
+Client API example:
 ```
         //set server address to connect
         let addr = "127.0.0.1:8077".parse::<SocketAddr>().unwrap();
