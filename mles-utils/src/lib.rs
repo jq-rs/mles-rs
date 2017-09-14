@@ -1270,9 +1270,11 @@ mod tests {
 
     #[test]
     fn test_msgconn_basic_read_send() {
+        let sec = Duration::new(1,0);
         //set server address to connect
-        let addr = "127.0.0.1:8077".parse::<SocketAddr>().unwrap();
+        let addr = "127.0.0.1:8071".parse::<SocketAddr>().unwrap();
         let addr2 = addr.clone();
+        let saddr = addr.clone();
         //set users
         let uid = "User".to_string();
         let uid2 = "User two".to_string();
@@ -1281,6 +1283,10 @@ mod tests {
         let channel2 = channel.clone();
         //set message
         let message = "Hello World!".to_string();
+        
+        //create server
+        let serv = thread::spawn(move || server_run(saddr, None, "".to_string(), "".to_string(), 0, 0));
+        thread::sleep(sec);
          
         let child = thread::spawn(move || {
             //connect client to server
