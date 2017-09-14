@@ -64,6 +64,7 @@ pub struct Msg {
 ```
 ## Usage
 
+Reference binaries:
 ```
 mles [peer-address] [--history-limit=N]
 ```
