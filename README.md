@@ -94,11 +94,7 @@ Client API usage example:
         let channel2 = channel.clone();
         //set message
         let message = "Hello World!".to_string();
-        
-        //create server
-        let serv = thread::spawn(move || server_run(saddr, None, "".to_string(), "".to_string(), 0, 0));
-        thread::sleep(sec);
-         
+
         let child = thread::spawn(move || {
             //connect client to server
             let mut conn = MsgConn::new(uid, channel);
