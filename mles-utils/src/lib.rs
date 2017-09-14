@@ -1282,9 +1282,10 @@ mod tests {
          
         let child = thread::spawn(move || {
             let addr = addr.clone();
+            let channel = channel.clone();
         
             //connect client to server
-            let mut conn = MsgConn::new(uid, channel.clone());
+            let mut conn = MsgConn::new(uid, channel);
             conn = conn.connect(addr);
         
             //blocking read for hello world
