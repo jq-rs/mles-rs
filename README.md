@@ -133,6 +133,7 @@ fn main() {
     let mut conn = MsgConn::new(uid2, channel2);
     conn = conn.connect_with_message(addr2, message.into_bytes());
     conn.close();
+    let _res = child.join();
 }
 ```
 
