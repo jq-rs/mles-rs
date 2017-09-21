@@ -192,6 +192,50 @@ impl MsgHdr {
     pub fn get_key(&self) -> u64 {
         self.key
     }
+
+    /// Encode MsgHdr to line format.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{MsgHdr, select_cid};
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
+    /// let msgv: Vec<u8> = msghdr.encode();
+    /// ```
+#[inline]
+    pub fn encode(&self) -> Vec<u8> {
+        let mut msgv = write_hdr(self.get_len() as usize, self.get_cid());
+        msgv.extend(write_key(self.get_key()));
+        msgv
+    }
+
+    /// Decode MsgHdr from line format.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{MsgHdr, select_cid};
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 16;
+    ///
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
+    /// let msgv: Vec<u8> = msghdr.encode();
+    /// let msgh = MsgHdr::decode(msgv);
+    /// assert_eq!(key, msgh.get_key());
+    /// assert_eq!(cid, msgh.get_cid());
+    /// assert_eq!(len, msgh.get_len());
+    /// ```
+#[inline]
+    pub fn decode(buf: Vec<u8>) -> MsgHdr {
+        MsgHdr::new(read_hdr_len(&buf) as u32, read_cid_from_hdr(&buf), read_key_from_hdr(&buf))
+    }
 }
 
 fn hdr_set_len(len: u32) -> u32 {
