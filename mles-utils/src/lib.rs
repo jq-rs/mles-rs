@@ -65,13 +65,13 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let msghdr = MsgHdr::new(len, cid, key);
     /// ```
 #[inline]
     pub fn new(len: u32, cid: u32, key: u64) -> MsgHdr {
@@ -86,13 +86,13 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_len(515);
     /// ```
 #[inline]
@@ -104,32 +104,32 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_len(515);
     /// assert_eq!(515, msghdr.get_len());
     /// ```
 #[inline]
-    pub fn get_len(&self) {
-        hdr_get_len(self.vhlen);
+    pub fn get_len(&self) -> u32 {
+        hdr_get_len(self.vhlen)
     }
 
     /// Set cid of MsgHdr.
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_cid(515);
     /// ```
 #[inline]
@@ -141,32 +141,32 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_cid(515);
     /// assert_eq!(515, msghdr.get_cid());
     /// ```
 #[inline]
-    pub fn get_cid(&self) {
-        self.cid;
+    pub fn get_cid(&self) -> u32 {
+        self.cid
     }
 
     /// Set key of MsgHdr.
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_key(515);
     /// ```
 #[inline]
@@ -178,19 +178,19 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::MsgHdr;
+    /// use mles_utils::{MsgHdr, select_cid};
     ///
     /// let key = 0xf00f;
     /// let cid = select_cid(key); 
     /// let len = 0;
     ///
-    /// let msghdr = Msg::new(len, cid, key);
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_key(515);
     /// assert_eq!(515, msghdr.get_key());
     /// ```
 #[inline]
-    pub fn get_key(&self) {
-        self.key;
+    pub fn get_key(&self) -> u64 {
+        self.key
     }
 }
 
