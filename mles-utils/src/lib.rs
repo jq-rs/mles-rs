@@ -48,6 +48,160 @@ pub const MSGMAXSIZE: usize = 0xffffff;
 
 const KEEPALIVE: u64 = 5;
 
+/// MsgHdr structure
+///
+/// This structure defines the header of the Mles message including first 'M' byte,
+/// length of the encoded data, connection id and SipHash key.
+/// Encoded message will always be in network byte order.
+///
+pub struct MsgHdr {
+    vhlen:  u32,
+    cid:    u32,
+    key:    u64,
+}
+
+impl MsgHdr {
+    /// Create a new MsgHdr object with length, cid and key.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// ```
+#[inline]
+    pub fn new(len: u32, cid: u32, key: u64) -> MsgHdr {
+        MsgHdr {
+            vhlen: hdr_set_len(len),
+            cid: cid,
+            key: key, 
+        }
+    }
+
+    /// Set length of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// msghdr.set_len(515);
+    /// ```
+#[inline]
+    pub fn set_len(&mut self, len: u32) {
+        self.vhlen = hdr_set_len(len);
+    }
+
+    /// Get length of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// msghdr.set_len(515);
+    /// assert_eq!(515, msghdr.get_len());
+    /// ```
+#[inline]
+    pub fn get_len(&self) {
+        hdr_get_len(self.vhlen);
+    }
+
+    /// Set cid of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// msghdr.set_cid(515);
+    /// ```
+#[inline]
+    pub fn set_cid(&mut self, cid: u32) {
+        self.cid = cid;
+    }
+
+    /// Get cid of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// msghdr.set_cid(515);
+    /// assert_eq!(515, msghdr.get_cid());
+    /// ```
+#[inline]
+    pub fn get_cid(&self) {
+        self.cid;
+    }
+
+    /// Set key of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// msghdr.set_key(515);
+    /// ```
+#[inline]
+    pub fn set_key(&mut self, key: u64) {
+        self.key = key;
+    }
+
+    /// Get key of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let key = 0xf00f;
+    /// let cid = select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let msghdr = Msg::new(len, cid, key);
+    /// msghdr.set_key(515);
+    /// assert_eq!(515, msghdr.get_key());
+    /// ```
+#[inline]
+    pub fn get_key(&self) {
+        self.key;
+    }
+}
+
+fn hdr_set_len(len: u32) -> u32 {
+    77 << 24 | len & 0xffffff
+}
+
+fn hdr_get_len(vhlen: u32) -> u32 {
+    vhlen & 0xffffff
+}
+
 
 /// Msg structure
 ///

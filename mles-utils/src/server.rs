@@ -84,6 +84,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let (tx_removals, rx_removals) = unbounded();
 
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
+        let (tx_peer_remover, rx_peer_remover) = unbounded();
 
         let frame = io::read_exact(reader, vec![0;::HDRKEYL]);
         let frame = frame.and_then(move |(reader, hdr_key)| process_hdr(reader, hdr_key));
@@ -100,6 +101,8 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let mles_db_inner = mles_db.clone();
         let keyaddr_inner = keyaddr.clone();
         let tx_removals_iter = tx_removals.clone();
+        let tx_peer_remover_inner = tx_peer_remover.clone();
+        let tx_peer_for_msgs_inner = tx_peer_for_msgs.clone();
         let socket_once = frame.and_then(move |(reader, messages, decoded_message)| {
                 let channel = decoded_message.get_channel().clone();
                 let mut mles_db_once = mles_db_inner.borrow_mut();
@@ -108,15 +111,15 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
 
                 //pick the verified cid from header and use it as an identifier
                 let cid = read_cid_from_hdr(&message) as u64;
+                let chan = channel.clone();
+                let msg = message.clone();
 
                 if !mles_db_once.contains_key(&channel) {
-                    let chan = channel.clone();
 
                     //if peer is set, create peer channel thread
                     if peer::has_peer(&peer) {
-                        let msg = message.clone();
                         let peer = peer.unwrap();
-                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs, debug_flags));
+                        thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs_inner, tx_peer_remover_inner, debug_flags));
                     }
 
                     let mut mles_db_entry = MlesDb::new(hist_limit);
@@ -131,7 +134,11 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                     }
                     mles_db_entry.add_channel(cid, tx_inner.clone());
                     if peer::has_peer(&peer) {
-                        if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
+                        let peer = peer.unwrap();
+                        if !mles_db_entry.check_peer() {
+                            thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr_inner, chan, msg, &tx_peer_for_msgs_inner, tx_peer_remover_inner, debug_flags));
+                        }
+                        else if let Some(channelpeer_entry) = mles_db_entry.get_peer_tx() {
                             //sending tx to peer
                             let _res = channelpeer_entry.unbounded_send(tx_inner.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                         }
@@ -190,7 +197,10 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 Ok((reader, cid, channel))
         });
 
+        let keyaddr_inner = keyaddr.clone();
         let mles_db_inner = mles_db.clone();
+        let tx_peer_for_msgs_inner = tx_peer_for_msgs.clone();
+        let tx_peer_remover_inner = tx_peer_remover.clone();
         let socket_next = socket_once.and_then(move |(reader, cid, channel)| {
             let channel_next = channel.clone();
             let tx_removals_iter = tx_removals.clone();
@@ -206,6 +216,9 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
 
                 let mles_db = mles_db_inner.clone();
                 let channel = channel_next.clone();
+                let keyaddr = keyaddr_inner.clone();
+                let tx_peer_for_msgs = tx_peer_for_msgs_inner.clone();
+                let tx_peer_remover = tx_peer_remover_inner.clone();
                 let tx_removals = tx_removals_iter.clone();
                 frame.map(move |(reader, mut hdr_key, message)| {
                     hdr_key.extend(message);
@@ -213,8 +226,15 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
 
                     let mut mles_db_borrow = mles_db.borrow_mut();
                     if let Some(mles_db_entry) = mles_db_borrow.get_mut(&channel) {
-                        // add to history if no peer
-                        if !peer::has_peer(&peer) {
+                        if peer::has_peer(&peer) {
+                            if !mles_db_entry.check_peer() {
+                                let peer = peer.unwrap();
+                                let msg = hdr_key.clone();
+                                thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr, channel, msg, &tx_peer_for_msgs, tx_peer_remover, debug_flags));
+                            }
+                        }
+                        else {
+                            // add to history if no peer
                             mles_db_entry.add_message(hdr_key.clone());
                         }
 
@@ -262,6 +282,26 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         }));
 
         let mles_db_inner = mles_db.clone();
+        let peer_remover = rx_peer_remover.for_each(move |(channel, peer_cid)| {
+            println!("Removing peer channel {} peer cid {} and cid {}", channel, peer_cid, clear_peer_cid(peer_cid));
+            let mut mles_db_once = mles_db_inner.borrow_mut();
+            if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
+                //remove peer tx
+                mles_db_entry.rem_channel(peer_cid);  
+                mles_db_entry.rem_peer_tx();
+                //remove the cid too as peer connection got eof
+                mles_db_entry.rem_channel(clear_peer_cid(peer_cid));  
+            }
+            else {
+                println!("Cannot find peer channel {}", channel);
+            }
+            Ok(())
+        });
+        handle.spawn(peer_remover.then(|_| {
+            Ok(())
+        }));
+
+        let mles_db_inner = mles_db.clone();
         let channel_removals = rx_removals.for_each(move |(cid, channel)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
             if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
@@ -270,7 +310,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 mles_db_entry.rem_channel(cid);  
             }
             else {
-                println!("Cannot find peer channel on removal {}", channel);
+                println!("Cannot find channel on removal {}", channel);
             }
             Ok(())
         });
