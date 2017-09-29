@@ -1,0 +1,12 @@
+[Unit]
+Description=Mles client
+
+[Service]
+WorkingDirectory = /home/ubuntu/mles/mles-rs/mles-client
+ExecStart = /home/ubuntu/mles/mles-rs/mles-client-manage.sh start
+ExecStop = /home/ubuntu/mles/mles-rs/mles-client-manage.sh stop
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+Alias=mles-client.service
