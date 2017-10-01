@@ -12,7 +12,7 @@ mod tests {
         let mut vec = Vec::new();
         let addr = "127.0.0.1:8077".to_string();
         vec.push(addr);
-        b.iter(|| do_hash(&vec));
+        b.iter(|| MsgHdr::do_hash(&vec));
     }
 
     #[bench]
@@ -22,7 +22,7 @@ mod tests {
             let addr = "127.0.0.1:".to_string() + &val.to_string();
             vec.push(addr);
         }
-        b.iter(|| do_hash(&vec));
+        b.iter(|| MsgHdr::do_hash(&vec));
     }
 }
  

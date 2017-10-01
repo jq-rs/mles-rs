@@ -13,7 +13,7 @@ mod tests {
         let channel = "Channel".to_string();
         let msg =  "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
-        b.iter(|| message_encode(&orig_msg));
+        b.iter(|| orig_msg.encode(&orig_msg));
     }
 
     #[bench]
@@ -22,8 +22,8 @@ mod tests {
         let channel = "Channel".to_string();
         let msg =  "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
-        let encoded_msg = message_encode(&orig_msg);
-        b.iter(|| message_decode(&encoded_msg));
+        let encoded_msg = orig_msg.encode(&orig_msg);
+        b.iter(|| encoded_msg.decode(&encoded_msg));
     }
 }
  

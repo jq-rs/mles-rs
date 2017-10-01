@@ -102,6 +102,17 @@ impl MlesDb {
     pub fn set_peer_tx(&mut self, peer_tx: UnboundedSender<UnboundedSender<Vec<u8>>>) {
         self.peer_tx = Some(peer_tx);
     }
+
+    pub fn rem_peer_tx(&mut self) {
+        self.peer_tx = None;
+    }
+
+    pub fn check_peer(&self) -> bool {
+        match self.peer_tx {
+            Some(_) => true,
+            None => false,
+        }
+    }
 }
 
 pub struct MlesPeerDb {

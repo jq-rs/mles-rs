@@ -142,7 +142,7 @@ fn main() {
             if  !keyval.is_empty() {
                 keys.push(keyval.clone());
             } else {            
-                keys.push(addr2str(&laddr));
+                keys.push(MsgHdr::addr2str(&laddr));
                 if !keyaddr.is_empty() {
                     keys.push(keyaddr.clone());
                 }
@@ -154,14 +154,13 @@ fn main() {
                     let decoded_message = Msg::decode(buf.as_slice());
                     keys.push(decoded_message.get_uid().to_string());
                     keys.push(decoded_message.get_channel().to_string());
-                    key = Some(do_hash(&keys));
-                    cid = Some(select_cid(key.unwrap()));
+                    key = Some(MsgHdr::do_hash(&keys));
+                    cid = Some(MsgHdr::select_cid(key.unwrap()));
                 }
-                let mut cidv = write_cid(cid.unwrap());
-                let keyv = write_key(key.unwrap());
-                cidv.extend(keyv);
-                cidv.extend(buf);
-                Ok(cidv)
+                let msghdr = MsgHdr::new(buf.len() as u32, cid.unwrap(), key.unwrap());
+                let mut msgv = msghdr.encode();
+                msgv.extend(buf);
+                Ok(msgv)
             });
 
             let send_stdin = stdin_rx.forward(sink);
@@ -207,28 +206,29 @@ impl Decoder for Bytes {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
-        if buf.len() >= mles_utils::HDRKEYL {
+        if buf.len() >= MsgHdr::get_hdrkey_len() {
+            let msghdr = MsgHdr::decode(buf.to_vec());
             // HDRKEYL is header min size
-            if read_hdr_type(&buf.to_vec()) != 'M' as u32 {
+            if msghdr.get_type() != 'M' as u8 {
                 let len = buf.len();
                 buf.split_to(len);
                 return Ok(None);
             }
-            let hdr_len = read_hdr_len(&buf.to_vec());
+            let hdr_len = msghdr.get_len() as usize;
             if 0 == hdr_len {
                 let len = buf.len();
                 buf.split_to(len);
                 return Ok(None);
             }
             let len = buf.len();
-            if len < (mles_utils::HDRKEYL + hdr_len) {
+            if len < (MsgHdr::get_hdrkey_len() + hdr_len) {
                 return Ok(None);
             }
-            if mles_utils::HDRKEYL + hdr_len < len {
-                buf.split_to(mles_utils::HDRKEYL);
+            if MsgHdr::get_hdrkey_len() + hdr_len < len {
+                buf.split_to(MsgHdr::get_hdrkey_len());
                 return Ok(Some(buf.split_to(hdr_len)));
             }
-            buf.split_to(mles_utils::HDRKEYL);
+            buf.split_to(MsgHdr::get_hdrkey_len());
             return Ok(Some(buf.split_to(hdr_len)));
         }
         Ok(None)
@@ -244,9 +244,7 @@ impl Encoder for Bytes {
     type Error = io::Error;
 
     fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
-        let mut msgv = write_hdr_without_cid(data.len() - mles_utils::KEYL - mles_utils::CIDL);
-        msgv.extend(data);
-        buf.put(&msgv[..]);
+        buf.put(&data[..]);
         Ok(())
     }
 }
@@ -335,7 +333,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
         if  !keyval.is_empty() {
             keys.push(keyval);
         } else {            
-            keys.push(addr2str(&laddr));
+            keys.push(MsgHdr::addr2str(&laddr));
             if !keyaddr.is_empty() {
                 keys.push(keyaddr);
             }
@@ -351,14 +349,13 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                 let decoded_message = Msg::decode(buf.as_slice());
                 keys.push(decoded_message.get_uid().to_string());
                 keys.push(decoded_message.get_channel().to_string());
-                key = Some(do_hash(&keys));
-                cid = Some(select_cid(key.unwrap()));
+                key = Some(MsgHdr::do_hash(&keys));
+                cid = Some(MsgHdr::select_cid(key.unwrap()));
             }
-            let mut cidv = write_cid(cid.unwrap());
-            let keyv = write_key(key.unwrap());
-            cidv.extend(keyv);
-            cidv.extend(buf);
-            Ok(cidv)
+            let msghdr = MsgHdr::new(buf.len() as u32, cid.unwrap(), key.unwrap());
+            let mut msgv = msghdr.encode();
+            msgv.extend(buf);
+            Ok(msgv)
         });
 
         let send_wsrx = mles_rx.forward(sink);

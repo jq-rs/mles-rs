@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
 use std::io::Error;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::thread;
 use std::time::Duration;
@@ -35,6 +36,7 @@ const WAITTIME: u64 = 5;
 /// Initiate peer connection
 pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
                  tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>,
+                 tx_peer_remover: UnboundedSender<(String, u64)>,
                  debug_flags: u64) 
 {
     let mut core = Core::new().unwrap();
@@ -55,11 +57,10 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         let (tx_removals, rx_removals) = unbounded();
         let mut cnt = 0;
 
-        //save cid
         let peer_cid = set_peer_cid(read_cid_from_hdr(&msg));
 
         //distribute channels
-        let _res = tx_peer_for_msgs.unbounded_send((peer_cid, channel, tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
+        let _res = tx_peer_for_msgs.unbounded_send((peer_cid, channel.clone(), tx.clone(), tx_orig_chan.clone())).map_err(|err| { println!("Cannot send from peer: {}", err); () });
 
         let loopcnt_inner = loopcnt.clone();
         let mles_peer_db_inner = mles_peer_db.clone();
@@ -80,7 +81,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             *loopcnt = 1;
 
             if debug_flags != 0 {
-                println!("Successfully connected to peer");
+                println!("Successfully connected to peer with cid {:x}", clear_peer_cid(peer_cid));
             }
 
             //if history exists, send resync to peer
@@ -201,7 +202,24 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         });
 
         // execute server
-        let _res = core.run(client).map_err(|err| { println!("Peer: {}", err); () });
+        let res = core.run(client).map_err(|err| { 
+            println!("Peer: {}", err); 
+            if err.kind() == ErrorKind::UnexpectedEof {
+                //we got reset from other side
+                //let's wrap our things as it is bad
+                let _res = tx_peer_remover.unbounded_send((channel, peer_cid));
+            }
+            err 
+        });
+        match res {
+            Err(err) => {
+                if err.kind() == ErrorKind::UnexpectedEof {
+                    println!("Connection failed. Please check for proper key or duplicate user.");
+                    return;
+                }
+            },
+            Ok(_) => {}
+        }
          
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();
@@ -213,7 +231,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         }
         *loopcnt *= 2;
 
-        println!("Connection failed. Please check for proper key. Retrying in {} s.", wait);
+        println!("Connection failed. Retrying in {} s.", wait);
         thread::sleep(Duration::from_secs(wait));
     }
 }
@@ -222,16 +240,20 @@ pub fn set_peer_cid(cid: u32) -> u64 {
     (cid as u64) | 1 << 32
 }
 
+pub fn clear_peer_cid(cid: u64) -> u64 {
+    (cid as u32) as u64
+}
+
 fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net::SocketAddr) -> Vec<u8> {
     let mut keys = Vec::new();
-    keys.push(addr2str(&laddr));
+    keys.push(MsgHdr::addr2str(&laddr));
     if !keyaddr.is_empty() {
         keys.push(keyaddr);
     }
     //create hash for verification
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
-    let key = Some(do_hash(&keys));
+    let key = Some(MsgHdr::do_hash(&keys));
     let msg = write_hdr_with_key(len, key.unwrap());
     msg
 }
