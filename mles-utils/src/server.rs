@@ -282,7 +282,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         }));
 
         let mles_db_inner = mles_db.clone();
-        let channel_db_conn = channel_db.clone();
         let peer_remover = rx_peer_remover.for_each(move |(channel, peer_cid)| {
             let cid = clear_peer_cid(peer_cid);
             println!("Removing peer cid {:x}, cid {:x}", peer_cid, cid);
