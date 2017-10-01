@@ -1,6 +1,6 @@
 [package]
 name = "mles"
-version = "1.0.0-beta3"
+version = "0.17"
 authors = ["jq-rs"]
 description = "Mles - a distributed publish/subscribe data server"
 license = "MPL-2.0"
