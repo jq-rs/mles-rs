@@ -72,7 +72,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
             keys.push(keyval.clone());
         }
         else {
-            keys.push(addr2str(&paddr));
+            keys.push(MsgHdr::addr2str(&paddr));
             is_addr_set = true;
             if !keyaddr.is_empty() {
                 keys.push(keyaddr.clone());
@@ -282,15 +282,17 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         }));
 
         let mles_db_inner = mles_db.clone();
+        let channel_db_conn = channel_db.clone();
         let peer_remover = rx_peer_remover.for_each(move |(channel, peer_cid)| {
-            println!("Removing peer channel {} peer cid {} and cid {}", channel, peer_cid, clear_peer_cid(peer_cid));
+            let cid = clear_peer_cid(peer_cid);
+            println!("Removing peer cid {:x}, cid {:x}", peer_cid, cid);
             let mut mles_db_once = mles_db_inner.borrow_mut();
             if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
                 //remove peer tx
                 mles_db_entry.rem_channel(peer_cid);  
                 mles_db_entry.rem_peer_tx();
                 //remove the cid too as peer connection got eof
-                mles_db_entry.rem_channel(clear_peer_cid(peer_cid));  
+                mles_db_entry.rem_channel(cid);  
             }
             else {
                 println!("Cannot find peer channel {}", channel);
@@ -306,7 +308,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
             let mut mles_db_once = mles_db_inner.borrow_mut();
             if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
                 //remove erroneous connection
-                println!("Removing channel {} cid {}", channel, cid);
+                println!("Removing cid {:x}", cid);
                 mles_db_entry.rem_channel(cid);  
             }
             else {

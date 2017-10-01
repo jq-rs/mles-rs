@@ -81,7 +81,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
             *loopcnt = 1;
 
             if debug_flags != 0 {
-                println!("Successfully connected to peer");
+                println!("Successfully connected to peer with cid {:x}", clear_peer_cid(peer_cid));
             }
 
             //if history exists, send resync to peer
@@ -202,16 +202,24 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         });
 
         // execute server
-        let _res = core.run(client).map_err(|err| { 
+        let res = core.run(client).map_err(|err| { 
             println!("Peer: {}", err); 
             if err.kind() == ErrorKind::UnexpectedEof {
                 //we got reset from other side
                 //let's wrap our things as it is bad
                 let _res = tx_peer_remover.unbounded_send((channel, peer_cid));
-                return;
             }
-            () 
+            err 
         });
+        match res {
+            Err(err) => {
+                if err.kind() == ErrorKind::UnexpectedEof {
+                    println!("Connection failed. Please check for proper key or duplicate user.");
+                    return;
+                }
+            },
+            Ok(_) => {}
+        }
          
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();
@@ -223,7 +231,7 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         }
         *loopcnt *= 2;
 
-        println!("Connection failed. Please check for proper key. Retrying in {} s.", wait);
+        println!("Connection failed. Retrying in {} s.", wait);
         thread::sleep(Duration::from_secs(wait));
     }
 }
@@ -238,14 +246,14 @@ pub fn clear_peer_cid(cid: u64) -> u64 {
 
 fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net::SocketAddr) -> Vec<u8> {
     let mut keys = Vec::new();
-    keys.push(addr2str(&laddr));
+    keys.push(MsgHdr::addr2str(&laddr));
     if !keyaddr.is_empty() {
         keys.push(keyaddr);
     }
     //create hash for verification
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
-    let key = Some(do_hash(&keys));
+    let key = Some(MsgHdr::do_hash(&keys));
     let msg = write_hdr_with_key(len, key.unwrap());
     msg
 }

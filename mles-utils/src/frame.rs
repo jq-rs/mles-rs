@@ -57,7 +57,7 @@ pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: V
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
 
-    let hkey = do_hash(&keys);
+    let hkey = MsgHdr::do_hash(&keys);
     if hkey != key {
         println!("Incorrect key {:x} != {:x}", hkey, key);
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect remote key"));
@@ -92,8 +92,8 @@ mod tests {
         let mut keys = Vec::new();
         keys.push(uid.clone());
         keys.push(channel.clone());
-        let key = do_hash(&keys); 
-        let mut hdr: Vec<u8> = write_hdr(122, select_cid(key));
+        let key = MsgHdr::do_hash(&keys); 
+        let mut hdr: Vec<u8> = write_hdr(122, MsgHdr::select_cid(key));
         let keyhdr: Vec<u8> = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();
@@ -117,8 +117,8 @@ mod tests {
         let mut keys = Vec::new();
         keys.push(uid.clone());
         keys.push(channel.clone());
-        let key = do_hash(&keys); 
-        let mut hdr: Vec<u8> = write_hdr(122, select_cid(key));
+        let key = MsgHdr::do_hash(&keys); 
+        let mut hdr: Vec<u8> = write_hdr(122, MsgHdr::select_cid(key));
         let keyhdr: Vec<u8> = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();
@@ -146,8 +146,8 @@ mod tests {
         let mut keys = Vec::new();
         keys.push(uid.clone());
         keys.push(channel.clone());
-        let key = do_hash(&keys); 
-        let mut hdr: Vec<u8> = write_hdr(122, select_cid(key));
+        let key = MsgHdr::do_hash(&keys); 
+        let mut hdr: Vec<u8> = write_hdr(122, MsgHdr::select_cid(key));
         let keyhdr: Vec<u8> = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();

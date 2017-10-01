@@ -35,16 +35,16 @@ use std::io::{Read, Error};
 use std::net::{IpAddr, SocketAddr};
 
 /// HDRL defines the size of the header including version, length and timestamp
-pub const HDRL: usize = 8; 
+pub(crate) const HDRL: usize = 8; 
 /// CIDL defines the size of the connection id
-pub const CIDL:  usize = 4; 
+pub(crate) const CIDL:  usize = 4; 
 /// KEYL defines the size of the key
-pub const KEYL: usize = 8; 
+pub(crate) const KEYL: usize = 8; 
 /// HDRKEYL defines the size of the header + key
-pub const HDRKEYL: usize = HDRL + KEYL;
+pub(crate) const HDRKEYL: usize = HDRL + KEYL;
 
 /// Max message size
-pub const MSGMAXSIZE: usize = 0xffffff;
+pub(crate) const MSGMAXSIZE: usize = 0xffffff;
 
 const KEEPALIVE: u64 = 5;
 
@@ -55,7 +55,7 @@ const KEEPALIVE: u64 = 5;
 /// Encoded message will always be in network byte order.
 ///
 pub struct MsgHdr {
-    vhlen:  u32,
+    thlen:  u32,
     cid:    u32,
     key:    u64,
 }
@@ -65,74 +65,94 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let msghdr = MsgHdr::new(len, cid, key);
     /// ```
-#[inline]
     pub fn new(len: u32, cid: u32, key: u64) -> MsgHdr {
         MsgHdr {
-            vhlen: hdr_set_len(len),
+            thlen: hdr_set_len(len),
             cid: cid,
             key: key, 
         }
+    }
+
+    /// Get type of MsgHdr.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::{MsgHdr};
+    ///
+    /// let key = 0xf00f;
+    /// let cid = MsgHdr::select_cid(key); 
+    /// let len = 0;
+    ///
+    /// let mut msghdr = MsgHdr::new(len, cid, key);
+    /// msghdr.get_type();
+    /// assert_eq!('M' as u8, msghdr.get_type());
+    /// ```
+    pub fn get_type(&self) -> u8 {
+        hdr_get_type(self.thlen)
+    }
+
+    /// Get MsgHdr length on the line.
+    /// 
+    pub fn get_hdrkey_len() -> usize {
+        HDRKEYL
     }
 
     /// Set length of MsgHdr.
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_len(515);
     /// ```
-#[inline]
     pub fn set_len(&mut self, len: u32) {
-        self.vhlen = hdr_set_len(len);
+        self.thlen = hdr_set_len(len);
     }
 
     /// Get length of MsgHdr.
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_len(515);
     /// assert_eq!(515, msghdr.get_len());
     /// ```
-#[inline]
     pub fn get_len(&self) -> u32 {
-        hdr_get_len(self.vhlen)
+        hdr_get_len(self.thlen)
     }
 
     /// Set cid of MsgHdr.
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_cid(515);
     /// ```
-#[inline]
     pub fn set_cid(&mut self, cid: u32) {
         self.cid = cid;
     }
@@ -141,17 +161,16 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_cid(515);
     /// assert_eq!(515, msghdr.get_cid());
     /// ```
-#[inline]
     pub fn get_cid(&self) -> u32 {
         self.cid
     }
@@ -160,16 +179,15 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_key(515);
     /// ```
-#[inline]
     pub fn set_key(&mut self, key: u64) {
         self.key = key;
     }
@@ -178,17 +196,16 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// msghdr.set_key(515);
     /// assert_eq!(515, msghdr.get_key());
     /// ```
-#[inline]
     pub fn get_key(&self) -> u64 {
         self.key
     }
@@ -198,16 +215,15 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
     /// let msgv: Vec<u8> = msghdr.encode();
     /// ```
-#[inline]
     pub fn encode(&self) -> Vec<u8> {
         let mut msgv = write_hdr(self.get_len() as usize, self.get_cid());
         msgv.extend(write_key(self.get_key()));
@@ -219,10 +235,10 @@ impl MsgHdr {
     ///
     /// # Example
     /// ```
-    /// use mles_utils::{MsgHdr, select_cid};
+    /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key); 
     /// let len = 16;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -232,9 +248,84 @@ impl MsgHdr {
     /// assert_eq!(cid, msgh.get_cid());
     /// assert_eq!(len, msgh.get_len());
     /// ```
-#[inline]
     pub fn decode(buf: Vec<u8>) -> MsgHdr {
         MsgHdr::new(read_hdr_len(&buf) as u32, read_cid_from_hdr(&buf), read_key_from_hdr(&buf))
+    }
+    /// Do a valid hash for Mles over provided UTF-8 String list.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let hashstr1 = "A string".to_string();
+    /// let hashstr2 = "Another string".to_string();
+    /// let hashable = vec![hashstr1, hashstr2];
+    /// let key: u64 = MsgHdr::do_hash(&hashable); 
+    /// ```
+#[inline]
+    pub fn do_hash(t: &[String]) -> u64 {
+        let mut s = SipHasher::new();
+        for item in t {
+            item.hash(&mut s);
+        }
+        s.finish()
+    }
+
+    /// Return a connection id from key.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let cid = MsgHdr::select_cid(0x1000000100000001);
+    /// assert_eq!(cid, 0x00000001);
+    /// ```
+#[inline]
+    pub fn select_cid(key: u64) -> u32 {
+        key as u32 
+    }
+
+    /// Do a valid UTF-8 string from a `SocketAddr`.
+    ///
+    /// For IPv4 the format is "x.x.x.x:y", where x is u8 and y is u16
+    /// For IPv6 the format is "[z:z:z:z:z:z:z:z]:y", where z is u16 in hexadecimal format and y is u16
+    ///
+    /// # Example
+    /// ```
+    ///
+    /// use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
+    /// use mles_utils::MsgHdr;
+    ///
+    /// let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    /// let addrstr = MsgHdr::addr2str(&addr);
+    ///
+    /// assert_eq!("127.0.0.1:8080", addrstr);
+    ///
+    /// let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xff03, 0, 0, 0, 0, 0, 0, 1)), 8077);
+    /// let addrstr = MsgHdr::addr2str(&addr);
+    ///
+    /// assert_eq!("[ff03:0:0:0:0:0:0:1]:8077", addrstr);
+    /// ```
+#[inline]
+    pub fn addr2str(addr: &SocketAddr) -> String {
+        let ipaddr = addr.ip();
+        match ipaddr {
+            IpAddr::V4(v4) => {
+                let v4oct = v4.octets();
+                let v4str = format!("{}.{}.{}.{}:{}", 
+                                    v4oct[0], v4oct[1], v4oct[2], v4oct[3], 
+                                    addr.port());
+                v4str
+            }
+            IpAddr::V6(v6) => {
+                let v6seg = v6.segments();
+                let v6str = format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}", 
+                                    v6seg[0], v6seg[1], v6seg[2], v6seg[3], 
+                                    v6seg[4], v6seg[5], v6seg[6], v6seg[7], 
+                                    addr.port());
+                v6str
+            }
+        }
     }
 }
 
@@ -242,8 +333,12 @@ fn hdr_set_len(len: u32) -> u32 {
     77 << 24 | len & 0xffffff
 }
 
-fn hdr_get_len(vhlen: u32) -> u32 {
-    vhlen & 0xffffff
+fn hdr_get_len(thlen: u32) -> u32 {
+    thlen & 0xffffff
+}
+
+fn hdr_get_type(thlen: u32) -> u8 {
+    (thlen >> 24) as u8 
 }
 
 
@@ -687,16 +782,16 @@ impl MsgConn {
                                 addr.parse::<SocketAddr>().unwrap()
                             }
                     };
-                    keys.push(addr2str(&laddr));
+                    keys.push(MsgHdr::addr2str(&laddr));
                     keys.push(self.get_uid());
                     keys.push(self.get_channel());
-                    let key = do_hash(&keys);
+                    let key = MsgHdr::do_hash(&keys);
                     self.key = Some(key);
                 }
                 let encoded_msg = msg.encode();
                 let key = self.get_key().unwrap();
                 let keyv = write_key(key);
-                let mut msgv = write_hdr(encoded_msg.len(), select_cid(key));
+                let mut msgv = write_hdr(encoded_msg.len(), MsgHdr::select_cid(key));
                 msgv.extend(keyv);
                 msgv.extend(encoded_msg);
                 stream.write(msgv.as_slice()).unwrap();
@@ -728,7 +823,7 @@ impl MsgConn {
         let encoded_msg = message.encode();
         let key = self.get_key().unwrap();
         let keyv = write_key(key);
-        let mut msgv = write_hdr(encoded_msg.len(), select_cid(key));
+        let mut msgv = write_hdr(encoded_msg.len(), MsgHdr::select_cid(key));
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
         let mut stream = self.stream.unwrap();
@@ -808,22 +903,8 @@ impl MsgConn {
 
 }
 
-
-/// Read received buffer header type.
-///
-/// # Errors
-/// If input vector length is smaller than needed, zero is returned.
-///
-/// # Example
-/// ```
-/// use mles_utils::read_hdr_type;
-///
-/// let hdr: Vec<u8> = vec![77,1,2,3,0,0,0,0];
-/// let hdr_type = read_hdr_type(&hdr);
-/// assert_eq!('M' as u32, hdr_type);
-/// ```
 #[inline]
-pub fn read_hdr_type(hdr: &[u8]) -> u32 { 
+pub(crate) fn read_hdr_type(hdr: &[u8]) -> u32 {
     if hdr.len() < HDRL {
         return 0;
     }
@@ -832,21 +913,7 @@ pub fn read_hdr_type(hdr: &[u8]) -> u32 {
     num >> 24
 }
 
-/// Read received buffer header len.
-///
-/// # Errors
-/// If input vector length is smaller than needed, zero is returned.
-///
-/// # Example
-/// ```
-/// use mles_utils::read_hdr_len;
-///
-/// let hdr: Vec<u8> = vec![77,1,2,3,0,0,0,0];
-/// let hdr_len = read_hdr_len(&hdr);
-/// assert_eq!(515, hdr_len);
-/// ```
-#[inline]
-pub fn read_hdr_len(hdr: &[u8]) -> usize { 
+fn read_hdr_len(hdr: &[u8]) -> usize { 
     if hdr.len() < HDRL {
         return 0;
     }
@@ -855,21 +922,7 @@ pub fn read_hdr_len(hdr: &[u8]) -> usize {
     (num & 0xfff) as usize
 }
 
-/// Write a valid Mles header with specified length to network byte order.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr, read_hdr_len, do_hash, select_cid};
-///
-/// let hashstr = "A string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let hdr = write_hdr(515, select_cid(key));
-/// let hdr_len = read_hdr_len(&hdr);
-/// assert_eq!(515, hdr_len);
-/// ```
-#[inline]
-pub fn write_hdr(len: usize, cid: u32) -> Vec<u8> {
+fn write_hdr(len: usize, cid: u32) -> Vec<u8> {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = vec![];
     let mut cidv = vec![];
@@ -879,98 +932,16 @@ pub fn write_hdr(len: usize, cid: u32) -> Vec<u8> {
     msgv
 }
 
-/// Write a valid Mles header with specified length to network byte order without cid.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr_without_cid, read_hdr_len, HDRL, CIDL};
-///
-/// let hdr = write_hdr_without_cid(515);
-/// assert_eq!(HDRL-CIDL, hdr.len());
-/// ```
-#[inline]
-pub fn write_hdr_without_cid(len: usize) -> Vec<u8> {
+fn write_hdr_without_cid(len: usize) -> Vec<u8> {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = vec![];
     msgv.write_u32::<BigEndian>(hdr).unwrap();
     msgv
 }
 
-/// Return a connection id from key.
-///
-/// # Example
-/// ```
-/// use mles_utils::select_cid;
-///
-/// let cid = select_cid(0x1000000100000001);
-/// assert_eq!(cid, 0x00000001);
-/// ```
-#[inline]
-pub fn select_cid(key: u64) -> u32 {
-    key as u32 
-}
 
-/// Write a random connection id in network byte order.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_cid, select_cid, CIDL, do_hash};
-///
-/// let hashstr = "A string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let cidv = write_cid(select_cid(key));
-/// assert_eq!(CIDL, cidv.len());
-/// ```
 #[inline]
-pub fn write_cid(cid: u32) -> Vec<u8> {
-    let mut cidv = vec![];
-    cidv.write_u32::<BigEndian>(cid).unwrap();
-    cidv
-}
-
-/// Write a connection id in network byte order to the header.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr, write_cid_to_hdr, do_hash, select_cid};
-///
-/// let hashstr = "A string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let mut hdr = write_hdr(515, select_cid(key));
-/// let hdr = write_cid_to_hdr(key, hdr);
-/// ```
-#[inline]
-pub fn write_cid_to_hdr(key: u64, mut hdrv: Vec<u8>) -> Vec<u8> {
-    if hdrv.len() < HDRL {
-        return vec![];
-    }
-    let tail = hdrv.split_off(HDRL);
-    hdrv.truncate(HDRL - CIDL); //drop existing cid
-    hdrv.extend(write_cid(select_cid(key))); //add new cid
-    hdrv.extend(tail);
-    hdrv
-}
-
-/// Write a length in network byte order to the header.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr, write_len_to_hdr, do_hash, read_hdr_len, select_cid,
-/// read_cid_from_hdr};
-///
-/// let hashstr = "A string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let cid = select_cid(key);
-/// let mut hdr = write_hdr(515, cid);
-/// let hdr = write_len_to_hdr(750, hdr);
-/// assert_eq!(750, read_hdr_len(&hdr));
-/// assert_eq!(cid, read_cid_from_hdr(&hdr));
-/// ```
-#[inline]
-pub fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
+pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
     if hdrv.len() < HDRL {
         return vec![];
     }
@@ -980,93 +951,21 @@ pub fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
     nhdrv
 }
 
-
-/// Write a valid key to network byte order.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_key, do_hash};
-///
-/// let hashstr = "A string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let keyhdr: Vec<u8> = write_key(key);
-/// ```
-#[inline]
-pub fn write_key(val: u64) -> Vec<u8> {
+fn write_key(val: u64) -> Vec<u8> {
     let key = val;
     let mut msgv = vec![];
     msgv.write_u64::<BigEndian>(key).unwrap();
     msgv
 }
 
-/// Write a valid Mles header with specified length and key to network byte order.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr_with_key, read_hdr_len, read_key_from_hdr, do_hash};
-///
-/// let hashstr = "Yet another string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let hdr = write_hdr_with_key(515, key);
-/// let hdr_len = read_hdr_len(&hdr);
-/// assert_eq!(515, hdr_len);
-/// let keyx = read_key_from_hdr(&hdr);
-/// assert_eq!(key, keyx);
-/// ```
-#[inline]
-pub fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
-    let mut hdrv = write_hdr(len, select_cid(key));
+fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
+    let mut hdrv = write_hdr(len, MsgHdr::select_cid(key));
     hdrv.extend(write_key(key));
     hdrv
 }
 
-/// Read a key from buffer.
-///
-/// # Errors
-/// If input vector length is smaller than needed, zero is returned.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_key, read_key, do_hash};
-///
-/// let hashstr = "Another string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let keyhdr: Vec<u8> = write_key(key);
-/// let read_key = read_key(&keyhdr);
-/// assert_eq!(key, read_key);
-/// ```
-#[inline]
-pub fn read_key(keyv: &[u8]) -> u64 {
-    if keyv.len() < KEYL {
-        return 0;
-    }
-    let mut buf = Cursor::new(&keyv[..]);
-    buf.read_u64::<BigEndian>().unwrap()
-}
 
-/// Read a key from header.
-///
-/// # Errors
-/// If input vector length is smaller than needed, zero is returned.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr, write_key, read_key_from_hdr, do_hash, select_cid};
-///
-/// let hashstr = "Another string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// let mut hdr: Vec<u8> = write_hdr(12, select_cid(key));
-/// let keyhdr: Vec<u8> = write_key(key);
-/// hdr.extend(keyhdr);
-/// let read_key = read_key_from_hdr(&hdr);
-/// assert_eq!(key, read_key);
-/// ```
-#[inline]
-pub fn read_key_from_hdr(keyv: &[u8]) -> u64 {
+fn read_key_from_hdr(keyv: &[u8]) -> u64 {
     if keyv.len() < HDRKEYL {
         return 0;
     }
@@ -1074,98 +973,12 @@ pub fn read_key_from_hdr(keyv: &[u8]) -> u64 {
     buf.read_u64::<BigEndian>().unwrap()
 }
 
-/// Read a connection id from header.
-///
-/// # Errors
-/// If input vector length is smaller than needed, zero is returned.
-///
-/// # Example
-/// ```
-/// use mles_utils::{write_hdr_with_key, write_cid_to_hdr, read_cid_from_hdr, do_hash};
-///
-/// let mut hdr: Vec<u8> = write_hdr_with_key(12, 0x3f3f3000000001);
-/// let read_cid = read_cid_from_hdr(&hdr);
-/// assert_eq!(0x1, read_cid);
-///
-/// let hashstr = "Another string".to_string();
-/// let hashable = vec![hashstr];
-/// let key = do_hash(&hashable); 
-/// hdr = write_cid_to_hdr(key, hdr);
-/// let read_cid = read_cid_from_hdr(&hdr);
-/// assert!(read_cid >= 0x1 && read_cid <= 0x7fffffff);
-///
-/// ```
-#[inline]
-pub fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
+fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
     if hdrv.len() < HDRL {
         return 0;
     }
     let mut buf = Cursor::new(&hdrv[(HDRL-CIDL)..]);
     buf.read_u32::<BigEndian>().unwrap()
-}
-
-
-/// Do a valid hash for Mles over provided UTF-8 String list.
-///
-/// # Example
-/// ```
-/// use mles_utils::do_hash;
-///
-/// let hashstr1 = "A string".to_string();
-/// let hashstr2 = "Another string".to_string();
-/// let hashable = vec![hashstr1, hashstr2];
-/// let key: u64 = do_hash(&hashable); 
-/// ```
-#[inline]
-pub fn do_hash(t: &[String]) -> u64 {
-    let mut s = SipHasher::new();
-    for item in t {
-        item.hash(&mut s);
-    }
-    s.finish()
-}
-
-/// Do a valid UTF-8 string from a `SocketAddr`.
-///
-/// For IPv4 the format is "x.x.x.x:y", where x is u8 and y is u16
-/// For IPv6 the format is "[z:z:z:z:z:z:z:z]:y", where z is u16 in hexadecimal format and y is u16
-///
-/// # Example
-/// ```
-///
-/// use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
-/// use mles_utils::addr2str;
-///
-/// let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-/// let addrstr = addr2str(&addr);
-///
-/// assert_eq!("127.0.0.1:8080", addrstr);
-///
-/// let addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xff03, 0, 0, 0, 0, 0, 0, 1)), 8077);
-/// let addrstr = addr2str(&addr);
-///
-/// assert_eq!("[ff03:0:0:0:0:0:0:1]:8077", addrstr);
-/// ```
-#[inline]
-pub fn addr2str(addr: &SocketAddr) -> String {
-    let ipaddr = addr.ip();
-    match ipaddr {
-        IpAddr::V4(v4) => {
-            let v4oct = v4.octets();
-            let v4str = format!("{}.{}.{}.{}:{}", 
-                                v4oct[0], v4oct[1], v4oct[2], v4oct[3], 
-                                addr.port());
-            v4str
-        }
-        IpAddr::V6(v6) => {
-            let v6seg = v6.segments();
-            let v6str = format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}", 
-                                v6seg[0], v6seg[1], v6seg[2], v6seg[3], 
-                                v6seg[4], v6seg[5], v6seg[6], v6seg[7], 
-                                addr.port());
-            v6str
-        }
-    }
 }
 
 /// Check if an peer is defined
@@ -1281,27 +1094,14 @@ mod tests {
     }
 
     #[test]
-    fn test_hash() {
-        let addr = "127.0.0.1:8077";
-        let addr = addr.parse::<SocketAddr>().unwrap();
-        let orig_key = do_hash(&vec![addr2str(&addr)]);
-        let keyv = write_key(orig_key);
-        let key = read_key(&keyv);
-        assert_eq!(orig_key, key);
-    }
-
-    #[test]
     fn test_cid() {
         let orig_key = 0xffeffe;
-        let mut hdrv = write_hdr_with_key(64, orig_key);
+        let hdrv = write_hdr_with_key(64, orig_key);
         let orig_len = hdrv.len();
         let key = read_key_from_hdr(&hdrv);
         assert_eq!(orig_key, key);
         let read_cid = read_cid_from_hdr(&hdrv);
         assert_eq!(orig_key as u32, read_cid);
-        hdrv = write_cid_to_hdr(key, hdrv);
-        let read_cid = read_cid_from_hdr(&hdrv);
-        assert_eq!(key as u32, read_cid);
         let key = read_key_from_hdr(&hdrv);
         assert_eq!(orig_key, key);
         let len = hdrv.len();
