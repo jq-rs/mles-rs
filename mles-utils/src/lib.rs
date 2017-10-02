@@ -587,28 +587,6 @@ impl ResyncMsg {
         self.resync_message.len()
     }
 
-    /// Get the first item of the resync message vector
-    ///
-    /// # Example
-    /// ```
-    /// use mles_utils::{Msg, ResyncMsg};
-    ///
-    /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
-    /// let msg = msg.encode();
-    /// let vec = vec![msg];
-    /// let rmsg = ResyncMsg::new(&vec);
-    /// let rvec: Vec<u8> = rmsg.first();
-    /// assert_eq!(vec[0], rvec);
-    /// ```
-#[inline]
-    pub fn first(&self) -> Vec<u8> {
-        let first = self.resync_message.first();
-        match first {
-            Some(msgvec) => msgvec.get().clone(),
-            None => Vec::new(),
-        }
-    } 
-
     /// Get all items of the resync message vector
     ///
     /// # Example
@@ -675,7 +653,7 @@ impl ResyncMsg {
     /// let rmsg = ResyncMsg::new(&vec);
     /// let encoded_msg: Vec<u8> = rmsg.encode();
     /// let decoded_msg: ResyncMsg = ResyncMsg::decode(&encoded_msg);
-    /// assert_eq!(vec[0], decoded_msg.first());
+    /// assert_eq!(1, decoded_msg.len());
     /// ```
 #[inline]
     pub fn decode(slice: &[u8]) -> ResyncMsg {
@@ -1272,7 +1250,7 @@ mod tests {
         //set server address to connect
         let addr = "127.0.0.1:8071".parse::<SocketAddr>().unwrap();
         //create server
-        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 1, 0));
+        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
         thread::sleep(sec);
          
         let child = thread::spawn(|| {
@@ -1289,6 +1267,7 @@ mod tests {
             assert_eq!("Hello World!", msg);
             conn.close();
         });
+        thread::sleep(sec);
 
         let addr = "127.0.0.1:8071".parse::<SocketAddr>().unwrap();
         let uid = "User".to_string();
