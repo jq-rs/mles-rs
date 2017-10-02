@@ -653,7 +653,7 @@ impl ResyncMsg {
     /// let rmsg = ResyncMsg::new(&vec);
     /// let encoded_msg: Vec<u8> = rmsg.encode();
     /// let decoded_msg: ResyncMsg = ResyncMsg::decode(&encoded_msg);
-    /// assert_eq!(vec[0], decoded_msg.first());
+    /// assert_eq!(1, decoded_msg.len());
     /// ```
 #[inline]
     pub fn decode(slice: &[u8]) -> ResyncMsg {
