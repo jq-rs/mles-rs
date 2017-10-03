@@ -127,6 +127,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 //push message to history
                 let mut mles_peer_db = mles_peer_db.borrow_mut();
                 mles_peer_db.add_message(msg.clone());
+                mles_peer_db.add_tx_stats();
 
                 //send message forward
                 let amt = io::write_all(writer, msg);
@@ -195,6 +196,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                     }
                     //push message to history
                     mles_peer_db.add_message(hdr_key);
+                    mles_peer_db.add_rx_stats();
 
                     reader
                 })
@@ -204,18 +206,15 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
         // execute server
         let res = core.run(client).map_err(|err| { 
             println!("Peer: {}", err); 
-            let mles_peer_db = mles_peer_db.borrow();
-            if err.kind() == ErrorKind::UnexpectedEof && mles_peer_db.get_messages_len() <= 1 {
-                //we got reset from other side
-                //let's wrap our things as it is bad
-                let _res = tx_peer_remover.unbounded_send((channel, peer_cid));
-            }
             err
         });
         match res {
             Err(err) => {
                 let mles_peer_db = mles_peer_db.borrow();
-                if err.kind() == ErrorKind::UnexpectedEof && mles_peer_db.get_messages_len() <= 1 {
+                if err.kind() == ErrorKind::UnexpectedEof && 0 == mles_peer_db.get_rx_stats() {
+                    //we got reset directly from other side
+                    //let's wrap our things as it is bad
+                    let _res = tx_peer_remover.unbounded_send((channel, peer_cid));
                     println!("Connection failed. Please check for proper key or duplicate user.");
                     return;
                 }
@@ -225,6 +224,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
          
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();
+        mles_peer_db_clear.clear_stats();
 
         let mut loopcnt = loopcnt.borrow_mut();
         let mut wait = WAITTIME * *loopcnt;

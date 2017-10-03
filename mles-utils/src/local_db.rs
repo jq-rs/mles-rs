@@ -118,7 +118,9 @@ impl MlesDb {
 pub(crate) struct MlesPeerDb {
     channels: HashMap<u64, UnboundedSender<Vec<u8>>>,
     messages: Vec<Vec<u8>>,
-    history_limit: usize
+    history_limit: usize,
+    rx_stats: u64,
+    tx_stats: u64,
 }
 
 impl MlesPeerDb {
@@ -127,6 +129,8 @@ impl MlesPeerDb {
             channels: HashMap::new(),
             messages: Vec::new(),
             history_limit: hlim,
+            rx_stats: 0,
+            tx_stats: 0,
         }
     }
 
@@ -144,6 +148,11 @@ impl MlesPeerDb {
 
     pub fn clear_channels(&mut self) {
         self.channels = HashMap::new();
+    }
+
+    pub fn clear_stats(&mut self) {
+        self.rx_stats = 0;
+        self.tx_stats = 0;
     }
 
     pub fn add_message(&mut self, message: Vec<u8>) {
@@ -167,6 +176,22 @@ impl MlesPeerDb {
     pub fn get_messages_len(&self) -> usize {
         self.messages.len()
     }
+
+    pub fn add_rx_stats(&mut self) {
+        self.rx_stats += 1;
+    }
+
+    pub fn add_tx_stats(&mut self) {
+        self.tx_stats += 1;
+    }
+
+    pub fn get_rx_stats(&self) -> u64 {
+        self.rx_stats
+    }
+
+    //pub fn get_tx_stats(&self) -> u64 {
+    //    self.tx_stats
+    //}
 
 }
 
