@@ -34,10 +34,10 @@ const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
 /// Initiate peer connection
-pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
-                 tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>,
-                 tx_peer_remover: UnboundedSender<(String, u64)>,
-                 debug_flags: u64) 
+pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
+                        tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>,
+                        tx_peer_remover: UnboundedSender<(String, u64)>,
+                        debug_flags: u64) 
 {
     let mut core = Core::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
@@ -204,16 +204,18 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
         // execute server
         let res = core.run(client).map_err(|err| { 
             println!("Peer: {}", err); 
-            if err.kind() == ErrorKind::UnexpectedEof {
+            let mles_peer_db = mles_peer_db.borrow();
+            if err.kind() == ErrorKind::UnexpectedEof && mles_peer_db.get_messages_len() <= 1 {
                 //we got reset from other side
                 //let's wrap our things as it is bad
                 let _res = tx_peer_remover.unbounded_send((channel, peer_cid));
             }
-            err 
+            err
         });
         match res {
             Err(err) => {
-                if err.kind() == ErrorKind::UnexpectedEof {
+                let mles_peer_db = mles_peer_db.borrow();
+                if err.kind() == ErrorKind::UnexpectedEof && mles_peer_db.get_messages_len() <= 1 {
                     println!("Connection failed. Please check for proper key or duplicate user.");
                     return;
                 }
@@ -236,11 +238,11 @@ pub fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr
     }
 }
 
-pub fn set_peer_cid(cid: u32) -> u64 {
+pub(crate) fn set_peer_cid(cid: u32) -> u64 {
     (cid as u64) | 1 << 32
 }
 
-pub fn clear_peer_cid(cid: u64) -> u64 {
+pub(crate) fn clear_peer_cid(cid: u64) -> u64 {
     (cid as u32) as u64
 }
 

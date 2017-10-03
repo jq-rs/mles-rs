@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
 
-pub struct MlesDb {
+pub(crate) struct MlesDb {
     channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
     messages: Vec<Vec<u8>>,
     peer_tx: Option<UnboundedSender<UnboundedSender<Vec<u8>>>>, 
@@ -115,7 +115,7 @@ impl MlesDb {
     }
 }
 
-pub struct MlesPeerDb {
+pub(crate) struct MlesPeerDb {
     channels: HashMap<u64, UnboundedSender<Vec<u8>>>,
     messages: Vec<Vec<u8>>,
     history_limit: usize
@@ -160,11 +160,11 @@ impl MlesPeerDb {
         &self.messages
     }
 
-    pub fn get_history_limit(&mut self) -> usize {
+    pub fn get_history_limit(&self) -> usize {
         self.history_limit
     }
 
-    pub fn get_messages_len(&mut self) -> usize {
+    pub fn get_messages_len(&self) -> usize {
         self.messages.len()
     }
 

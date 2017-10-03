@@ -15,11 +15,11 @@ use tokio_io::io;
 
 use super::*;
 
-pub fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
+pub(crate) fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
     process_hdr(reader, hdr_key)
 }
 
-pub fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
+pub(crate) fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, usize), Error> {
     if hdr.is_empty() {
         return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
     }
@@ -33,14 +33,14 @@ pub fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: Vec<u8>) -> Result<(io:
     Ok((reader, hdr, hdr_len))
 }
 
-pub fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>), Error> { 
+pub(crate) fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>) -> Result<(io::ReadHalf<TcpStream>, Vec<u8>, Vec<u8>), Error> { 
     if message.is_empty() { 
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
     }
     Ok((reader, hdr_key, message))
 }
 
-pub fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Vec<u8>>, Msg), Error> { 
+pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Vec<u8>, message: Vec<u8>, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Vec<u8>>, Msg), Error> { 
 
     //decode message(s)
     let messages = message_decode(message, hdr_key);
