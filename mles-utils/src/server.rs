@@ -29,7 +29,7 @@ use frame::*;
 use peer::*;
 use super::*;
 
-pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyaddr: String, hist_limit: usize, debug_flags: u64) {
+pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyaddr: String, hist_limit: usize, debug_flags: u64) {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
     let socket = match TcpListener::bind(&address, &handle) {
@@ -251,10 +251,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                             }
                         }
                     }
-                    else {
-                        println!("Cannot distribute channel {}", channel);
-                    }
-
                     reader
                 })
             })
@@ -263,7 +259,7 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let mles_db_inner = mles_db.clone();
         let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cid, channel, peer_tx, tx_orig_chan)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
-            if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
+            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {  
                 //setting peer tx
                 mles_db_entry.add_channel(peer_cid, peer_tx);  
                 mles_db_entry.set_peer_tx(tx_orig_chan.clone());
@@ -271,9 +267,6 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
                 for tx_entry in mles_db_entry.get_tx_db() {
                     let _res = tx_orig_chan.unbounded_send(tx_entry.clone()).map_err(|err| {println!("Cannot reach peer: {}", err); ()});
                 }
-            }
-            else {
-                println!("Cannot find peer channel {}", channel);
             }
             Ok(())
         });
@@ -286,15 +279,12 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
             let cid = clear_peer_cid(peer_cid);
             println!("Removing peer cid {:x}, cid {:x}", peer_cid, cid);
             let mut mles_db_once = mles_db_inner.borrow_mut();
-            if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
+            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {  
                 //remove peer tx
                 mles_db_entry.rem_channel(peer_cid);  
                 mles_db_entry.rem_peer_tx();
                 //remove the cid too as peer connection got eof
                 mles_db_entry.rem_channel(cid);  
-            }
-            else {
-                println!("Cannot find peer channel {}", channel);
             }
             Ok(())
         });
@@ -305,13 +295,9 @@ pub fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyadd
         let mles_db_inner = mles_db.clone();
         let channel_removals = rx_removals.for_each(move |(cid, channel)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
-            if let Some(mut mles_db_entry) = mles_db_once.get_mut(&channel) {  
+            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {  
                 //remove erroneous connection
-                println!("Removing cid {:x}", cid);
                 mles_db_entry.rem_channel(cid);  
-            }
-            else {
-                println!("Cannot find channel on removal {}", channel);
             }
             Ok(())
         });
