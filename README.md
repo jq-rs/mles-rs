@@ -104,22 +104,13 @@ use mles_utils::*;
 
 fn main() {
 
-    //set server address to connect
-    let addr = "127.0.0.1:8077".parse::<SocketAddr>().unwrap();
-    let addr2 = addr.clone();
-    
-    //set users
-    let uid = "Receiver".to_string();
-    let uid2 = "Sender".to_string();
-        
-    //set channel
-    let channel = "Channel".to_string();
-    let channel2 = channel.clone();
-        
-    //set message
-    let message = "Hello World!".to_string();
-
     let child = thread::spawn(move || {
+        //set server address to connect
+        let addr = "127.0.0.1:8077".parse::<SocketAddr>().unwrap();
+        //set channel
+        let channel = "Channel".to_string();
+        //set user
+        let uid = "Receiver".to_string();    
         //connect client to server
         let mut conn = MsgConn::new(uid, channel);
         conn = conn.connect(addr);
@@ -130,10 +121,17 @@ fn main() {
         assert_eq!("Hello World!", msg);
         conn.close();
     });
-    
+
+    let addr = "127.0.0.1:8077".parse::<SocketAddr>().unwrap();
+    let uid = "Sender".to_string();
+    //set matching channel
+    let channel = "Channel".to_string();
+    //set message
+    let message = "Hello World!".to_string();
+
     //send hello world to awaiting client
-    let mut conn = MsgConn::new(uid2, channel2);
-    conn = conn.connect_with_message(addr2, message.into_bytes());
+    let mut conn = MsgConn::new(uid, channel);
+    conn = conn.connect_with_message(addr, message.into_bytes());
     conn.close();
     
     //wait receiver and return
