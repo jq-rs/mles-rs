@@ -14,7 +14,7 @@ keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 lto = true
 
 [dependencies]
-mles-utils = "0.18" 
+mles-utils = "1.0" 
 
 [badges]
 travis-ci = { repository = "jq-rs/mles-rs" }
