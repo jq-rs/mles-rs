@@ -224,12 +224,14 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
          
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();
-        mles_peer_db_clear.clear_stats();
 
         let mut loopcnt = loopcnt.borrow_mut();
         let mut wait = WAITTIME * *loopcnt;
         if wait > MAXWAIT {
             wait = MAXWAIT;
+        }
+        if wait == MAXWAIT {
+            mles_peer_db_clear.clear_stats();
         }
         *loopcnt *= 2;
 
