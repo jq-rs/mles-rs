@@ -80,7 +80,7 @@ To use `mles_utils` API, first add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-mles_utils = "0.16"
+mles_utils = "1.0"
 ```
 
 Next, add this to your crate:
