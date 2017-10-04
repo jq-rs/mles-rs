@@ -6,6 +6,8 @@
 
 Mles (_Modern Lightweight channEl Service_) is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe data service. The reference implementation consists of _Mles-utils_, _Mles_ server and _Mles-client/WebSocket-proxy_.
 
+Please check http://mles.io and http://mles.io/blog for a generic overview of Mles.
+
 ## Mles protocol overview
 
 Mles clients connect to an Mles server using Mles protocol header and (uid, channel, message) value triplet on a TCP session where the triplet is Concise Binary Object Representation (CBOR) [1] encapsulated. An Mles client first subscribes to a channel by sending correct Mles protocol header and value triplet (uid, channel, msg) where _channel_ is the channel to publish/subscribe. The _msg_ MAY be either empty or include the first published message. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. After joining, the Mles server distributes the value triplet between all clients on the same channel. If an Mles client wants to depart from a channel, it just closes the TCP session. If an Mles client does not want to receive any message, it just closes TCP session receive side.
