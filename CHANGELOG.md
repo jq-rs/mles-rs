@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-Basic Mles-protocol support for utils-library with server and client.
+Basic Mles-protocol support on Mles utils-library with server and client.
  * All relevant Mles-protocol functionalities implemented which include
    - Authentication with key and/or address
    - Connection id handling for loop freedom
