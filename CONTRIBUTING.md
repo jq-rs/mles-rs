@@ -24,7 +24,7 @@ efforts from contributors on the same issue.
 - Commits should be as small as possible, while ensuring that each commit is
   correct independently (i.e., each commit should compile and pass tests).
   
-- Commits should update CHANGELOG.md according to the commmit
+- Commits should update CHANGELOG.md according to the commit.
 
 - Please always add unit tests relevant to the fixed bug or new feature. As Mles
   is a networking protocol, not all testing can always be unit testing, thus 
