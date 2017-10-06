@@ -55,7 +55,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let keyval_inner = keyval.clone();
         let keyaddr_inner = keyaddr.clone();
         let ws_tx_inner = ws_tx.clone();
-        let accept = accept_async(stream).map_err(|err|{
+        let accept = accept_async(stream, None).map_err(|err|{
             println!("Accept error: {}", err);
             Error::new(ErrorKind::Other, err)
         });

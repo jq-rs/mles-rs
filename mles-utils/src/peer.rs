@@ -262,7 +262,7 @@ fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net
     msg
 }
 
-/// Check if an peer is defined
+/// Check if a peer is defined
 ///
 /// # Example
 /// ```

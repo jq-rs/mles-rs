@@ -959,7 +959,7 @@ fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
     buf.read_u32::<BigEndian>().unwrap()
 }
 
-/// Check if an peer is defined
+/// Check if a peer is defined
 ///
 /// # Example
 /// ```

@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
  - README fixes
+ - Utils documentation typo fixes
+ - Client websocket library update
 
 ## [1.0.0]
 
