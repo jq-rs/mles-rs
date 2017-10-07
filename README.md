@@ -66,7 +66,7 @@ pub struct Msg {
 }
 ```
 
-The ResyncMsg, which is used to share history information to restart Mles servers, is in CBOR:
+The ResyncMsg, which is used to share history information to Mles servers is in CBOR:
 ```
 resync_message: Major type 2, byte string
 ```
