@@ -65,6 +65,25 @@ pub struct Msg {
     message: Vec<u8>,
 }
 ```
+
+The ResyncMsg, which is used to share history information to restart Mles servers, is in CBOR:
+```
+messages: Major type 2, byte string
+```
+On Rust it is defined as follows:
+```rust
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct MsgVec {
+    #[serde(with = "serde_bytes")]
+    messages: Vec<u8>, //this is encoded Msg
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResyncMsg {
+    resync_message: Vec<MsgVec>,
+}
+```
+
 ## Usage
 
 Reference binaries:
