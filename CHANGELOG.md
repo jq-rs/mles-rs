@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
  - README fixes
  - Utils documentation typo fixes
+ - ResyncMsg clarification
  - Client websocket library update
+ - Systemd-scripts moved to sysutils-directory
 
 ## [1.0.0]
 
