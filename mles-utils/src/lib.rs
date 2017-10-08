@@ -518,18 +518,18 @@ impl Msg {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct MsgVec {
     #[serde(with = "serde_bytes")]
-    messages: Vec<u8>,
+    encoded_msg: Vec<u8>, // this is encoded Msg 
 }
 
 impl MsgVec {
-    pub fn new(messages: &Vec<u8>) -> MsgVec {
+    pub fn new(encoded_msg: &Vec<u8>) -> MsgVec {
         MsgVec {
-            messages: messages.clone(),
+            encoded_msg: encoded_msg.clone(),
         }
     }
 
     pub fn get(&self) -> &Vec<u8> {
-        &self.messages
+        &self.encoded_msg
     }
 }
 
