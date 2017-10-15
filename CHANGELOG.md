@@ -8,21 +8,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.0.1]
 
-### Added
  Generic:
  - README fixes
  - README ResyncMsg clarification
  - README Mles WebSocket proxy protocol specification
  - Systemd-scripts moved to sysutils-directory
+ 
  Utils 1.0.1:
  - Documentation typo fixes
+ 
  Client 1.0.1:
    - Proxy Websocket library version update
    - Support for proper handling of Sec-WebSocket-Protocol 
 
 ## [1.0.0]
-
-### Added
 
 Basic Mles-protocol support on Mles utils-library with server and client.
  * All relevant Mles-protocol functionalities implemented which include
