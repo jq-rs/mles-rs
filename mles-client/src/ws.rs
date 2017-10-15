@@ -9,10 +9,12 @@ extern crate tokio_core;
 extern crate tokio_tungstenite;
 extern crate tungstenite;
 
-use std::io::{Error, ErrorKind};
+use std::io::{Error,ErrorKind};
 use std::thread;
 use std::net::SocketAddr;
 use std::time::Duration;
+use std::str;
+use std::borrow::Cow;
 
 use futures::stream::Stream;
 use futures::sync::mpsc::unbounded;
@@ -20,10 +22,13 @@ use futures::{Future, Sink};
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
 use self::tungstenite::protocol::Message;
+use self::tungstenite::handshake::server::Request;
 
-use self::tokio_tungstenite::accept_async;
+use self::tokio_tungstenite::accept_hdr_async;
 
 const WSPORT: &str = ":8076";
+const SECPROT: &str = "Sec-WebSocket-Protocol";
+const SECVALUE: &str = "mles-websocket";
 
 pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {                             
     let addr = "0.0.0.0".to_string() + WSPORT;
@@ -55,7 +60,29 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let keyval_inner = keyval.clone();
         let keyaddr_inner = keyaddr.clone();
         let ws_tx_inner = ws_tx.clone();
-        let accept = accept_async(stream, None).map_err(|err|{
+	let callback = |req: &Request| {
+		for &(ref header, ref value) in req.headers.iter() {
+			if header == SECPROT {
+                                let mut secstr = String::new();
+				for c in value.iter() {
+					let c = *c as char;
+                                        secstr.push(c);
+				}
+				//in case several protocol, split to vector of strings
+                                let secvec: Vec<&str> = secstr.split(',').collect();
+                                for secstr in secvec {
+					if secstr == SECVALUE {
+						let extra_headers = vec![
+							(SECPROT.to_string(), SECVALUE.to_string()),
+						];
+						return Ok(Some(extra_headers));
+					}
+				}
+			}
+		}
+                Err(tungstenite::Error::Protocol(Cow::from(SECPROT)))
+	};
+        let accept = accept_hdr_async(stream, callback).map_err(|err|{
             println!("Accept error: {}", err);
             Error::new(ErrorKind::Other, err)
         });
