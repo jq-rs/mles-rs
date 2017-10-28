@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.0.1]
 
+### Changed
+
  Generic:
  - README fixes
  - README ResyncMsg clarification
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
    - Support for proper handling of Sec-WebSocket-Protocol 
 
 ## [1.0.0]
+
+### Added
 
 Basic Mles-protocol support on Mles utils-library with server and client.
  * All relevant Mles-protocol functionalities implemented which include
