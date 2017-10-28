@@ -101,11 +101,11 @@ mles [peer-address] [--history-limit=N]
 mles-client <server-address> [--use-websockets]
 ```
 
-To use `mles_utils` API, first add this to your `Cargo.toml`:
+To use `mles-utils` API, first add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-mles_utils = "1.0"
+mles-utils = "1.0"
 ```
 
 Next, add this to your crate:
