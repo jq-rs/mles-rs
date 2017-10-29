@@ -101,6 +101,15 @@ mles [peer-address] [--history-limit=N]
 mles-client <server-address> [--use-websockets]
 ```
 
+Shared key setting for Mles connections behind NAT:
+```
+MLES_KEY=mles-devel-frank mles [peer-address] [--history-limit=N]
+```
+
+```
+MLES_KEY=mles-devel-frank mles-client <server-address> [--use-websockets]
+```
+
 To use `mles-utils` API, first add this to your `Cargo.toml`:
 
 ```toml

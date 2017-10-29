@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.2]
+
+### Added
+
+Generic:
+ - README environment variable example added.
+
+### Fixed
+
+Generic:
+ - README fixes.
+
+Client 1.0.2:
+ - Removed WebSocket-proxy message receive mirroring. Now messages are not mirrored back to WebSocket client unnecessarily.
+
 ## [1.0.1]
 
 ### Changed
