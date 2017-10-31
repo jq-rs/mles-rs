@@ -4,6 +4,11 @@
 *
 *  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
 * */
+extern crate tokio_core;
+extern crate tokio_io;
+extern crate futures;
+extern crate bytes;
+
 use std::io::Error;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -23,6 +28,8 @@ use tokio_io::AsyncRead;
 use futures::Future;
 use futures::stream::{self, Stream};
 use futures::sync::mpsc::unbounded;
+
+use self::bytes::BytesMut;
 
 use local_db::*;
 use frame::*;
@@ -86,11 +93,19 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
         let (tx_peer_remover, rx_peer_remover) = unbounded();
 
-        let frame = io::read_exact(reader, vec![0;::HDRKEYL]);
-        let frame = frame.and_then(move |(reader, hdr_key)| process_hdr(reader, hdr_key));
-        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| { 
-            let tframe = io::read_exact(reader, vec![0;hdr_len]);
-            tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message))
+        let frame = io::read_exact(reader, BytesMut::with_capacity(HDRKEYL));
+        let frame = frame.and_then(move |(reader, hdr_key)| {
+            process_hdr(reader, hdr_key)
+        });
+        let frame = frame.and_then(move |(reader, mut hdr_key, hdr_len)| { 
+            hdr_key.reserve(HDRKEYL + hdr_len); 
+            let message = hdr_key.split_off(HDRKEYL);
+            let tframe = io::read_exact(reader, message);
+            tframe.and_then(move |(reader, message)| {
+                let hdr_key = hdr_key.freeze();
+                let message = message.freeze();
+                process_msg(reader, hdr_key, message)
+            })
         });
 
         // verify key
@@ -165,7 +180,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                         for msg in &messages {
                             for (ocid, tx) in channels.iter() {
                                 if *ocid != cid {
-                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| { 
+                                    let _res = tx.unbounded_send(msg.clone().to_vec()).map_err(|_| { 
                                         let _rem = tx_removals_iter.unbounded_send((*ocid, channel.clone())).map_err(|_| {
                                             () 
                                         });
@@ -180,11 +195,11 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                             // resync messages to history
                             for msg in &messages {
                                 // add resync to history
-                                mles_db_entry.add_message(msg.clone());
+                                mles_db_entry.add_message(msg.clone().to_vec());
                             } 
                         }
                         else {
-                            mles_db_entry.add_message(message);
+                            mles_db_entry.add_message(message.to_vec());
                         }
                     }
 
@@ -206,12 +221,18 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             let tx_removals_iter = tx_removals.clone();
             let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
-                let frame = io::read_exact(reader, vec![0;::HDRKEYL]);
-                let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
+                let frame = io::read_exact(reader, BytesMut::with_capacity(HDRKEYL));
+                let frame = frame.and_then(move |(reader, hdr_key)| {
+                    process_hdr_dummy_key(reader, hdr_key)
+                });
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
-                    let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                    tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message)) 
+                    let tframe = io::read_exact(reader, BytesMut::with_capacity(hdr_len));
+                    tframe.and_then(move |(reader, message)| {
+                        let hdr_key = hdr_key.freeze();
+                        let message = message.freeze();
+                        process_msg(reader, hdr_key, message)
+                    })
                 });
 
                 let mles_db = mles_db_inner.clone();
@@ -235,14 +256,14 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                         }
                         else {
                             // add to history if no peer
-                            mles_db_entry.add_message(hdr_key.clone());
+                            mles_db_entry.add_message(hdr_key.clone().to_vec());
                         }
 
                         if let Some(channels) = mles_db_entry.get_channels() {
                             for (ocid, tx) in channels.iter() {
                                 let channel_rem = channel_clone.clone();
                                 if *ocid != cid {
-                                    let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
+                                    let _res = tx.unbounded_send(hdr_key.clone().to_vec()).map_err(|_| { 
                                         let _rem = tx_removals.unbounded_send((*ocid, channel_rem)).map_err(|_| {
                                             () 
                                         });

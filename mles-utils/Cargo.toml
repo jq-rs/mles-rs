@@ -1,6 +1,6 @@
 [package]
 name = "mles-utils"
-version = "1.0.2"
+version = "1.0.3"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
@@ -24,6 +24,7 @@ siphasher = "0.2"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
+bytes = "0.4"
  
 [lib]
 test = true
