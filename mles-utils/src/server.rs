@@ -29,7 +29,7 @@ use futures::Future;
 use futures::stream::{self, Stream};
 use futures::sync::mpsc::unbounded;
 
-use self::bytes::BytesMut;
+use self::bytes::{BytesMut, Bytes, BufMut};
 
 use local_db::*;
 use frame::*;
@@ -93,16 +93,19 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         let (tx_peer_for_msgs, rx_peer_for_msgs) = unbounded();
         let (tx_peer_remover, rx_peer_remover) = unbounded();
 
-        let frame = io::read_exact(reader, BytesMut::with_capacity(HDRKEYL));
+        let frame = io::read_exact(reader, BytesMut::from(vec![0;HDRKEYL]));
         let frame = frame.and_then(move |(reader, hdr_key)| {
             process_hdr(reader, hdr_key)
         });
         let frame = frame.and_then(move |(reader, mut hdr_key, hdr_len)| { 
-            hdr_key.reserve(HDRKEYL + hdr_len); 
-            let message = hdr_key.split_off(HDRKEYL);
+            let mut hdr = BytesMut::from(vec![0;HDRKEYL+hdr_len]);
+            println!("Hdr {:?}", hdr_key);
+            let message = hdr.split_off(HDRKEYL);
             let tframe = io::read_exact(reader, message);
             tframe.and_then(move |(reader, message)| {
-                let hdr_key = hdr_key.freeze();
+                hdr.copy_from_slice(hdr_key.as_ref());
+                println!("NHdr {:?}", hdr);
+                let hdr_key = hdr.freeze();
                 let message = message.freeze();
                 process_msg(reader, hdr_key, message)
             })
@@ -221,13 +224,13 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             let tx_removals_iter = tx_removals.clone();
             let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
-                let frame = io::read_exact(reader, BytesMut::with_capacity(HDRKEYL));
+                let frame = io::read_exact(reader, BytesMut::from(vec![0;HDRKEYL]));
                 let frame = frame.and_then(move |(reader, hdr_key)| {
                     process_hdr_dummy_key(reader, hdr_key)
                 });
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
-                    let tframe = io::read_exact(reader, BytesMut::with_capacity(hdr_len));
+                    let tframe = io::read_exact(reader, BytesMut::from(vec![0;hdr_len]));
                     tframe.and_then(move |(reader, message)| {
                         let hdr_key = hdr_key.freeze();
                         let message = message.freeze();
@@ -327,6 +330,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         }));
 
         let socket_writer = rx.fold(writer, |writer, msg| {
+            let msg = Bytes::from(msg);
             let amt = io::write_all(writer, msg);
             let amt = amt.map(|(writer, _)| writer);
             amt.map_err(|_| ())

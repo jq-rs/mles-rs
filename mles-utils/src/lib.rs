@@ -1250,7 +1250,7 @@ mod tests {
         //set server address to connect
         let addr = "127.0.0.1:8071".parse::<SocketAddr>().unwrap();
         //create server
-        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
+        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 1));
         thread::sleep(sec);
          
         let child = thread::spawn(|| {
