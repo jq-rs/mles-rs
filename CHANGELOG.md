@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.3]
+
+### Changed
+
+Utils 1.0.3:
+- Bytes crate taken into use. Message forwarding performance should improve significantly.
+
 ## [1.0.2]
 
 ### Added
