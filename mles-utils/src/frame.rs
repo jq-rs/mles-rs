@@ -4,11 +4,6 @@
 *
 *  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
 * */
-extern crate tokio_core;
-extern crate tokio_io;
-extern crate futures;
-extern crate bytes;
-
 use std::io::{Error, ErrorKind};
 
 use tokio_core::net::TcpStream;
@@ -95,8 +90,8 @@ mod tests {
         keys.push(uid.clone());
         keys.push(channel.clone());
         let key = MsgHdr::do_hash(&keys); 
-        let mut hdr: Vec<u8> = write_hdr(122, MsgHdr::select_cid(key));
-        let keyhdr: Vec<u8> = write_key(key);
+        let mut hdr: BytesMut = write_hdr(122, MsgHdr::select_cid(key));
+        let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();
         let msg =  "a test msg".to_string().into_bytes();
@@ -120,15 +115,15 @@ mod tests {
         keys.push(uid.clone());
         keys.push(channel.clone());
         let key = MsgHdr::do_hash(&keys); 
-        let mut hdr: Vec<u8> = write_hdr(122, MsgHdr::select_cid(key));
-        let keyhdr: Vec<u8> = write_key(key);
+        let mut hdr: BytesMut = write_hdr(122, MsgHdr::select_cid(key));
+        let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();
         let msg =  "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         hdr.extend(encoded_msg);
-        let vec = vec![hdr.clone()];
+        let vec = vec![hdr.clone().to_vec()];
         let rmsg = ResyncMsg::new(&vec);
         let encoded_resync_msg: Vec<u8> = rmsg.encode();
         let messages = message_decode(Bytes::from(encoded_resync_msg), Bytes::from(hdrkey));
@@ -149,15 +144,15 @@ mod tests {
         keys.push(uid.clone());
         keys.push(channel.clone());
         let key = MsgHdr::do_hash(&keys); 
-        let mut hdr: Vec<u8> = write_hdr(122, MsgHdr::select_cid(key));
-        let keyhdr: Vec<u8> = write_key(key);
+        let mut hdr: BytesMut = write_hdr(122, MsgHdr::select_cid(key));
+        let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
-        let hdrkey = hdr.clone();
+        let hdrkey = hdr.clone().to_vec();
         let msg =  "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         hdr.extend(encoded_msg);
-        let vec = vec![hdr.clone(), hdr.clone()];
+        let vec = vec![hdr.clone().to_vec(), hdr.clone().to_vec()];
         let rmsg = ResyncMsg::new(&vec);
         let encoded_resync_msg: Vec<u8> = rmsg.encode();
         let messages = message_decode(Bytes::from(encoded_resync_msg), Bytes::from(hdrkey));

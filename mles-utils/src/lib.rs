@@ -13,11 +13,11 @@
 extern crate serde_derive;
 extern crate serde_cbor;
 extern crate serde_bytes;
-extern crate byteorder;
 extern crate siphasher;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate futures;
+extern crate bytes;
 
 mod server;
 mod local_db;
@@ -25,7 +25,6 @@ mod frame;
 mod peer;
 
 use std::io::Cursor;
-use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 use std::net::TcpStream;
@@ -33,6 +32,7 @@ use std::io::Write;
 use std::io::{Read, Error};
 
 use std::net::{IpAddr, SocketAddr};
+use bytes::{BytesMut, BufMut, Buf, BigEndian};
 
 /// HDRL defines the size of the header including version, length and timestamp
 pub(crate) const HDRL: usize = 8; 
@@ -225,8 +225,8 @@ impl MsgHdr {
     /// let msgv: Vec<u8> = msghdr.encode();
     /// ```
     pub fn encode(&self) -> Vec<u8> {
-        let mut msgv = write_hdr(self.get_len() as usize, self.get_cid());
-        msgv.extend(write_key(self.get_key()));
+        let mut msgv = write_hdr(self.get_len() as usize, self.get_cid()).to_vec();
+        msgv.extend(write_key(self.get_key()).to_vec());
         msgv
     }
 
@@ -772,7 +772,7 @@ impl MsgConn {
                 let mut msgv = write_hdr(encoded_msg.len(), MsgHdr::select_cid(key));
                 msgv.extend(keyv);
                 msgv.extend(encoded_msg);
-                stream.write(msgv.as_slice()).unwrap();
+                stream.write(msgv.as_ref()).unwrap();
                 self.stream = Some(stream);
                 self
             },
@@ -805,7 +805,7 @@ impl MsgConn {
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
         let mut stream = self.stream.unwrap();
-        match stream.write(msgv.as_slice()) {
+        match stream.write(msgv.as_ref()) {
             Ok(0) => { 
                 println!("Send zero");
                 self.stream = None;
@@ -887,7 +887,7 @@ pub(crate) fn read_hdr_type(hdr: &[u8]) -> u32 {
         return 0;
     }
     let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
+    let num = buf.get_u32::<BigEndian>();
     num >> 24
 }
 
@@ -896,32 +896,30 @@ fn read_hdr_len(hdr: &[u8]) -> usize {
         return 0;
     }
     let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.read_u32::<BigEndian>().unwrap();
+    let num = buf.get_u32::<BigEndian>();
     (num & 0xfff) as usize
 }
 
-fn write_hdr(len: usize, cid: u32) -> Vec<u8> {
+fn write_hdr(len: usize, cid: u32) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = vec![];
-    let mut cidv = vec![];
-    msgv.write_u32::<BigEndian>(hdr).unwrap();
-    cidv.write_u32::<BigEndian>(cid).unwrap();
-    msgv.extend(cidv);
+    let mut msgv = BytesMut::from(Vec::with_capacity(HDRKEYL));
+    msgv.put_u32::<BigEndian>(hdr);
+    msgv.put_u32::<BigEndian>(cid);
     msgv
 }
 
-fn write_hdr_without_cid(len: usize) -> Vec<u8> {
+fn write_hdr_without_cid(len: usize) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = vec![];
-    msgv.write_u32::<BigEndian>(hdr).unwrap();
+    let mut msgv = BytesMut::from(Vec::with_capacity(HDRL));
+    msgv.put_u32::<BigEndian>(hdr);
     msgv
 }
 
 
 #[inline]
-pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
+pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: BytesMut) -> BytesMut {
     if hdrv.len() < HDRL {
-        return vec![];
+        return BytesMut::new();
     }
     let tail = hdrv.split_off(HDRL-CIDL);
     let mut nhdrv = write_hdr_without_cid(len);
@@ -929,14 +927,14 @@ pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: Vec<u8>) -> Vec<u8> {
     nhdrv
 }
 
-fn write_key(val: u64) -> Vec<u8> {
+fn write_key(val: u64) -> BytesMut {
     let key = val;
-    let mut msgv = vec![];
-    msgv.write_u64::<BigEndian>(key).unwrap();
+    let mut msgv = BytesMut::from(Vec::with_capacity(KEYL));
+    msgv.put_u64::<BigEndian>(key);
     msgv
 }
 
-fn write_hdr_with_key(len: usize, key: u64) -> Vec<u8> {
+fn write_hdr_with_key(len: usize, key: u64) -> BytesMut {
     let mut hdrv = write_hdr(len, MsgHdr::select_cid(key));
     hdrv.extend(write_key(key));
     hdrv
@@ -948,7 +946,7 @@ fn read_key_from_hdr(keyv: &[u8]) -> u64 {
         return 0;
     }
     let mut buf = Cursor::new(&keyv[HDRL..]);
-    buf.read_u64::<BigEndian>().unwrap()
+    buf.get_u64::<BigEndian>()
 }
 
 fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
@@ -956,7 +954,7 @@ fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
         return 0;
     }
     let mut buf = Cursor::new(&hdrv[(HDRL-CIDL)..]);
-    buf.read_u32::<BigEndian>().unwrap()
+    buf.get_u32::<BigEndian>()
 }
 
 /// Check if a peer is defined
@@ -1250,7 +1248,7 @@ mod tests {
         //set server address to connect
         let addr = "127.0.0.1:8071".parse::<SocketAddr>().unwrap();
         //create server
-        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 1));
+        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
         thread::sleep(sec);
          
         let child = thread::spawn(|| {
