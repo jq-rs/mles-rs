@@ -772,7 +772,27 @@ impl MsgConn {
                 let mut msgv = write_hdr(encoded_msg.len(), MsgHdr::select_cid(key));
                 msgv.extend(keyv);
                 msgv.extend(encoded_msg);
-                stream.write(msgv.as_ref()).unwrap();
+                let msgv = msgv.freeze();
+                let _res = stream.write(msgv.as_ref());
+                /* TODO the write may not write all at once
+                while len > 0 {
+                    let smsg = msgv.clone();
+                    let res = stream.write(smsg.as_ref());
+                    match res {
+                        Ok(0) => {
+                        println!("Zero bytes written");
+                        },
+                        Ok(n) => {
+                            println!("{} bytes written, msgv.len {}",n, msgv.len());
+                            len -= n;
+                        },
+                        Err(err) => {
+                            println!("An error {}", err);
+                            break;
+                        }
+                    }
+                }*/
+
                 self.stream = Some(stream);
                 self
             },
@@ -897,7 +917,7 @@ fn read_hdr_len(hdr: &[u8]) -> usize {
     }
     let mut buf = Cursor::new(&hdr[..]);
     let num = buf.get_u32::<BigEndian>();
-    (num & 0xfff) as usize
+    (num & 0xffffff) as usize
 }
 
 fn write_hdr(len: usize, cid: u32) -> BytesMut {
@@ -974,7 +994,7 @@ pub fn has_peer(peer: &Option<SocketAddr>) -> bool {
 fn read_n<R>(reader: R, bytes_to_read: usize) -> (Result<usize, Error>, Vec<u8>)
 where R: Read,
 {
-    let mut buf = vec![];
+    let mut buf = Vec::with_capacity(bytes_to_read);
     let mut chunk = reader.take(bytes_to_read as u64);
     let status = chunk.read_to_end(&mut buf);
     (status, buf)
@@ -1008,6 +1028,30 @@ mod tests {
     use std::thread;
     use std::time::Duration;
     use super::*;
+
+    #[test]
+    fn test_read_hdr_len_one() {
+        let orig_len = 1;
+        let hdrv = write_hdr(orig_len, 0x1);
+        let len = read_hdr_len(hdrv.as_ref());
+        assert_eq!(len, orig_len);
+    }
+
+    #[test]
+    fn test_read_hdr_len_16k() {
+        let orig_len = 16000;
+        let hdrv = write_hdr(orig_len, 0x1);
+        let len = read_hdr_len(hdrv.as_ref());
+        assert_eq!(len, orig_len);
+    }
+
+    #[test]
+    fn test_read_hdr_len_16_7m() {
+        let orig_len = 16777215;
+        let hdrv = write_hdr(orig_len, 0x1);
+        let len = read_hdr_len(hdrv.as_ref());
+        assert_eq!(len, orig_len);
+    }
 
     #[test]
     fn test_encode_decode_msg() {

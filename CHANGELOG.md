@@ -6,12 +6,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+Utils 1.0.4:
+ - Header read len mask fix. Allows to use larger than 4k frames.
+
 ## [1.0.3]
 
 ### Changed
 
 Utils 1.0.3:
-- Bytes crate taken into use. Message forwarding performance should improve significantly.
+ - Bytes crate taken into use. Message forwarding performance should improve significantly.
 
 ## [1.0.2]
 
