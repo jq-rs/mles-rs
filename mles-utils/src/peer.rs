@@ -4,10 +4,6 @@
 *
 *  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
 * */
-extern crate tokio_core;
-extern crate tokio_io;
-extern crate futures;
-
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
@@ -26,6 +22,8 @@ use futures::Future;
 use futures::stream::{self, Stream};
 use futures::sync::mpsc::{unbounded, UnboundedSender};
 
+use bytes::{BytesMut, Bytes};
+
 use local_db::*;
 use frame::*;
 use super::*;
@@ -34,8 +32,8 @@ const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
 /// Initiate peer connection
-pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Vec<u8>, 
-                        tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Vec<u8>>, UnboundedSender<UnboundedSender<Vec<u8>>>)>,
+pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Bytes, 
+                        tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Bytes>, UnboundedSender<UnboundedSender<Bytes>>)>,
                         tx_peer_remover: UnboundedSender<(String, u64)>,
                         debug_flags: u64) 
 {
@@ -89,10 +87,15 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             if mles_peer_db.get_messages_len() > 1 {
                 let message = msg.split_off(HDRKEYL);
                 if is_addr_set {
-                    msg = update_key(Msg::decode(message.as_slice()), read_hdr_len(&msg), keyaddr, laddr);
+                    msg = update_key(Msg::decode(message.as_ref()), read_hdr_len(&msg.to_vec()), keyaddr, laddr);
                 }
                 //send resync message to peer
-                let rmsg = ResyncMsg::new(mles_peer_db.get_messages());
+                let mut rbv = Vec::with_capacity(mles_peer_db.get_messages_len());
+                for msge in mles_peer_db.get_messages() {
+                    rbv.push(msge.to_vec());
+                }
+                let mut msg = msg.try_mut().unwrap(); //no scopes
+                let rmsg = ResyncMsg::new(&rbv);
                 let resync_message = rmsg.encode();
                 let size = resync_message.len();
                 if size <= MSGMAXSIZE {
@@ -102,13 +105,14 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 else {
                     msg.extend(message);
                 }
+                let msgf = msg.freeze();
 
-                let _res = tx.unbounded_send(msg).map_err(|err| { println!("Cannot write to tx: {}", err); });
+                let _res = tx.unbounded_send(msgf).map_err(|err| { println!("Cannot write to tx: {}", err); });
             }
             else { 
                 let message = msg.split_off(HDRKEYL);
                 if is_addr_set {
-                    msg = update_key(Msg::decode(message.as_slice()), read_hdr_len(&msg), keyaddr, laddr);
+                    msg = update_key(Msg::decode(message.to_vec().as_slice()), read_hdr_len(&msg), keyaddr, laddr);
                 }
                 msg.extend(message);
 
@@ -172,12 +176,19 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             let tx_removals_inner = tx_removals.clone();
             let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
             iter.fold(reader, move |reader, _| {
-                let frame = io::read_exact(reader, vec![0;HDRKEYL]);
+                let frame = io::read_exact(reader, BytesMut::from(vec![0;HDRKEYL]));
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
                 let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
-                    let tframe = io::read_exact(reader, vec![0;hdr_len]);
-                    tframe.and_then(move |(reader, message)| process_msg(reader, hdr_key, message)) 
+                    let mut hdr = BytesMut::from(vec![0;HDRKEYL+hdr_len]);
+                    let message = hdr.split_off(HDRKEYL);
+                    let tframe = io::read_exact(reader, message);
+                    tframe.and_then(move |(reader, message)| {
+                        hdr.copy_from_slice(hdr_key.as_ref());
+                        let hdr_key = hdr.freeze();
+                        let message = message.freeze();
+                        process_msg(reader, hdr_key, message)
+                    })
                 }); 
 
                 let mles_peer_db_frame = mles_peer_db.clone();
@@ -248,7 +259,7 @@ pub(crate) fn clear_peer_cid(cid: u64) -> u64 {
     (cid as u32) as u64
 }
 
-fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net::SocketAddr) -> Vec<u8> {
+fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net::SocketAddr) -> Bytes {
     let mut keys = Vec::new();
     keys.push(MsgHdr::addr2str(&laddr));
     if !keyaddr.is_empty() {
@@ -259,7 +270,7 @@ fn update_key(decoded_message: Msg, len: usize, keyaddr: String, laddr: std::net
     keys.push(decoded_message.get_channel().to_string());
     let key = Some(MsgHdr::do_hash(&keys));
     let msg = write_hdr_with_key(len, key.unwrap());
-    msg
+    Bytes::from(msg)
 }
 
 /// Check if a peer is defined

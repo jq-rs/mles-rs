@@ -7,30 +7,32 @@
 use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
 
+use bytes::Bytes;
+
 pub(crate) struct MlesDb {
-    channels: Option<HashMap<u64, UnboundedSender<Vec<u8>>>>,
-    messages: Vec<Vec<u8>>,
-    peer_tx: Option<UnboundedSender<UnboundedSender<Vec<u8>>>>, 
+    channels: Option<HashMap<u64, UnboundedSender<Bytes>>>,
+    messages: Vec<Bytes>,
+    peer_tx: Option<UnboundedSender<UnboundedSender<Bytes>>>, 
     history_limit: usize,
-    tx_db: Vec<UnboundedSender<Vec<u8>>>,
+    tx_db: Vec<UnboundedSender<Bytes>>,
 }
 
 impl MlesDb {
     pub fn new(hlim: usize) -> MlesDb {
         MlesDb {
             channels: None,
-            messages: Vec::new(),
+            messages: Vec::with_capacity(hlim),
             peer_tx: None,
             history_limit: hlim,
             tx_db: Vec::new(),
         }
     }
 
-    pub fn get_channels(&self) -> Option<&HashMap<u64, UnboundedSender<Vec<u8>>>> {
+    pub fn get_channels(&self) -> Option<&HashMap<u64, UnboundedSender<Bytes>>> {
         self.channels.as_ref()
     }
 
-    pub fn get_messages(&self) -> &Vec<Vec<u8>> {
+    pub fn get_messages(&self) -> &Vec<Bytes> {
         &self.messages
     }
 
@@ -38,7 +40,7 @@ impl MlesDb {
         self.messages.len()
     }
 
-    pub fn get_tx_db(&self) -> &Vec<UnboundedSender<Vec<u8>>> {
+    pub fn get_tx_db(&self) -> &Vec<UnboundedSender<Bytes>> {
         &self.tx_db
     }
 
@@ -46,7 +48,7 @@ impl MlesDb {
         self.tx_db = Vec::new();
     }
 
-    pub fn add_tx_db(&mut self, tx: UnboundedSender<Vec<u8>>) {
+    pub fn add_tx_db(&mut self, tx: UnboundedSender<Bytes>) {
         self.tx_db.push(tx);
     }
 
@@ -54,11 +56,11 @@ impl MlesDb {
         self.history_limit
     }
 
-    pub fn get_peer_tx(&self) -> Option<&UnboundedSender<UnboundedSender<Vec<u8>>>> {
+    pub fn get_peer_tx(&self) -> Option<&UnboundedSender<UnboundedSender<Bytes>>> {
         self.peer_tx.as_ref()
     }
 
-    pub fn add_channel(&mut self, cid: u64, sender: UnboundedSender<Vec<u8>>) {
+    pub fn add_channel(&mut self, cid: u64, sender: UnboundedSender<Bytes>) {
         if self.channels.is_none() {
             self.channels = Some(HashMap::new());
         }
@@ -89,7 +91,7 @@ impl MlesDb {
         0
     }
 
-    pub fn add_message(&mut self, message: Vec<u8>) {
+    pub fn add_message(&mut self, message: Bytes) {
         if 0 == self.get_history_limit() {
             return;
         }
@@ -99,7 +101,7 @@ impl MlesDb {
         self.messages.push(message);
     }
 
-    pub fn set_peer_tx(&mut self, peer_tx: UnboundedSender<UnboundedSender<Vec<u8>>>) {
+    pub fn set_peer_tx(&mut self, peer_tx: UnboundedSender<UnboundedSender<Bytes>>) {
         self.peer_tx = Some(peer_tx);
     }
 
@@ -116,8 +118,8 @@ impl MlesDb {
 }
 
 pub(crate) struct MlesPeerDb {
-    channels: HashMap<u64, UnboundedSender<Vec<u8>>>,
-    messages: Vec<Vec<u8>>,
+    channels: HashMap<u64, UnboundedSender<Bytes>>,
+    messages: Vec<Bytes>,
     history_limit: usize,
     rx_stats: u64,
     tx_stats: u64,
@@ -127,18 +129,18 @@ impl MlesPeerDb {
     pub fn new(hlim: usize) -> MlesPeerDb {
         MlesPeerDb {
             channels: HashMap::new(),
-            messages: Vec::new(),
+            messages: Vec::with_capacity(hlim),
             history_limit: hlim,
             rx_stats: 0,
             tx_stats: 0,
         }
     }
 
-    pub fn get_channels(&self) -> &HashMap<u64, UnboundedSender<Vec<u8>>> {
+    pub fn get_channels(&self) -> &HashMap<u64, UnboundedSender<Bytes>> {
         &self.channels
     }
 
-    pub fn add_channel(&mut self, cid: u64, channel: UnboundedSender<Vec<u8>>) {
+    pub fn add_channel(&mut self, cid: u64, channel: UnboundedSender<Bytes>) {
         self.channels.insert(cid, channel);
     }
 
@@ -155,7 +157,7 @@ impl MlesPeerDb {
         self.tx_stats = 0;
     }
 
-    pub fn add_message(&mut self, message: Vec<u8>) {
+    pub fn add_message(&mut self, message: Bytes) {
         if 0 == self.get_history_limit() {
             return;
         }
@@ -165,7 +167,7 @@ impl MlesPeerDb {
         self.messages.push(message);
     }
 
-    pub fn get_messages(&self) -> &Vec<Vec<u8>> {
+    pub fn get_messages(&self) -> &Vec<Bytes> {
         &self.messages
     }
 
@@ -205,7 +207,7 @@ mod tests {
     fn test_new_db() {
         let msg = "Message".to_string().into_bytes();
         let mut mles_db = MlesDb::new(HISTLIMIT);
-        mles_db.add_message(msg);
+        mles_db.add_message(Bytes::from(msg));
         assert_eq!(1, mles_db.get_messages().len());
         assert_eq!(0, mles_db.get_channels_len());
         let channel = mles_db.get_channels();
@@ -217,7 +219,7 @@ mod tests {
         let msg = "Message".to_string().into_bytes();
         let mut mles_peer = MlesPeerDb::new(HISTLIMIT);
         assert_eq!(0, mles_peer.get_messages_len());
-        mles_peer.add_message(msg);
+        mles_peer.add_message(Bytes::from(msg));
         assert_eq!(1, mles_peer.get_messages_len());
     }
 
@@ -227,10 +229,10 @@ mod tests {
         let msg = "Message".to_string().into_bytes();
         let mut mles_peer = MlesPeerDb::new(limit);
         assert_eq!(0, mles_peer.get_messages_len());
-        mles_peer.add_message(msg.clone());
+        mles_peer.add_message(Bytes::from(msg.clone()));
         assert_eq!(1, mles_peer.get_messages_len());
         while limit > 0 {
-            mles_peer.add_message(msg.clone());
+            mles_peer.add_message(Bytes::from(msg.clone()));
             limit -= 1;
         }
         assert_eq!(HISTLIMIT, mles_peer.get_messages_len());
