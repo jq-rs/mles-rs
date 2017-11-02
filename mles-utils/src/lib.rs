@@ -769,31 +769,18 @@ impl MsgConn {
                 let encoded_msg = msg.encode();
                 let key = self.get_key().unwrap();
                 let keyv = write_key(key);
-                let mut msgv = write_hdr(encoded_msg.len(), MsgHdr::select_cid(key));
+                let mut msgv = write_hdr_with_capacity(encoded_msg.len(), MsgHdr::select_cid(key),
+                                                       HDRKEYL + encoded_msg.len());
                 msgv.extend(keyv);
                 msgv.extend(encoded_msg);
                 let msgv = msgv.freeze();
-                let _res = stream.write(msgv.as_ref());
-                /* TODO the write may not write all at once
-                while len > 0 {
-                    let smsg = msgv.clone();
-                    let res = stream.write(smsg.as_ref());
-                    match res {
-                        Ok(0) => {
-                        println!("Zero bytes written");
-                        },
-                        Ok(n) => {
-                            println!("{} bytes written, msgv.len {}",n, msgv.len());
-                            len -= n;
-                        },
-                        Err(err) => {
-                            println!("An error {}", err);
-                            break;
-                        }
+                match stream.write_all(msgv.as_ref()) {
+                    Ok(_) => self.stream = Some(stream),
+                    Err(err) => { 
+                        println!("Send error {}", err);
+                        self.stream = None;
                     }
-                }*/
-
-                self.stream = Some(stream);
+                }
                 self
             },
             Err(_) => {
@@ -821,15 +808,13 @@ impl MsgConn {
         let encoded_msg = message.encode();
         let key = self.get_key().unwrap();
         let keyv = write_key(key);
-        let mut msgv = write_hdr(encoded_msg.len(), MsgHdr::select_cid(key));
+        let mut msgv = write_hdr_with_capacity(encoded_msg.len(), MsgHdr::select_cid(key), 
+                                               HDRKEYL + encoded_msg.len());
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
+        let msgv = msgv.freeze();
         let mut stream = self.stream.unwrap();
-        match stream.write(msgv.as_ref()) {
-            Ok(0) => { 
-                println!("Send zero");
-                self.stream = None;
-            },
+        match stream.write_all(msgv.as_ref()) {
             Ok(_) => self.stream = Some(stream),
             Err(err) => { 
                 println!("Send error {}", err);
@@ -923,6 +908,14 @@ fn read_hdr_len(hdr: &[u8]) -> usize {
 fn write_hdr(len: usize, cid: u32) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = BytesMut::from(Vec::with_capacity(HDRKEYL));
+    msgv.put_u32::<BigEndian>(hdr);
+    msgv.put_u32::<BigEndian>(cid);
+    msgv
+}
+
+fn write_hdr_with_capacity(len: usize, cid: u32, cap: usize) -> BytesMut {
+    let hdr = (('M' as u32) << 24) | len as u32;
+    let mut msgv = BytesMut::from(Vec::with_capacity(cap));
     msgv.put_u32::<BigEndian>(hdr);
     msgv.put_u32::<BigEndian>(cid);
     msgv
@@ -1040,7 +1033,7 @@ mod tests {
     #[test]
     fn test_read_hdr_len_16k() {
         let orig_len = 16000;
-        let hdrv = write_hdr(orig_len, 0x1);
+        let hdrv = write_hdr_with_capacity(orig_len, 0x1, HDRKEYL + orig_len);
         let len = read_hdr_len(hdrv.as_ref());
         assert_eq!(len, orig_len);
     }

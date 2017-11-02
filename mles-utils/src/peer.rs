@@ -94,7 +94,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 for msge in mles_peer_db.get_messages() {
                     rbv.push(msge.to_vec());
                 }
-                let mut msg = msg.try_mut().unwrap(); //no scopes
+                let mut msg = BytesMut::from(msg.as_ref()); 
                 let rmsg = ResyncMsg::new(&rbv);
                 let resync_message = rmsg.encode();
                 let size = resync_message.len();
