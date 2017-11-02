@@ -50,7 +50,7 @@ pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Bytes, messa
     //read key from header
     let key = read_key_from_hdr(&hdrkey);
 
-    let decoded_message = Msg::decode(message.to_vec().as_slice());
+    let decoded_message = Msg::decode(message.as_ref());
     keys.push(decoded_message.get_uid().to_string());
     keys.push(decoded_message.get_channel().to_string());
 
@@ -65,7 +65,7 @@ pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Bytes, messa
 fn message_decode(message: Bytes, mut hdr_key: Bytes) -> Vec<Bytes> {
     //try first decoding as a resync
     let mut msgs = Vec::new();
-    let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.to_vec().as_slice());
+    let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_ref());
     if 0 != decoded_resync_message.len() {
         for msg in decoded_resync_message.get_messages() { 
             msgs.push(Bytes::from(msg));
@@ -101,7 +101,7 @@ mod tests {
         assert_eq!(1, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
-        let decoded_msg = Msg::decode(msg.to_vec().as_slice());
+        let decoded_msg = Msg::decode(msg.as_ref());
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(1, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
-        let decoded_msg = Msg::decode(msg.to_vec().as_slice());
+        let decoded_msg = Msg::decode(msg.as_ref());
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
@@ -159,13 +159,13 @@ mod tests {
         assert_eq!(2, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
-        let decoded_msg = Msg::decode(msg.to_vec().as_slice());
+        let decoded_msg = Msg::decode(msg.as_ref());
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
         let mut message = messages[1].clone();
         let msg = message.split_off(HDRKEYL);
-        let decoded_msg = Msg::decode(msg.to_vec().as_slice());
+        let decoded_msg = Msg::decode(msg.as_ref());
         assert_eq!(decoded_msg.uid, orig_msg.uid);
         assert_eq!(decoded_msg.channel, orig_msg.channel);
         assert_eq!(decoded_msg.message, orig_msg.message);
