@@ -6,10 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.4]
+
 ### Fixed
 
 Utils 1.0.4:
  - Header read len mask fix. Allows to use larger than 4k frames.
+ - Fix stream write to use write_all(). 
 
 ## [1.0.3]
 
