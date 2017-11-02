@@ -1,6 +1,6 @@
 [package]
 name = "mles-client"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed data protocol example (chat) client/ws-proxy"
 license = "MPL-2.0"
