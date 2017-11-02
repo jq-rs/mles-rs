@@ -6,6 +6,7 @@
 * */
 extern crate mles_utils;
 
+use std::str;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::net::SocketAddr;
@@ -19,7 +20,8 @@ fn main() {
     let raddr = addr.clone();
     let uid = "User".to_string();
     let channel = "Channel".to_string();
-    let message = "Hello World!".to_string();
+    let bigvec = vec![77u8; 1600000];
+    let message = String::from_utf8(bigvec).unwrap();
     let mut childs = Vec::new();
     let now;
 
@@ -36,7 +38,7 @@ fn main() {
             conn = conn.connect(raddr);
             let (conn, msg) = conn.read_message();
             let msg = String::from_utf8_lossy(msg.as_slice());
-            assert_eq!("Hello World!", msg);
+            assert_eq!(1600000, msg.len());
             //close connection
             conn.close();
         });

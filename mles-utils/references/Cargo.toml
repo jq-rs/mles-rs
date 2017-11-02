@@ -1,11 +1,12 @@
 [package]
-name = "mles"
-version = "1.0.4"
+name = "mles-reference"
+version = "0.1.1"
+
 authors = ["jq-rs"]
-description = "Mles - a distributed publish/subscribe data server"
+description = "Mles-utils for Mles server and clients"
 license = "MPL-2.0"
 repository = "https://github.com/jq-rs/mles-rs"
-documentation = "http://mles.io"
+documentation = "https://docs.rs/mles-utils"
 readme = "../README.md"
 categories = ["network-programming"]
 keywords = ["mles", "publish", "subscribe", "network", "cbor"]
@@ -14,8 +15,8 @@ keywords = ["mles", "publish", "subscribe", "network", "cbor"]
 lto = true
 
 [dependencies]
-mles-utils = "1.0" 
-
+mles-utils = { path = "../" }
+ 
 [badges]
 travis-ci = { repository = "jq-rs/mles-rs" }
 appveyor = { repository = "jq-rs/mles-rs" }
