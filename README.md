@@ -14,7 +14,7 @@ Mles clients connect to an Mles server using Mles protocol header and (uid, chan
 
 An Mles server MAY save the history of received data, which can be then distributed to new clients when they connect to the Mles server. Every channel uses its own context and is independent of other channels: therefore a TCP session per (uid, channel) pair is always used.
 
-Every session between Mles server and client is authenticated using 64-bit SipHash [2]. The 64-bit key is hashed over provided UTF-8 strings. These can be combined from user connection endpoint details and/or a shared key and session (uid, channel) values. This allows Mles server to verify that a connecting Mles client is really connecting from the endpoint where it claims to be connecting with proper user and channel details. Mles client sessions behind Network Address Translation (NAT) can use a shared key without session endpoint detail authentication.
+Every session between Mles server and client is authenticated using 64-bit SipHash [2]. The 64-bit key is hashed over provided UTF-8 strings. These can be combined from user connection endpoint details and/or a shared key and session (uid, channel) values. This allows Mles server to verify that a connecting Mles client is really connecting from the endpoint where it claims to be connecting with proper user and channel details. Mles client sessions behind Network Address Translation (NAT) SHOULD use a shared key without session endpoint detail authentication.
 
 After Mles server has authenticated the session and moved the connected Mles client to its channel context, the SipHash key SHOULD be ignored by the Mles server. After context change, the SipHash key MAY be changed and used by Mles clients within the channel context.
 
@@ -88,7 +88,7 @@ pub struct ResyncMsg {
 
 An Mles client with WebSocket proxy allows to connect with WebSocket protocol [4] to an Mles proxy which will then forward frames to and from Mles network over the WebSocket protocol. An Mles WebSocket client MUST transceive frames encapsulated as CBOR as defined in <b>Mles protocol details</b> section without Mles protocol header. The Mles client with WebSocket proxy will handle the addition and removal of Mles protocol header. An Mles WebSocket client which connects to the proxy can be easily implemented on top of modern browsers with e.g. JavaScript and its existing CBOR libraries.
 
-An Mles WebSocket client MUST set Sec-WebSocket-Protocol subprotocol to "mles-websocket" to be able establish a connection to an Mles client with WebSocket proxy successfully.
+An Mles WebSocket client MUST set Sec-WebSocket-Protocol subprotocol to "mles-websocket" [5] to be able establish a connection to an Mles client with WebSocket proxy successfully. 
 
 ## Usage
 
@@ -180,5 +180,6 @@ fn main() {
 
  1. Concise Binary Object Representation (CBOR), https://tools.ietf.org/html/rfc7049
  2. SipHash: a fast short-input PRF, https://131002.net/siphash/, referenced 4.2.2017
- 3. Mles registered port #8077, http://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=8077
+ 3. IANA registered Mles port #8077, http://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=8077
  4. The WebSocket Protocol, https://tools.ietf.org/html/rfc6455
+ 5. IANA registered Mles WebSocket Subprotocol, https://www.iana.org/assignments/websocket
