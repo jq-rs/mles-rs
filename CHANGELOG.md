@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+Generic:
+ - README Information about mles-websocket IANA registration
+
 ## [1.0.4]
 
 ### Fixed
