@@ -106,9 +106,13 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
             });            
 
             let ws_writer = ws_rx.fold(sink, |mut sink, msg| {
-                let _ = sink.start_send(Message::binary(msg)).map_err(|err| {
+                let msg = Message::binary(msg);
+                let _ = sink.start_send(msg).map_err(|err| {
                     Error::new(ErrorKind::Other, err)
                 });                                      
+                let _ = sink.poll_complete().map_err(|err| {
+                    Error::new(ErrorKind::Other, err)
+                });                           
                 Ok(sink)
             });
             let connection = ws_reader.map(|_| ()).map_err(|_| ())

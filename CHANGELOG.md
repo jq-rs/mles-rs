@@ -6,8 +6,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
 Generic:
  - README Information about mles-websocket IANA registration
+
+### Fixed
+
+Client 1.0.5:
+ - Encoder buffer handling fixed. This could cause websocket connection losses with large traffic amount.
 
 ## [1.0.4]
 

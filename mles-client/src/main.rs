@@ -244,6 +244,7 @@ impl Encoder for Bytes {
     type Error = io::Error;
 
     fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
+        buf.reserve(data.len());
         buf.put(&data[..]);
         Ok(())
     }

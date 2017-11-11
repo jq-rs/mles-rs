@@ -1,6 +1,6 @@
 [package]
 name = "mles-client"
-version = "1.0.4"
+version = "1.0.5"
 authors = ["jq-rs"]
 description = "Mles-client, a distributed data protocol example (chat) client/ws-proxy"
 license = "MPL-2.0"
@@ -8,7 +8,7 @@ repository = "https://github.com/jq-rs/mles-rs"
 documentation = "http://mles.io"
 readme = "../README.md"
 categories = ["network-programming"]
-keywords = ["mles", "publish", "subscribe", "cbor", "websocket"]
+keywords = ["protocol", "publish", "subscribe", "mles", "websocket"]
 
 [profile.release]
 lto = true
