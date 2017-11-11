@@ -49,7 +49,7 @@ use std::io::{Error, ErrorKind};
 use futures::sync::mpsc::{UnboundedSender, UnboundedReceiver};
 use std::time::Duration;
 
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use futures::{Sink, Future, Stream};
 use futures::sync::mpsc;
 use tokio_core::reactor::Core;
@@ -244,8 +244,7 @@ impl Encoder for Bytes {
     type Error = io::Error;
 
     fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
-        buf.reserve(data.len());
-        buf.put(&data[..]);
+        buf.extend_from_slice(&data[..]);
         Ok(())
     }
 }
