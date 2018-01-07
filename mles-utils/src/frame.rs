@@ -2,7 +2,7 @@
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
 *  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Juhamatti Kuusisaari / Mles developers
 * */
 use std::io::{Error, ErrorKind};
 
@@ -30,14 +30,14 @@ pub(crate) fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: BytesMut) -> Res
     Ok((reader, hdr, hdr_len))
 }
 
-pub(crate) fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: Bytes, message: Bytes) -> Result<(io::ReadHalf<TcpStream>, Bytes, Bytes), Error> { 
+pub(crate) fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut) -> Result<(io::ReadHalf<TcpStream>, BytesMut, BytesMut), Error> { 
     if message.is_empty() { 
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
     }
     Ok((reader, hdr_key, message))
 }
 
-pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Bytes, message: Bytes, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Bytes>, Msg), Error> { 
+pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Bytes>, Msg), Error> { 
 
     //decode message(s)
     let messages = message_decode(message, hdr_key);
@@ -62,7 +62,7 @@ pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: Bytes, messa
     Ok((reader, messages, decoded_message))
 }
 
-fn message_decode(message: Bytes, mut hdr_key: Bytes) -> Vec<Bytes> {
+fn message_decode(message: BytesMut, mut hdr_key: BytesMut) -> Vec<Bytes> {
     //try first decoding as a resync
     let mut msgs = Vec::new();
     let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_ref());
@@ -72,8 +72,9 @@ fn message_decode(message: Bytes, mut hdr_key: Bytes) -> Vec<Bytes> {
         }
     }
     else {
-        hdr_key.extend(message);
-        msgs.push(hdr_key);
+        hdr_key.unsplit(message);
+        let msg = hdr_key.freeze();
+        msgs.push(msg);
     }
     msgs 
 }
@@ -97,7 +98,7 @@ mod tests {
         let msg =  "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
-        let messages = message_decode(Bytes::from(encoded_msg), Bytes::from(hdrkey));
+        let messages = message_decode(BytesMut::from(encoded_msg), BytesMut::from(hdrkey));
         assert_eq!(1, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
@@ -126,7 +127,7 @@ mod tests {
         let vec = vec![hdr.clone().to_vec()];
         let rmsg = ResyncMsg::new(&vec);
         let encoded_resync_msg: Vec<u8> = rmsg.encode();
-        let messages = message_decode(Bytes::from(encoded_resync_msg), Bytes::from(hdrkey));
+        let messages = message_decode(BytesMut::from(encoded_resync_msg), BytesMut::from(hdrkey));
         assert_eq!(1, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
@@ -155,7 +156,7 @@ mod tests {
         let vec = vec![hdr.clone().to_vec(), hdr.clone().to_vec()];
         let rmsg = ResyncMsg::new(&vec);
         let encoded_resync_msg: Vec<u8> = rmsg.encode();
-        let messages = message_decode(Bytes::from(encoded_resync_msg), Bytes::from(hdrkey));
+        let messages = message_decode(BytesMut::from(encoded_resync_msg), BytesMut::from(hdrkey));
         assert_eq!(2, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);

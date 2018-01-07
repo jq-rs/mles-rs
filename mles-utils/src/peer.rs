@@ -2,7 +2,7 @@
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
 *  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Juhamatti Kuusisaari / Mles developers
 * */
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -185,8 +185,6 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                     let tframe = io::read_exact(reader, message);
                     tframe.and_then(move |(reader, message)| {
                         hdr.copy_from_slice(hdr_key.as_ref());
-                        let hdr_key = hdr.freeze();
-                        let message = message.freeze();
                         process_msg(reader, hdr_key, message)
                     })
                 }); 
@@ -194,19 +192,20 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 let mles_peer_db_frame = mles_peer_db.clone();
                 let tx_removals = tx_removals_inner.clone();
                 frame.map(move |(reader, mut hdr_key, message)| {
-                    hdr_key.extend(message);
+                    hdr_key.unsplit(message);
+                    let msg = hdr_key.freeze();
 
                     //send message forward
                     let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
                     for (cid, tx_orig) in mles_peer_db.get_channels().iter() {
-                        let _res = tx_orig.unbounded_send(hdr_key.clone()).map_err(|_| { 
+                        let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
                             let _rem = tx_removals.unbounded_send(cid.clone()).map_err(|_| {
                                 ()
                             });
                         });
                     }
                     //push message to history
-                    mles_peer_db.add_message(hdr_key);
+                    mles_peer_db.add_message(msg);
                     mles_peer_db.add_rx_stats();
 
                     reader
