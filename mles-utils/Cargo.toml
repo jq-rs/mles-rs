@@ -23,7 +23,7 @@ siphasher = "0.2"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
-bytes = { git = "https://github.com/carllerche/bytes" }
+bytes = "0.4"
  
 [lib]
 test = true
