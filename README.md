@@ -68,8 +68,8 @@ pub struct Msg {
 
 When endpoint details (IPv4 or IPv6 address) is used as part of the CID, the UTF8 string formats are as follows:
 
- * IPv4: a.b.c.d:port
- * IPv6: [a:b:..::c:d]:port 
+ * IPv4: ```a.b.c.d:port```
+ * IPv6: ```[a:b::..::c:d]:port```
 
 
 The ResyncMsg, which is used to share history information to Mles servers is in CBOR:
