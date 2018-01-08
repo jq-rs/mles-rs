@@ -1,6 +1,6 @@
 [package]
 name = "mles"
-version = "1.0.5"
+version = "1.0.6"
 authors = ["jq-rs"]
 description = "Mles - a distributed publish/subscribe data server"
 license = "MPL-2.0"
@@ -14,7 +14,7 @@ keywords = ["protocol", "publish", "subscribe", "cbor", "mles"]
 lto = true
 
 [dependencies]
-mles-utils = "1.0" 
+mles-utils = "1.0"  
 
 [badges]
 travis-ci = { repository = "jq-rs/mles-rs" }

@@ -2,7 +2,7 @@
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
 *  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Juhamatti Kuusisaari / Mles developers
 * */
 use std::io::Error;
 use std::collections::HashMap;
@@ -98,8 +98,6 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             let tframe = io::read_exact(reader, message);
             tframe.and_then(move |(reader, message)| {
                 hdr.copy_from_slice(hdr_key.as_ref());
-                let hdr_key = hdr.freeze();
-                let message = message.freeze();
                 process_msg(reader, hdr_key, message)
             })
         });
@@ -228,8 +226,6 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                     let tframe = io::read_exact(reader, message);
                     tframe.and_then(move |(reader, message)| {
                         hdr.copy_from_slice(hdr_key.as_ref());
-                        let hdr_key = hdr.freeze();
-                        let message = message.freeze();
                         process_msg(reader, hdr_key, message)
                     })
                 });
@@ -241,7 +237,8 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                 let tx_peer_remover = tx_peer_remover_inner.clone();
                 let tx_removals = tx_removals_iter.clone();
                 frame.map(move |(reader, mut hdr_key, message)| {
-                    hdr_key.extend(message);
+                    hdr_key.unsplit(message);
+                    let msg = hdr_key.freeze();
                     let channel_clone = channel.clone();
 
                     let mut mles_db_borrow = mles_db.borrow_mut();
@@ -249,20 +246,20 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                         if peer::has_peer(&peer) {
                             if !mles_db_entry.check_peer() {
                                 let peer = peer.unwrap();
-                                let msg = hdr_key.clone();
+                                let msg = msg.clone();
                                 thread::spawn(move || peer_conn(hist_limit, peer, is_addr_set, keyaddr, channel, msg, &tx_peer_for_msgs, tx_peer_remover, debug_flags));
                             }
                         }
                         else {
                             // add to history if no peer
-                            mles_db_entry.add_message(hdr_key.clone());
+                            mles_db_entry.add_message(msg.clone());
                         }
 
                         if let Some(channels) = mles_db_entry.get_channels() {
                             for (ocid, tx) in channels.iter() {
                                 let channel_rem = channel_clone.clone();
                                 if *ocid != cid {
-                                    let _res = tx.unbounded_send(hdr_key.clone()).map_err(|_| { 
+                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| { 
                                         let _rem = tx_removals.unbounded_send((*ocid, channel_rem)).map_err(|_| {
                                             () 
                                         });

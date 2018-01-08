@@ -6,8 +6,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.6]
+
+Generic:
+ - Update README to include IP address format details.
+
+Utils 1.0.6:
+ - Use serde cbor 0.8
+ - Update to use BytesMut::unsplit()
+
 Client 1.0.6:
- - Change encoder to use extend_from_slice().
+ - Change encoder to use extend_from_slice()
 
 ## [1.0.5]
 
