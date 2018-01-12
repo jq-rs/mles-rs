@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 Generic:
- - Update README to include IP address format details.
+ - Updated README to include IP address format details.
 
 ### Changed
 
