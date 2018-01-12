@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [1.0.6]
 
+### Added
+
 Generic:
  - Update README to include IP address format details.
+
+### Changed
 
 Utils 1.0.6:
  - Use serde cbor 0.8
