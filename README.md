@@ -92,7 +92,7 @@ pub struct ResyncMsg {
 
 ## Mles WebSocket protocol details
 
-An Mles client with WebSocket proxy allows to connect with WebSocket protocol [4] to an Mles proxy which will then forward frames to and from Mles network over the WebSocket protocol. An Mles WebSocket client MUST transceive frames encapsulated as CBOR as defined in <b>Mles protocol details</b> section without Mles protocol header. The Mles client with WebSocket proxy will handle the addition and removal of Mles protocol header. An Mles WebSocket client which connects to the proxy can be easily implemented on top of modern browsers with e.g. JavaScript and its existing CBOR libraries.
+An Mles client with WebSocket proxy allows to connect with WebSocket protocol [4] to an Mles proxy which will then forward frames to and from Mles network over the WebSocket protocol. An Mles WebSocket client MUST be able to transceive frames encapsulated as CBOR as defined in <b>Mles protocol details</b> section without Mles protocol header. In addition, the client SHOULD be able to transceive several channels multiplexed on the same connection over WebSocket. The Mles client with WebSocket proxy will handle the addition and removal of Mles protocol header. An Mles WebSocket client which connects to the proxy can be easily implemented on top of modern browsers with e.g. JavaScript and its existing CBOR libraries.
 
 An Mles WebSocket client MUST set Sec-WebSocket-Protocol subprotocol to "mles-websocket" [5] to be able establish a connection to an Mles client with WebSocket proxy successfully. 
 
