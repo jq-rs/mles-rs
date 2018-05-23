@@ -181,6 +181,10 @@ fn main() {
 }
 ```
 
+## Existing client implementations over Mles protocol
+
+ * Reference client https://github.com/jq-rs/mles-rs/mles-client
+ * Android real-time char-by-char chat http://mles.io/app
 
 ## References:
 
