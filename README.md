@@ -183,8 +183,9 @@ fn main() {
 
 ## Existing client implementations over Mles protocol
 
- * Reference client https://github.com/jq-rs/mles-rs/mles-client
- * Android real-time char-by-char chat http://mles.io/app
+ * Reference client on Rust: https://github.com/jq-rs/mles-rs/mles-client
+ * Android real-time char-by-char chat on JavaScript: http://mles.io/app
+ * Please ask to add your client here!
 
 ## References:
 
