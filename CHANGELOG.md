@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 Generic:
  - Defined specifications for multiplexing channels over one WebSocket connection.
- - Added existing Mles protocol client implementations to the README
+ - Added existing Mles protocol and Mles Websocket client implementations to the README
 
 ## [1.0.6]
 
