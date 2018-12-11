@@ -1,14 +1,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017-2018  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
 use std::io::{Error, ErrorKind};
 
 use tokio_core::net::TcpStream;
 use tokio_io::io;
-use self::bytes::{BytesMut, Bytes};
+use bytes::{BytesMut, Bytes};
 
 use super::*;
 
@@ -30,14 +30,14 @@ pub(crate) fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: BytesMut) -> Res
     Ok((reader, hdr, hdr_len))
 }
 
-pub(crate) fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut) -> Result<(io::ReadHalf<TcpStream>, BytesMut, BytesMut), Error> { 
-    if message.is_empty() { 
+pub(crate) fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut) -> Result<(io::ReadHalf<TcpStream>, BytesMut, BytesMut), Error> {
+    if message.is_empty() {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
     }
     Ok((reader, hdr_key, message))
 }
 
-pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Bytes>, Msg), Error> { 
+pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Bytes>, Msg), Error> {
 
     //decode message(s)
     let messages = message_decode(message, hdr_key);
@@ -67,7 +67,7 @@ fn message_decode(message: BytesMut, mut hdr_key: BytesMut) -> Vec<Bytes> {
     let mut msgs = Vec::new();
     let decoded_resync_message: ResyncMsg = ResyncMsg::decode(message.as_ref());
     if 0 != decoded_resync_message.len() {
-        for msg in decoded_resync_message.get_messages() { 
+        for msg in decoded_resync_message.get_messages() {
             msgs.push(Bytes::from(msg));
         }
     }
@@ -76,7 +76,7 @@ fn message_decode(message: BytesMut, mut hdr_key: BytesMut) -> Vec<Bytes> {
         let msg = hdr_key.freeze();
         msgs.push(msg);
     }
-    msgs 
+    msgs
 }
 
 #[cfg(test)]
@@ -90,7 +90,7 @@ mod tests {
         let mut keys = Vec::new();
         keys.push(uid.clone());
         keys.push(channel.clone());
-        let key = MsgHdr::do_hash(&keys); 
+        let key = MsgHdr::do_hash(&keys);
         let mut hdr: BytesMut = write_hdr(122, MsgHdr::select_cid(key));
         let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
@@ -115,7 +115,7 @@ mod tests {
         let mut keys = Vec::new();
         keys.push(uid.clone());
         keys.push(channel.clone());
-        let key = MsgHdr::do_hash(&keys); 
+        let key = MsgHdr::do_hash(&keys);
         let mut hdr: BytesMut = write_hdr(122, MsgHdr::select_cid(key));
         let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
@@ -144,7 +144,7 @@ mod tests {
         let mut keys = Vec::new();
         keys.push(uid.clone());
         keys.push(channel.clone());
-        let key = MsgHdr::do_hash(&keys); 
+        let key = MsgHdr::do_hash(&keys);
         let mut hdr: BytesMut = write_hdr(122, MsgHdr::select_cid(key));
         let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);

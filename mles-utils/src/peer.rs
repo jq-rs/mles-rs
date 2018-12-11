@@ -1,8 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017-2018  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -24,18 +24,19 @@ use futures::sync::mpsc::{unbounded, UnboundedSender};
 
 use bytes::{BytesMut, Bytes};
 
-use local_db::*;
-use frame::*;
+use crate::local_db::*;
+use crate::frame::*;
+use crate::KEEPALIVE;
 use super::*;
 
 const MAXWAIT: u64 = 10*60;
 const WAITTIME: u64 = 5;
 
 /// Initiate peer connection
-pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Bytes, 
+pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, keyaddr: String, channel: String, msg: Bytes,
                         tx_peer_for_msgs: &UnboundedSender<(u64, String, UnboundedSender<Bytes>, UnboundedSender<UnboundedSender<Bytes>>)>,
                         tx_peer_remover: UnboundedSender<(String, u64)>,
-                        debug_flags: u64) 
+                        debug_flags: u64)
 {
     let mut core = Core::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
@@ -72,7 +73,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             };
             let _val = pstream.set_nodelay(true)
                               .map_err(|_| panic!("Cannot set peer to no delay"));
-            let _val = pstream.set_keepalive(Some(Duration::new(::KEEPALIVE, 0)))
+            let _val = pstream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                               .map_err(|_| panic!("Cannot set keepalive"));
 
             let mut loopcnt = loopcnt_inner.borrow_mut();
@@ -94,7 +95,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 for msge in mles_peer_db.get_messages() {
                     rbv.push(msge.to_vec());
                 }
-                let mut msg = BytesMut::from(msg.as_ref()); 
+                let mut msg = BytesMut::from(msg.as_ref());
                 let rmsg = ResyncMsg::new(&rbv);
                 let resync_message = rmsg.encode();
                 let size = resync_message.len();
@@ -109,7 +110,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
 
                 let _res = tx.unbounded_send(msgf).map_err(|err| { println!("Cannot write to tx: {}", err); });
             }
-            else { 
+            else {
                 let message = msg.split_off(HDRKEYL);
                 if is_addr_set {
                     msg = update_key(Msg::decode(message.to_vec().as_slice()), read_hdr_len(&msg), keyaddr, laddr);
@@ -147,13 +148,13 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 //save receiver side tx to db
                 cnt += 1;
                 let mut mles_peer_db_once = mles_peer_db.borrow_mut();
-                mles_peer_db_once.add_channel(cnt, tx_orig.clone());  
+                mles_peer_db_once.add_channel(cnt, tx_orig.clone());
 
                 //push history always to client
                 for msg in mles_peer_db_once.get_messages().iter() {
-                    let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
+                    let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| {
                         //unlikely to happen, ignore
-                        () 
+                        ()
                     });
                 }
                 Ok(())
@@ -187,7 +188,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                         hdr.copy_from_slice(hdr_key.as_ref());
                         process_msg(reader, hdr_key, message)
                     })
-                }); 
+                });
 
                 let mles_peer_db_frame = mles_peer_db.clone();
                 let tx_removals = tx_removals_inner.clone();
@@ -198,7 +199,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                     //send message forward
                     let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
                     for (cid, tx_orig) in mles_peer_db.get_channels().iter() {
-                        let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| { 
+                        let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| {
                             let _rem = tx_removals.unbounded_send(cid.clone()).map_err(|_| {
                                 ()
                             });
@@ -214,8 +215,8 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
         });
 
         // execute server
-        let res = core.run(client).map_err(|err| { 
-            println!("Peer: {}", err); 
+        let res = core.run(client).map_err(|err| {
+            println!("Peer: {}", err);
             err
         });
         match res {
@@ -231,7 +232,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             },
             Ok(_) => {}
         }
-         
+
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();
 

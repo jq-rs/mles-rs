@@ -1,14 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
-extern crate futures;
-extern crate tokio_core;
-extern crate tokio_tungstenite;
-extern crate tungstenite;
-
 use std::io::{Error,ErrorKind};
 use std::thread;
 use std::net::SocketAddr;
@@ -21,16 +16,17 @@ use futures::sync::mpsc::unbounded;
 use futures::{Future, Sink};
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
-use self::tungstenite::protocol::Message;
-use self::tungstenite::handshake::server::Request;
+use tungstenite::protocol::Message;
+use tungstenite::handshake::server::Request;
 
-use self::tokio_tungstenite::accept_hdr_async;
+use tokio_tungstenite::accept_hdr_async;
+use crate::{KEEPALIVE, process_mles_client};
 
 const WSPORT: &str = ":8076";
 const SECPROT: &str = "Sec-WebSocket-Protocol";
 const SECVALUE: &str = "mles-websocket";
 
-pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {                             
+pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     let addr = "0.0.0.0".to_string() + WSPORT;
     let addr = addr.parse().unwrap();
     let mut core = Core::new().unwrap();
@@ -48,7 +44,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     let srv = socket.incoming().for_each(|(stream, addr)| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
-        let _val = stream.set_keepalive(Some(Duration::new(::KEEPALIVE, 0)))
+        let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                          .map_err(|_| panic!("Cannot set keepalive"));
         let handle_inner = handle.clone();
         let handle_out = handle.clone();
@@ -91,7 +87,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let accept = accept.and_then(move |ws_stream| {
             println!("New WebSocket connection {}: {}", cnt, addr);
 
-            thread::spawn(move || ::process_mles_client(raddr, keyval_inner, keyaddr_inner, 
+            thread::spawn(move || process_mles_client(raddr, keyval_inner, keyaddr_inner,
                                                         ws_tx_inner, mles_rx));
 
             let (sink, stream) = ws_stream.split();
@@ -103,16 +99,16 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
                     Error::new(ErrorKind::Other, err)
                 });
                 Ok(())
-            });            
+            });
 
             let ws_writer = ws_rx.fold(sink, |mut sink, msg| {
                 let msg = Message::binary(msg);
                 let _ = sink.start_send(msg).map_err(|err| {
                     Error::new(ErrorKind::Other, err)
-                });                                      
+                });
                 let _ = sink.poll_complete().map_err(|err| {
                     Error::new(ErrorKind::Other, err)
-                });                           
+                });
                 Ok(sink)
             });
             let connection = ws_reader.map(|_| ()).map_err(|_| ())

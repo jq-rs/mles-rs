@@ -25,19 +25,13 @@
  * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  *
- * Mles-support Copyright (c) 2017 Mles developers
+ * Mles-support Copyright (c) 2017-2018  Mles developers
  *
  */
 
 /*
  * Mles client example based on Tokio core-connect example.
  */
-
-extern crate mles_utils;
-extern crate futures;
-extern crate tokio_core;
-extern crate tokio_io;
-extern crate bytes;
 
 mod ws;
 
@@ -54,16 +48,13 @@ use futures::{Sink, Future, Stream};
 use futures::sync::mpsc;
 use tokio_core::reactor::Core;
 use tokio_core::net::TcpStream;
-use tokio_io::AsyncRead;
-use tokio_io::codec::{Encoder, Decoder};
+use tokio_codec::{Encoder, Decoder};
 use mles_utils::*;
 
-use ws::*;
+use crate::ws::*;
 
 const SRVPORT: &str = ":8077";
-
 const USAGE: &str = "Usage: mles-client <server-address> [--use-websockets]";
-
 const KEEPALIVE: u64 = 5;
 
 fn main() {
@@ -141,13 +132,13 @@ fn main() {
             };
             if  !keyval.is_empty() {
                 keys.push(keyval.clone());
-            } else {            
+            } else {
                 keys.push(MsgHdr::addr2str(&laddr));
                 if !keyaddr.is_empty() {
                     keys.push(keyaddr.clone());
                 }
             }
-            let (sink, stream) = stream.framed(Bytes).split();
+            let (sink, stream) = Bytes.framed(stream).split();
             let stdin_rx = stdin_rx.and_then(|buf| {
                 if None == key {
                     //create hash for verification
@@ -271,7 +262,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let mut buf = vec![0; 80];
     let n = match stdin.read(&mut buf) {
         Err(_) | Ok(0) => return,
-        Ok(n) => n,             
+        Ok(n) => n,
     };
     buf.truncate(n - 1);
     let mut channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
@@ -309,7 +300,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     }
 }
 
-pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String, 
+pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                            ws_tx: UnboundedSender<Vec<u8>>, mles_rx: UnboundedReceiver<Vec<u8>>) {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -332,13 +323,13 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
         };
         if  !keyval.is_empty() {
             keys.push(keyval);
-        } else {            
+        } else {
             keys.push(MsgHdr::addr2str(&laddr));
             if !keyaddr.is_empty() {
                 keys.push(keyaddr);
             }
         }
-        let (sink, stream) = stream.framed(Bytes).split();
+        let (sink, stream) = Bytes.framed(stream).split();
         let mles_rx = mles_rx.map_err(|_| panic!()); // errors not possible on rx XXX
         let mles_rx = mles_rx.and_then(|buf| {
             if buf.is_empty() {
@@ -364,7 +355,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             // send to websocket
             let _ = ws_tx_inner.send(buf.to_vec()).wait().map_err(|err| {
                 Error::new(ErrorKind::Other, err)
-            });              
+            });
             Ok(())
         });
 

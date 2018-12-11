@@ -1,10 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
-extern crate mles_utils;
 
 use std::{process, env};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
@@ -46,11 +45,11 @@ fn main() {
             let rpeer = Some(rpeer);
             // check that we really got a proper peer
             if mles_utils::has_peer(&rpeer) {
-                println!("Using peer domain {}", peerarg); 
+                println!("Using peer domain {}", peerarg);
                 peer = rpeer;
             }
-            else { 
-                println!("Unable to resolve peer domain {}", peerarg); 
+            else {
+                println!("Unable to resolve peer domain {}", peerarg);
             }
         }
         if argcnt > 2 {

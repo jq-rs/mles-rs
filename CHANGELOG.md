@@ -6,9 +6,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.1.0]
+
 Generic:
  - Defined specifications for multiplexing channels over one WebSocket connection.
  - Added existing Mles protocol and Mles Websocket client implementations to the README
+ - Updated to support Rust 2018
+ - Updated some crates
+
+Utils 1.1.0:
+ - Use serde cbor 0.9
+
+Client 1.1.0:
+ - Use tungstenite 0.6 and tokio-tungstenite 0.6
 
 ## [1.0.6]
 
