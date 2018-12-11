@@ -1,6 +1,7 @@
 [package]
 name = "mles-utils"
-version = "1.0.6"
+version = "1.0.7"
+edition = "2018"
 
 authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
@@ -17,14 +18,14 @@ lto = true
 [dependencies]
 serde = "1.0"
 serde_derive = "1.0"
-serde_cbor = "0.8"
+serde_cbor = "0.9"
 serde_bytes = "0.10"
 siphasher = "0.2"
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
 bytes = "0.4"
- 
+
 [lib]
 test = true
 
