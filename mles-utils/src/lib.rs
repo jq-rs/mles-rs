@@ -1,23 +1,18 @@
 #![warn(missing_docs)]
-//! `Mles utils` library is provided for Mles client and server implementations for easy handling of 
+//! `Mles utils` library is provided for Mles client and server implementations for easy handling of
 //! proper header and message structures.
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
 
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_cbor;
 extern crate serde_bytes;
-extern crate siphasher;
-extern crate tokio_core;
-extern crate tokio_io;
-extern crate futures;
-extern crate bytes;
 
 mod server;
 mod local_db;
@@ -32,14 +27,14 @@ use std::io::Write;
 use std::io::{Read, Error};
 
 use std::net::{IpAddr, SocketAddr};
-use bytes::{BytesMut, BufMut, Buf, BigEndian};
+use bytes::{BytesMut, BufMut, Buf};
 
 /// HDRL defines the size of the header including version, length and timestamp
-pub(crate) const HDRL: usize = 8; 
+pub(crate) const HDRL: usize = 8;
 /// CIDL defines the size of the connection id
-pub(crate) const CIDL:  usize = 4; 
+pub(crate) const CIDL:  usize = 4;
 /// KEYL defines the size of the key
-pub(crate) const KEYL: usize = 8; 
+pub(crate) const KEYL: usize = 8;
 /// HDRKEYL defines the size of the header + key
 pub(crate) const HDRKEYL: usize = HDRL + KEYL;
 
@@ -68,7 +63,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let msghdr = MsgHdr::new(len, cid, key);
@@ -77,7 +72,7 @@ impl MsgHdr {
         MsgHdr {
             thlen: hdr_set_len(len),
             cid: cid,
-            key: key, 
+            key: key,
         }
     }
 
@@ -88,7 +83,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -100,7 +95,7 @@ impl MsgHdr {
     }
 
     /// Get MsgHdr length on the line.
-    /// 
+    ///
     pub fn get_hdrkey_len() -> usize {
         HDRKEYL
     }
@@ -112,7 +107,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -129,7 +124,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -147,7 +142,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -164,7 +159,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -182,7 +177,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -199,7 +194,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -218,7 +213,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 0;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -238,7 +233,7 @@ impl MsgHdr {
     /// use mles_utils::{MsgHdr};
     ///
     /// let key = 0xf00f;
-    /// let cid = MsgHdr::select_cid(key); 
+    /// let cid = MsgHdr::select_cid(key);
     /// let len = 16;
     ///
     /// let mut msghdr = MsgHdr::new(len, cid, key);
@@ -260,7 +255,7 @@ impl MsgHdr {
     /// let hashstr1 = "A string".to_string();
     /// let hashstr2 = "Another string".to_string();
     /// let hashable = vec![hashstr1, hashstr2];
-    /// let key: u64 = MsgHdr::do_hash(&hashable); 
+    /// let key: u64 = MsgHdr::do_hash(&hashable);
     /// ```
 #[inline]
     pub fn do_hash(t: &[String]) -> u64 {
@@ -282,7 +277,7 @@ impl MsgHdr {
     /// ```
 #[inline]
     pub fn select_cid(key: u64) -> u32 {
-        key as u32 
+        key as u32
     }
 
     /// Do a valid UTF-8 string from a `SocketAddr`.
@@ -312,16 +307,16 @@ impl MsgHdr {
         match ipaddr {
             IpAddr::V4(v4) => {
                 let v4oct = v4.octets();
-                let v4str = format!("{}.{}.{}.{}:{}", 
-                                    v4oct[0], v4oct[1], v4oct[2], v4oct[3], 
+                let v4str = format!("{}.{}.{}.{}:{}",
+                                    v4oct[0], v4oct[1], v4oct[2], v4oct[3],
                                     addr.port());
                 v4str
             }
             IpAddr::V6(v6) => {
                 let v6seg = v6.segments();
-                let v6str = format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}", 
-                                    v6seg[0], v6seg[1], v6seg[2], v6seg[3], 
-                                    v6seg[4], v6seg[5], v6seg[6], v6seg[7], 
+                let v6str = format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}",
+                                    v6seg[0], v6seg[1], v6seg[2], v6seg[3],
+                                    v6seg[4], v6seg[5], v6seg[6], v6seg[7],
                                     addr.port());
                 v6str
             }
@@ -338,13 +333,13 @@ fn hdr_get_len(thlen: u32) -> u32 {
 }
 
 fn hdr_get_type(thlen: u32) -> u8 {
-    (thlen >> 24) as u8 
+    (thlen >> 24) as u8
 }
 
 
 /// Msg structure
 ///
-/// This structure defines the Mles interface value triplet (uid, channel, message). 
+/// This structure defines the Mles interface value triplet (uid, channel, message).
 /// It is eventually serialized and deserialized by CBOR.
 ///
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -504,7 +499,7 @@ impl Msg {
     pub fn decode(slice: &[u8]) -> Msg {
         let value = serde_cbor::from_slice(slice);
         match value {
-            Ok(value) => { 
+            Ok(value) => {
                 value
             },
             Err(err) => {
@@ -518,7 +513,7 @@ impl Msg {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct MsgVec {
     #[serde(with = "serde_bytes")]
-    encoded_msg: Vec<u8>, // this is encoded Msg 
+    encoded_msg: Vec<u8>, // this is encoded Msg
 }
 
 impl MsgVec {
@@ -535,10 +530,10 @@ impl MsgVec {
 
 /// ResyncMsg structure
 ///
-/// This structure defines resynchronization Msg structure that can be used 
-/// to resynchronize history state to root server from peers. The resynchronization 
-/// message can be sent only during initial connection message and packs the 
-/// history into one message that can be taken into account by Mles root server. 
+/// This structure defines resynchronization Msg structure that can be used
+/// to resynchronize history state to root server from peers. The resynchronization
+/// message can be sent only during initial connection message and packs the
+/// history into one message that can be taken into account by Mles root server.
 ///
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResyncMsg {
@@ -563,7 +558,7 @@ impl ResyncMsg {
         let mut rmsg = ResyncMsg {
             resync_message: Vec::new(),
         };
-        //transform to correct format 
+        //transform to correct format
         for msg in messages {
             rmsg.resync_message.push(MsgVec::new(&msg));
         }
@@ -602,7 +597,7 @@ impl ResyncMsg {
     /// ```
 #[inline]
     pub fn get_messages(&self) -> Vec<Vec<u8>> {
-        //transform to correct format 
+        //transform to correct format
         let mut messages = Vec::new();
         for msg in self.resync_message.iter() {
             let msg = msg.get();
@@ -669,7 +664,7 @@ impl ResyncMsg {
 
 /// Msg connection structure
 ///
-/// This structure defines the Mles connection for simple synchronous connections. 
+/// This structure defines the Mles connection for simple synchronous connections.
 ///
 pub struct MsgConn {
     uid:     String,
@@ -742,7 +737,7 @@ impl MsgConn {
     }
 
     /// Connects to the defined address with a message.
-    /// 
+    ///
 #[inline]
     pub fn connect_with_message(mut self, raddr: SocketAddr, msg: Vec<u8>) -> MsgConn {
         let msg = Msg::new(self.get_uid(), self.get_channel(), msg);
@@ -776,7 +771,7 @@ impl MsgConn {
                 let msgv = msgv.freeze();
                 match stream.write_all(msgv.as_ref()) {
                     Ok(_) => self.stream = Some(stream),
-                    Err(err) => { 
+                    Err(err) => {
                         println!("Send error {}", err);
                         self.stream = None;
                     }
@@ -791,24 +786,24 @@ impl MsgConn {
     }
 
     /// Connects to the defined address (without a message).
-    /// 
+    ///
 #[inline]
     pub fn connect(self, raddr: SocketAddr) -> MsgConn {
         self.connect_with_message(raddr, Vec::new())
     }
 
     /// Send a message. Blocks until a message is sent.
-    /// 
+    ///
     /// # Errors
     /// If a message cannot be sent, stream is set to None.
-    /// 
+    ///
 #[inline]
     pub fn send_message(mut self, msg: Vec<u8>) -> MsgConn {
         let message = Msg::new(self.get_uid(), self.get_channel(), msg);
         let encoded_msg = message.encode();
         let key = self.get_key().unwrap();
         let keyv = write_key(key);
-        let mut msgv = write_hdr_with_capacity(encoded_msg.len(), MsgHdr::select_cid(key), 
+        let mut msgv = write_hdr_with_capacity(encoded_msg.len(), MsgHdr::select_cid(key),
                                                HDRKEYL + encoded_msg.len());
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
@@ -816,7 +811,7 @@ impl MsgConn {
         let mut stream = self.stream.unwrap();
         match stream.write_all(msgv.as_ref()) {
             Ok(_) => self.stream = Some(stream),
-            Err(err) => { 
+            Err(err) => {
                 println!("Send error {}", err);
                 self.stream = None;
             }
@@ -825,10 +820,10 @@ impl MsgConn {
     }
 
     /// Reads a message with non-zero message content. Blocks until a message is received.
-    /// 
+    ///
     /// # Errors
     /// If message cannot be read, an empty message is returned.
-    /// 
+    ///
 #[inline]
     pub fn read_message(mut self) -> (MsgConn, Vec<u8>) {
         let stream = self.stream.unwrap();
@@ -874,7 +869,7 @@ impl MsgConn {
     }
 
     /// Closes the connection.
-    /// 
+    ///
 #[inline]
     pub fn close(mut self) -> MsgConn {
         if self.stream.is_some() {
@@ -892,39 +887,39 @@ pub(crate) fn read_hdr_type(hdr: &[u8]) -> u32 {
         return 0;
     }
     let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.get_u32::<BigEndian>();
+    let num = buf.get_u32_be();
     num >> 24
 }
 
-fn read_hdr_len(hdr: &[u8]) -> usize { 
+fn read_hdr_len(hdr: &[u8]) -> usize {
     if hdr.len() < HDRL {
         return 0;
     }
     let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.get_u32::<BigEndian>();
+    let num = buf.get_u32_be();
     (num & 0xffffff) as usize
 }
 
 fn write_hdr(len: usize, cid: u32) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = BytesMut::from(Vec::with_capacity(HDRKEYL));
-    msgv.put_u32::<BigEndian>(hdr);
-    msgv.put_u32::<BigEndian>(cid);
+    msgv.put_u32_be(hdr);
+    msgv.put_u32_be(cid);
     msgv
 }
 
 fn write_hdr_with_capacity(len: usize, cid: u32, cap: usize) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = BytesMut::from(Vec::with_capacity(cap));
-    msgv.put_u32::<BigEndian>(hdr);
-    msgv.put_u32::<BigEndian>(cid);
+    msgv.put_u32_be(hdr);
+    msgv.put_u32_be(cid);
     msgv
 }
 
 fn write_hdr_without_cid(len: usize) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
     let mut msgv = BytesMut::from(Vec::with_capacity(HDRL));
-    msgv.put_u32::<BigEndian>(hdr);
+    msgv.put_u32_be(hdr);
     msgv
 }
 
@@ -943,7 +938,7 @@ pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: BytesMut) -> BytesMut {
 fn write_key(val: u64) -> BytesMut {
     let key = val;
     let mut msgv = BytesMut::from(Vec::with_capacity(KEYL));
-    msgv.put_u64::<BigEndian>(key);
+    msgv.put_u64_be(key);
     msgv
 }
 
@@ -959,7 +954,7 @@ fn read_key_from_hdr(keyv: &[u8]) -> u64 {
         return 0;
     }
     let mut buf = Cursor::new(&keyv[HDRL..]);
-    buf.get_u64::<BigEndian>()
+    buf.get_u64_be()
 }
 
 fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
@@ -967,7 +962,7 @@ fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
         return 0;
     }
     let mut buf = Cursor::new(&hdrv[(HDRL-CIDL)..]);
-    buf.get_u32::<BigEndian>()
+    buf.get_u32_be()
 }
 
 /// Check if a peer is defined
@@ -1131,7 +1126,7 @@ mod tests {
         let uid2 = "User two".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
-         
+
         //create server
         let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
@@ -1165,7 +1160,7 @@ mod tests {
         let uid2 = "User two".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
-         
+
         //create server
         let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
@@ -1203,7 +1198,7 @@ mod tests {
         let uid2 = "User two".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
-         
+
         //create server
         let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
@@ -1246,7 +1241,7 @@ mod tests {
         let uid2 = "User two".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
-         
+
         //create server
         let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
@@ -1287,7 +1282,7 @@ mod tests {
         //create server
         let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
         thread::sleep(sec);
-         
+
         let child = thread::spawn(|| {
             let uid = "User two".to_string();
             let channel = "Channel".to_string();
@@ -1308,7 +1303,7 @@ mod tests {
         let uid = "User".to_string();
         let channel = "Channel".to_string();
         let message = "Hello World!".to_string();
-    
+
         //send hello world to awaiting client
         let mut conn = MsgConn::new(uid, channel);
         conn = conn.connect_with_message(addr, message.into_bytes());

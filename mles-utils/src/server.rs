@@ -1,8 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017-2018  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
 use std::io::Error;
 use std::collections::HashMap;
@@ -24,11 +24,11 @@ use futures::Future;
 use futures::stream::{self, Stream};
 use futures::sync::mpsc::unbounded;
 
-use self::bytes::{BytesMut, Bytes};
+use bytes::{BytesMut, Bytes};
 
-use local_db::*;
-use frame::*;
-use peer::*;
+use crate::local_db::*;
+use crate::frame::*;
+use crate::peer::*;
 use super::*;
 
 pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyaddr: String, hist_limit: usize, debug_flags: u64) {
@@ -92,7 +92,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         let frame = frame.and_then(move |(reader, hdr_key)| {
             process_hdr(reader, hdr_key)
         });
-        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| { 
+        let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
             let mut hdr = BytesMut::from(vec![0;HDRKEYL+hdr_len]);
             let message = hdr.split_off(HDRKEYL);
             let tframe = io::read_exact(reader, message);
@@ -174,9 +174,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                         for msg in &messages {
                             for (ocid, tx) in channels.iter() {
                                 if *ocid != cid {
-                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| { 
+                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| {
                                         let _rem = tx_removals_iter.unbounded_send((*ocid, channel.clone())).map_err(|_| {
-                                            () 
+                                            ()
                                         });
                                     });
                                 }
@@ -190,7 +190,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                             for msg in &messages {
                                 // add resync to history
                                 mles_db_entry.add_message(msg.clone());
-                            } 
+                            }
                         }
                         else {
                             mles_db_entry.add_message(message);
@@ -259,9 +259,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                             for (ocid, tx) in channels.iter() {
                                 let channel_rem = channel_clone.clone();
                                 if *ocid != cid {
-                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| { 
+                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| {
                                         let _rem = tx_removals.unbounded_send((*ocid, channel_rem)).map_err(|_| {
-                                            () 
+                                            ()
                                         });
                                     });
                                 }
@@ -276,9 +276,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         let mles_db_inner = mles_db.clone();
         let peer_writer = rx_peer_for_msgs.for_each(move |(peer_cid, channel, peer_tx, tx_orig_chan)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
-            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {  
+            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                 //setting peer tx
-                mles_db_entry.add_channel(peer_cid, peer_tx);  
+                mles_db_entry.add_channel(peer_cid, peer_tx);
                 mles_db_entry.set_peer_tx(tx_orig_chan.clone());
                 //sending all tx's to (possibly restarted) peer
                 for tx_entry in mles_db_entry.get_tx_db() {
@@ -296,12 +296,12 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             let cid = clear_peer_cid(peer_cid);
             println!("Removing peer cid {:x}, cid {:x}", peer_cid, cid);
             let mut mles_db_once = mles_db_inner.borrow_mut();
-            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {  
+            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                 //remove peer tx
-                mles_db_entry.rem_channel(peer_cid);  
+                mles_db_entry.rem_channel(peer_cid);
                 mles_db_entry.rem_peer_tx();
                 //remove the cid too as peer connection got eof
-                mles_db_entry.rem_channel(cid);  
+                mles_db_entry.rem_channel(cid);
             }
             Ok(())
         });
@@ -312,9 +312,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         let mles_db_inner = mles_db.clone();
         let channel_removals = rx_removals.for_each(move |(cid, channel)| {
             let mut mles_db_once = mles_db_inner.borrow_mut();
-            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {  
+            if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                 //remove erroneous connection
-                mles_db_entry.rem_channel(cid);  
+                mles_db_entry.rem_channel(cid);
             }
             Ok(())
         });
@@ -364,7 +364,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         Ok(())
     });
 
-    // execute server                               
+    // execute server
     let _res = core.run(srv).map_err(|err| { println!("Main: {}", err); ()});
 }
 
