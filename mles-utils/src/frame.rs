@@ -6,8 +6,8 @@
 * */
 use std::io::{Error, ErrorKind};
 
-use tokio_core::net::TcpStream;
-use tokio_io::io;
+use tokio::net::TcpStream;
+use tokio::io;
 use bytes::{BytesMut, Bytes};
 
 use super::*;

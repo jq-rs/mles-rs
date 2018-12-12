@@ -1,8 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
-*  file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+*  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017  Juhamatti Kuusisaari / Mles developers
+*  Copyright (C) 2017-2018  Mles developers
 * */
 use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
@@ -12,7 +12,7 @@ use bytes::Bytes;
 pub(crate) struct MlesDb {
     channels: Option<HashMap<u64, UnboundedSender<Bytes>>>,
     messages: Vec<Bytes>,
-    peer_tx: Option<UnboundedSender<UnboundedSender<Bytes>>>, 
+    peer_tx: Option<UnboundedSender<UnboundedSender<Bytes>>>,
     history_limit: usize,
     tx_db: Vec<UnboundedSender<Bytes>>,
 }

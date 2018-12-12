@@ -22,8 +22,8 @@ serde_cbor = "0.9"
 serde_bytes = "0.10"
 siphasher = "0.2"
 futures = "0.1"
-tokio-core = "0.1"
-tokio-io = "0.1"
+tokio = "0.1"
+#tokio-io = "0.1"
 bytes = "0.4"
 
 [lib]
