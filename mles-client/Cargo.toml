@@ -1,9 +1,9 @@
 [package]
 name = "mles-client"
-version = "1.1.0"
+version = "1.1.1"
+authors = ["jq-rs"]
 edition = "2018"
 
-authors = ["jq-rs"]
 description = "Mles-client, a distributed data protocol example (chat) client/ws-proxy"
 license = "MPL-2.0"
 repository = "https://github.com/jq-rs/mles-rs"
@@ -16,9 +16,9 @@ keywords = ["protocol", "publish", "subscribe", "mles", "websocket"]
 lto = true
 
 [dependencies]
-mles-utils = "1.1"
+mles-utils = { path = '../mles-utils' }
 futures = "0.1"
-tokio-core = "0.1"
+tokio = "0.1"
 tokio-codec = "0.1"
 bytes = "0.4"
 tokio-proto = "0.1"

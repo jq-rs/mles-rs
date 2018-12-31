@@ -289,7 +289,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         });
         TaskExecutor::current().spawn_local(Box::new(peer_writer.then(|_| {
             Ok(())
-        })));
+        }))).unwrap();
 
         let mles_db_inner = mles_db.clone();
         let peer_remover = rx_peer_remover.for_each(move |(channel, peer_cid)| {
@@ -307,7 +307,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         });
         TaskExecutor::current().spawn_local(Box::new(peer_remover.then(|_| {
             Ok(())
-        })));
+        }))).unwrap();
 
         let mles_db_inner = mles_db.clone();
         let channel_removals = rx_removals.for_each(move |(cid, channel)| {
@@ -320,7 +320,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         });
         TaskExecutor::current().spawn_local(Box::new(channel_removals.then(|_| {
             Ok(())
-        })));
+        }))).unwrap();
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let msg = Bytes::from(msg);
@@ -360,7 +360,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                 }
             }
             Ok(())
-        })));
+        }))).unwrap();
         Ok(())
     }).map_err(|e| { println!("Got error {:?}!", e); });
 

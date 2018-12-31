@@ -46,9 +46,9 @@ use std::time::Duration;
 use bytes::BytesMut;
 use futures::{Sink, Future, Stream};
 use futures::sync::mpsc;
-use tokio_core::reactor::Core;
-use tokio_core::net::TcpStream;
+use tokio::net::TcpStream;
 use tokio_codec::{Encoder, Decoder};
+use tokio::runtime::current_thread::{Runtime};
 use mles_utils::*;
 
 use crate::ws::*;
@@ -106,9 +106,8 @@ fn main() {
         // Handle stdin in a separate thread
         let (stdin_tx, stdin_rx) = mpsc::channel(16);
 
-        let mut core = Core::new().unwrap();
-        let handle = core.handle();
-        let tcp = TcpStream::connect(&raddr, &handle);
+        let mut runtime = Runtime::new().unwrap();
+        let tcp = TcpStream::connect(&raddr);
         let mut cid: Option<u32> = None;
         let mut key: Option<u64> = None;
         let mut keys = Vec::new();
@@ -178,9 +177,10 @@ fn main() {
                 .map(|_| ())
                 .select(write_stdout.map(|_| ()))
                 .then(|_| Ok(()))
-        });
+        }).map_err(|_| {});
 
-        match core.run(client) {
+        runtime.spawn(client);
+        match runtime.run() {
             Ok(_) => {}
             Err(err) => {
                 println!("Error: {}", err);
@@ -302,9 +302,8 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
 
 pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                            ws_tx: UnboundedSender<Vec<u8>>, mles_rx: UnboundedReceiver<Vec<u8>>) {
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let tcp = TcpStream::connect(&raddr, &handle);
+    let mut runtime = Runtime::new().unwrap();
+    let tcp = TcpStream::connect(&raddr);
     let mut cid: Option<u32> = None;
     let mut key: Option<u64> = None;
     let mut keys = Vec::new();
@@ -363,9 +362,11 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             .map(|_| ())
             .select(write_wstx.map(|_| ()))
             .then(|_| Ok(()))
-    });
+    }).map_err(|_| {});
 
-    match core.run(client) {
+    runtime.spawn(client);
+
+    match runtime.run() {
         Ok(_) => {}
         Err(err) => {
             println!("Error: {}", err);

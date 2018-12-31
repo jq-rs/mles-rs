@@ -1,9 +1,9 @@
 [package]
 name = "mles-utils"
-version = "1.1.0"
+version = "1.1.1"
+authors = ["jq-rs"]
 edition = "2018"
 
-authors = ["jq-rs"]
 description = "Mles-utils for Mles server and clients"
 license = "MPL-2.0"
 repository = "https://github.com/jq-rs/mles-rs"

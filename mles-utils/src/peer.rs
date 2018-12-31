@@ -7,7 +7,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
-use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::thread;
@@ -62,6 +61,8 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
 
         let loopcnt_inner = loopcnt.clone();
         let mles_peer_db_inner = mles_peer_db.clone();
+        let mles_peer_db_err = mles_peer_db.clone();
+        let tx_peer_remover_err = tx_peer_remover.clone();
         let client = tcp.and_then(move |pstream| {
             let laddr = match pstream.local_addr() {
                 Ok(laddr) => laddr,
@@ -157,7 +158,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             });
             TaskExecutor::current().spawn_local(Box::new(tx_origs_reader.then(|_| {
                 Ok(())
-            })));
+            }))).unwrap();
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let channel_removals = rx_removals.for_each(move |cid| {
@@ -167,7 +168,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             });
             TaskExecutor::current().spawn_local(Box::new(channel_removals.then(|_| {
                 Ok(())
-            })));
+            }))).unwrap();
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let tx_removals_inner = tx_removals.clone();
@@ -208,24 +209,26 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                     reader
                 })
             });
-            let socket_reader = socket_reader.map_err(|_| ());
+            let socket_reader = socket_reader.map_err(|_| {});
             let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
             TaskExecutor::current().spawn_local(Box::new(connection.then(move |_| {
                 println!("Connection closed.");
                 Ok(())
-            })));
-
+            }))).unwrap();
             Ok(())
-        }).map_err(|_| {
-            println!("Connection failed. Please check for proper key or duplicate user.");
+        }).map_err(move |err| { 
+                    let mles_peer_db_err = mles_peer_db_err.borrow();
+                    if err.kind() == ErrorKind::UnexpectedEof && 0 == mles_peer_db_err.get_rx_stats() {
+                        //we got reset directly from other side
+                        //let's wrap our things as it is bad
+                        let _res = tx_peer_remover_err.unbounded_send((channel, peer_cid));
+                        println!("Connection failed. Please check for proper key or duplicate user.");
+                    }
         });
         runtime.spawn(client);
 
         // execute server
-        let _res = runtime.run().map_err(|err| {
-            println!("Peer: {}", err);
-            err
-        });
+        let _res = runtime.run();
 
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();
