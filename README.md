@@ -183,8 +183,8 @@ fn main() {
 
 ## Existing client implementations over Mles (WebSocket) protocol
 
- * Reference client on Rust: https://github.com/jq-rs/mles-rs/tree/master/mles-client
- * Android real-time char-by-char messenger on JavaScript: http://mles.io/app
+ * Reference client in Rust: https://github.com/jq-rs/mles-rs/tree/master/mles-client
+ * Android real-time char-by-char messenger in JavaScript: http://mles.io/app
  * <Please ask to add your client here!>
 
 ## References:
