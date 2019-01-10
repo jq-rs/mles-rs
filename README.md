@@ -161,6 +161,7 @@ fn main() {
         let (conn, msg) = conn.read_message();
         let msg = String::from_utf8_lossy(msg.as_slice());
         assert_eq!("Hello World!", msg);
+        println!("Just received: {}", msg);
         conn.close();
     });
 
