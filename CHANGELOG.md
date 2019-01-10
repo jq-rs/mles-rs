@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.1.1]
+
+Tokio upgrade from core to current Tokio.
+
 ## [1.1.0]
 
 Generic:
