@@ -16,7 +16,7 @@ keywords = ["protocol", "publish", "subscribe", "cbor", "mles"]
 lto = true
 
 [dependencies]
-mles-utils = { path = '../mles-utils' }
+mles-utils = "1.1"
 
 [badges]
 travis-ci = { repository = "jq-rs/mles-rs" }
