@@ -25,7 +25,7 @@
  * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  *
- * Mles-support Copyright (c) 2017-2018  Mles developers
+ * Mles-support Copyright (c) 2017-2019  Mles developers
  *
  */
 
@@ -117,7 +117,7 @@ fn main() {
         let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
         let mut stdout = io::stdout();
-        let client = tcp.and_then(|stream| {
+        let client = tcp.and_then(move |stream| {
             let _val = stream.set_nodelay(true)
                              .map_err(|_| panic!("Cannot set to no delay"));
             let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
@@ -138,7 +138,7 @@ fn main() {
                 }
             }
             let (sink, stream) = Bytes.framed(stream).split();
-            let stdin_rx = stdin_rx.and_then(|buf| {
+            let stdin_rx = stdin_rx.and_then(move |buf| {
                 if None == key {
                     //create hash for verification
                     let decoded_message = Msg::decode(buf.as_slice());
@@ -308,7 +308,7 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
     let mut key: Option<u64> = None;
     let mut keys = Vec::new();
 
-    let client = tcp.and_then(|stream| {
+    let client = tcp.and_then(move |stream| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
         let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
@@ -330,7 +330,8 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
         }
         let (sink, stream) = Bytes.framed(stream).split();
         let mles_rx = mles_rx.map_err(|_| panic!()); // errors not possible on rx XXX
-        let mles_rx = mles_rx.and_then(|buf| {
+
+        let mles_rx = mles_rx.and_then(move |buf| {
             if buf.is_empty() {
                 return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
             }
