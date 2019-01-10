@@ -15,10 +15,10 @@ use std::net::SocketAddr;
 use std::thread;
 use std::time::Duration;
 
-use tokio_core::net::TcpListener;
-use tokio_core::reactor::Core;
-use tokio_io::io;
-use tokio_io::AsyncRead;
+use tokio::net::TcpListener;
+use tokio::io;
+use tokio::io::AsyncRead;
+use tokio::runtime::current_thread::{Runtime, TaskExecutor};
 
 use futures::Future;
 use futures::stream::{self, Stream};
@@ -32,9 +32,9 @@ use crate::peer::*;
 use super::*;
 
 pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyaddr: String, hist_limit: usize, debug_flags: u64) {
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let socket = match TcpListener::bind(&address, &handle) {
+    let mut runtime = Runtime::new().unwrap();
+
+    let socket = match TcpListener::bind(&address) {
         Ok(listener) => listener,
         Err(err) => {
             println!("Error: {}", err);
@@ -51,11 +51,13 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
 
     let mut cnt = 0;
 
-    let srv = socket.incoming().for_each(move |(stream, addr)| {
+    let srv = socket.incoming().for_each(move |stream| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
         let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                          .map_err(|_| panic!("Cannot set keepalive"));
+        let addr = stream.local_addr().unwrap();
+
         cnt += 1;
 
         if 0 != debug_flags {
@@ -287,9 +289,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             }
             Ok(())
         });
-        handle.spawn(peer_writer.then(|_| {
+        TaskExecutor::current().spawn_local(Box::new(peer_writer.then(|_| {
             Ok(())
-        }));
+        }))).unwrap();
 
         let mles_db_inner = mles_db.clone();
         let peer_remover = rx_peer_remover.for_each(move |(channel, peer_cid)| {
@@ -305,9 +307,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             }
             Ok(())
         });
-        handle.spawn(peer_remover.then(|_| {
+        TaskExecutor::current().spawn_local(Box::new(peer_remover.then(|_| {
             Ok(())
-        }));
+        }))).unwrap();
 
         let mles_db_inner = mles_db.clone();
         let channel_removals = rx_removals.for_each(move |(cid, channel)| {
@@ -318,9 +320,9 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
             }
             Ok(())
         });
-        handle.spawn(channel_removals.then(|_| {
+        TaskExecutor::current().spawn_local(Box::new(channel_removals.then(|_| {
             Ok(())
-        }));
+        }))).unwrap();
 
         let socket_writer = rx.fold(writer, |writer, msg| {
             let msg = Bytes::from(msg);
@@ -333,7 +335,7 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
         let channel_db_conn = channel_db.clone();
         let socket_reader = socket_next.map_err(|_| ());
         let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
-        handle.spawn(connection.then(move |_| {
+        TaskExecutor::current().spawn_local(Box::new(connection.then(move |_| {
             let mut mles_db = mles_db_conn.borrow_mut();
             let mut channel_db = channel_db_conn.borrow_mut();
             let mut chan_to_rem: Option<u64> = None;
@@ -360,11 +362,14 @@ pub(crate) fn run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String,
                 }
             }
             Ok(())
-        }));
+        }))).unwrap();
         Ok(())
-    });
+    }).map_err(|e| { println!("Got error {:?}!", e); });
+
+    // spawn the server itself
+    runtime.spawn(srv);
 
     // execute server
-    let _res = core.run(srv).map_err(|err| { println!("Main: {}", err); ()});
+    let _res = runtime.run();
 }
 

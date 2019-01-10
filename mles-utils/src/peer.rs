@@ -7,16 +7,15 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
-use std::io::Error;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::thread;
 use std::time::Duration;
 
-use tokio_core::net::TcpStream;
-use tokio_core::reactor::Core;
-use tokio_io::io;
-use tokio_io::AsyncRead;
+use tokio::net::TcpStream;
+use tokio::io;
+use tokio::io::AsyncRead;
+use tokio::runtime::current_thread::{Runtime, TaskExecutor};
 
 use futures::Future;
 use futures::stream::{self, Stream};
@@ -38,18 +37,17 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                         tx_peer_remover: UnboundedSender<(String, u64)>,
                         debug_flags: u64)
 {
-    let mut core = Core::new().unwrap();
+    let mut runtime = Runtime::new().unwrap();
     let loopcnt = Rc::new(RefCell::new(1));
     let mles_peer_db = Rc::new(RefCell::new(MlesPeerDb::new(hist_limit)));
 
     loop {
-        let handle = core.handle();
         let channel = channel.clone();
         let tx_peer_for_msgs = tx_peer_for_msgs.clone();
         let mut msg = msg.clone();
         let keyaddr = keyaddr.clone();
 
-        let tcp = TcpStream::connect(&peer, &handle);
+        let tcp = TcpStream::connect(&peer);
 
         let (tx_orig_chan, rx_orig_chan) = unbounded();
         let (tx, rx) = unbounded();
@@ -63,6 +61,8 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
 
         let loopcnt_inner = loopcnt.clone();
         let mles_peer_db_inner = mles_peer_db.clone();
+        let mles_peer_db_err = mles_peer_db.clone();
+        let tx_peer_remover_err = tx_peer_remover.clone();
         let client = tcp.and_then(move |pstream| {
             let laddr = match pstream.local_addr() {
                 Ok(laddr) => laddr,
@@ -127,7 +127,7 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
             let (reader, writer) = pstream.split();
 
             let mles_peer_db = mles_peer_db_inner.clone();
-            let psocket_writer = rx.fold(writer, move |writer, msg| {
+            let socket_writer = rx.fold(writer, move |writer, msg| {
 
                 //push message to history
                 let mut mles_peer_db = mles_peer_db.borrow_mut();
@@ -139,9 +139,6 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 let amt = amt.map(|(writer, _)| writer);
                 amt.map_err(|_| ())
             });
-            handle.spawn(psocket_writer.then(|_| {
-                Ok(())
-            }));
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let tx_origs_reader = rx_orig_chan.for_each(move |tx_orig| {
@@ -159,9 +156,9 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 }
                 Ok(())
             });
-            handle.spawn(tx_origs_reader.then(|_| {
+            TaskExecutor::current().spawn_local(Box::new(tx_origs_reader.then(|_| {
                 Ok(())
-            }));
+            }))).unwrap();
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let channel_removals = rx_removals.for_each(move |cid| {
@@ -169,14 +166,14 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
                 mles_peer_db_once.rem_channel(cid);
                 Ok(())
             });
-            handle.spawn(channel_removals.then(|_| {
+            TaskExecutor::current().spawn_local(Box::new(channel_removals.then(|_| {
                 Ok(())
-            }));
+            }))).unwrap();
 
             let mles_peer_db = mles_peer_db_inner.clone();
             let tx_removals_inner = tx_removals.clone();
-            let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
-            iter.fold(reader, move |reader, _| {
+            let iter = stream::iter_ok::<_, io::Error>(iter::repeat(()));
+            let socket_reader = iter.fold(reader, move |reader, _| {
                 let frame = io::read_exact(reader, BytesMut::from(vec![0;HDRKEYL]));
                 let frame = frame.and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
@@ -211,27 +208,27 @@ pub(crate) fn peer_conn(hist_limit: usize, peer: SocketAddr, is_addr_set: bool, 
 
                     reader
                 })
-            })
+            });
+            let socket_reader = socket_reader.map_err(|_| {});
+            let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
+            TaskExecutor::current().spawn_local(Box::new(connection.then(move |_| {
+                println!("Connection closed.");
+                Ok(())
+            }))).unwrap();
+            Ok(())
+        }).map_err(move |err| { 
+                    let mles_peer_db_err = mles_peer_db_err.borrow();
+                    if err.kind() == ErrorKind::UnexpectedEof && 0 == mles_peer_db_err.get_rx_stats() {
+                        //we got reset directly from other side
+                        //let's wrap our things as it is bad
+                        let _res = tx_peer_remover_err.unbounded_send((channel, peer_cid));
+                        println!("Connection failed. Please check for proper key or duplicate user.");
+                    }
         });
+        runtime.spawn(client);
 
         // execute server
-        let res = core.run(client).map_err(|err| {
-            println!("Peer: {}", err);
-            err
-        });
-        match res {
-            Err(err) => {
-                let mles_peer_db = mles_peer_db.borrow();
-                if err.kind() == ErrorKind::UnexpectedEof && 0 == mles_peer_db.get_rx_stats() {
-                    //we got reset directly from other side
-                    //let's wrap our things as it is bad
-                    let _res = tx_peer_remover.unbounded_send((channel, peer_cid));
-                    println!("Connection failed. Please check for proper key or duplicate user.");
-                    return;
-                }
-            },
-            Ok(_) => {}
-        }
+        let _res = runtime.run();
 
         let mut mles_peer_db_clear = mles_peer_db.borrow_mut();
         mles_peer_db_clear.clear_channels();

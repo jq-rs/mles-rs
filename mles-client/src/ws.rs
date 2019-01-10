@@ -14,8 +14,8 @@ use std::borrow::Cow;
 use futures::stream::Stream;
 use futures::sync::mpsc::unbounded;
 use futures::{Future, Sink};
-use tokio_core::net::TcpListener;
-use tokio_core::reactor::Core;
+use tokio::net::TcpListener;
+use tokio::runtime::current_thread::{Runtime, TaskExecutor};
 use tungstenite::protocol::Message;
 use tungstenite::handshake::server::Request;
 
@@ -29,9 +29,8 @@ const SECVALUE: &str = "mles-websocket";
 pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     let addr = "0.0.0.0".to_string() + WSPORT;
     let addr = addr.parse().unwrap();
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let socket = match TcpListener::bind(&addr, &handle) {
+    let mut runtime = Runtime::new().unwrap();
+    let socket = match TcpListener::bind(&addr) {
         Ok(listener) => listener,
         Err(err) => {
             println!("Proxy error: {}", err);
@@ -41,13 +40,12 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
     println!("Listening WebSockets on: {}", addr);
     let mut cnt = 0;
 
-    let srv = socket.incoming().for_each(|(stream, addr)| {
+    let srv = socket.incoming().for_each(move |stream| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
         let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
                          .map_err(|_| panic!("Cannot set keepalive"));
-        let handle_inner = handle.clone();
-        let handle_out = handle.clone();
+        let addr = stream.local_addr().unwrap();
         cnt += 1;
 
         let (ws_tx, ws_rx) = unbounded();
@@ -114,22 +112,24 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
             let connection = ws_reader.map(|_| ()).map_err(|_| ())
                                       .select(ws_writer.map(|_| ()).map_err(|_| ()));
 
-            handle_inner.spawn(connection.then(move |_| {
+            TaskExecutor::current().spawn_local(Box::new(connection.then(move |_| {
                 println!("Connection {} closed.", cnt);
                 Ok(())
-            }));
+            }))).unwrap();
 
             Ok(())
         });
-        handle_out.spawn(accept.then(move |_| {
+        TaskExecutor::current().spawn_local(Box::new(accept.then(move |_| {
             Ok(())
-        }));
+        }))).unwrap();
 
         //keep accepting connections
         Ok(())
-    });
+    }).map_err(|_| {});
 
-    match core.run(srv) {
+    runtime.spawn(srv);
+
+    match runtime.run() {
         Ok(_) => {}
         Err(err) => {
             println!("Error: {}", err);

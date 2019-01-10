@@ -25,7 +25,7 @@
  * IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  *
- * Mles-support Copyright (c) 2017-2018  Mles developers
+ * Mles-support Copyright (c) 2017-2019  Mles developers
  *
  */
 
@@ -46,9 +46,9 @@ use std::time::Duration;
 use bytes::BytesMut;
 use futures::{Sink, Future, Stream};
 use futures::sync::mpsc;
-use tokio_core::reactor::Core;
-use tokio_core::net::TcpStream;
+use tokio::net::TcpStream;
 use tokio_codec::{Encoder, Decoder};
+use tokio::runtime::current_thread::{Runtime};
 use mles_utils::*;
 
 use crate::ws::*;
@@ -106,9 +106,8 @@ fn main() {
         // Handle stdin in a separate thread
         let (stdin_tx, stdin_rx) = mpsc::channel(16);
 
-        let mut core = Core::new().unwrap();
-        let handle = core.handle();
-        let tcp = TcpStream::connect(&raddr, &handle);
+        let mut runtime = Runtime::new().unwrap();
+        let tcp = TcpStream::connect(&raddr);
         let mut cid: Option<u32> = None;
         let mut key: Option<u64> = None;
         let mut keys = Vec::new();
@@ -118,7 +117,7 @@ fn main() {
         let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
         let mut stdout = io::stdout();
-        let client = tcp.and_then(|stream| {
+        let client = tcp.and_then(move |stream| {
             let _val = stream.set_nodelay(true)
                              .map_err(|_| panic!("Cannot set to no delay"));
             let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
@@ -139,7 +138,7 @@ fn main() {
                 }
             }
             let (sink, stream) = Bytes.framed(stream).split();
-            let stdin_rx = stdin_rx.and_then(|buf| {
+            let stdin_rx = stdin_rx.and_then(move |buf| {
                 if None == key {
                     //create hash for verification
                     let decoded_message = Msg::decode(buf.as_slice());
@@ -178,9 +177,10 @@ fn main() {
                 .map(|_| ())
                 .select(write_stdout.map(|_| ()))
                 .then(|_| Ok(()))
-        });
+        }).map_err(|_| {});
 
-        match core.run(client) {
+        runtime.spawn(client);
+        match runtime.run() {
             Ok(_) => {}
             Err(err) => {
                 println!("Error: {}", err);
@@ -302,14 +302,13 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
 
 pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                            ws_tx: UnboundedSender<Vec<u8>>, mles_rx: UnboundedReceiver<Vec<u8>>) {
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-    let tcp = TcpStream::connect(&raddr, &handle);
+    let mut runtime = Runtime::new().unwrap();
+    let tcp = TcpStream::connect(&raddr);
     let mut cid: Option<u32> = None;
     let mut key: Option<u64> = None;
     let mut keys = Vec::new();
 
-    let client = tcp.and_then(|stream| {
+    let client = tcp.and_then(move |stream| {
         let _val = stream.set_nodelay(true)
                          .map_err(|_| panic!("Cannot set to no delay"));
         let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
@@ -331,7 +330,8 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
         }
         let (sink, stream) = Bytes.framed(stream).split();
         let mles_rx = mles_rx.map_err(|_| panic!()); // errors not possible on rx XXX
-        let mles_rx = mles_rx.and_then(|buf| {
+
+        let mles_rx = mles_rx.and_then(move |buf| {
             if buf.is_empty() {
                 return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
             }
@@ -363,9 +363,11 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
             .map(|_| ())
             .select(write_wstx.map(|_| ()))
             .then(|_| Ok(()))
-    });
+    }).map_err(|_| {});
 
-    match core.run(client) {
+    runtime.spawn(client);
+
+    match runtime.run() {
         Ok(_) => {}
         Err(err) => {
             println!("Error: {}", err);
