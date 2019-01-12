@@ -42,6 +42,9 @@ use std::thread;
 use std::io::{Error, ErrorKind};
 use futures::sync::mpsc::{UnboundedSender, UnboundedReceiver};
 use std::time::Duration;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use bytes::BytesMut;
 use futures::{Sink, Future, Stream};
@@ -300,6 +303,53 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     }
 }
 
+struct ChannelDb {
+    cid: u32,
+    key: u64,
+    socket: UnboundedSender<Vec<u8>>,
+}
+
+pub fn process_mles_multiclient(raddr: SocketAddr, keyval: String, keyaddr: String,
+                                ws_tx: UnboundedSender<Vec<u8>>, mles_rx: UnboundedReceiver<Vec<u8>>) {
+    let mut runtime = Runtime::new().unwrap();
+    let mut cid: Option<u32> = None;
+    let mut key: Option<u64> = None;
+    let mut keys: Vec<String> = Vec::new();
+    let uc_hash: HashMap<String, ChannelDb> = HashMap::new();
+    let uc_db = Rc::new(RefCell::new(uc_hash));
+    
+    let mles_rx = mles_rx.for_each(move |buf| {
+        //if buf.is_empty() {
+        //    return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+        //}
+        let decoded_message = Msg::decode(buf.as_slice());
+        let uid = decoded_message.get_uid().to_string();
+        let channel = decoded_message.get_channel().to_string();
+        let key = uid + &channel;
+        let mut uc_db_once = uc_db.borrow_mut();
+        //verify do we need new connection
+        if !uc_db_once.contains_key(&key) {
+            //spawn a new task with the actual connection,
+            //bundle channel with it,
+            //add to hash
+            //
+            let tcp = TcpStream::connect(&raddr);
+        }
+        //send the buf to the task
+        Ok(())
+    }).map_err(|e| { println!("Got error {:?}!", e); });
+
+    runtime.spawn(mles_rx);
+
+    match runtime.run() {
+        Ok(_) => {}
+        Err(err) => {
+            println!("Error: {}", err);
+        }
+    };
+}
+
+
 pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                            ws_tx: UnboundedSender<Vec<u8>>, mles_rx: UnboundedReceiver<Vec<u8>>) {
     let mut runtime = Runtime::new().unwrap();
@@ -328,7 +378,9 @@ pub fn process_mles_client(raddr: SocketAddr, keyval: String, keyaddr: String,
                 keys.push(keyaddr);
             }
         }
+
         let (sink, stream) = Bytes.framed(stream).split();
+
         let mles_rx = mles_rx.map_err(|_| panic!()); // errors not possible on rx XXX
 
         let mles_rx = mles_rx.and_then(move |buf| {
