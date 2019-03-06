@@ -42,5 +42,4 @@ In all Mles-related forums, we follow the [Rust Code of Conduct](http://www.rust
 
 ## Communication
 
-At the moment there is not any frequent communication channel in addition to GitHub means of communication. 
-Please give suggestions if you think such are needed.
+In addition to GitHub, there is Reddit [/r/mles](http://www.reddit.com/r/mles) channel available for general discussion.
