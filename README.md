@@ -186,7 +186,7 @@ fn main() {
 
  * Reference client in Rust: https://github.com/jq-rs/mles-rs/tree/master/mles-client
  * Android real-time char-by-char messenger in JavaScript: http://mles.io/app
- * <Please ask to add your client here!>
+ * <Please add your client here!>
 
 ## References:
 
