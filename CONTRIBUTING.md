@@ -42,4 +42,4 @@ In all Mles-related forums, we follow the [Rust Code of Conduct](http://www.rust
 
 ## Communication
 
-In addition to GitHub, there is Reddit [/r/mles](http://www.reddit.com/r/mles) channel available for general discussion.
+In addition to GitHub, there is a Reddit [/r/mles](http://www.reddit.com/r/mles) channel available for general discussion.
