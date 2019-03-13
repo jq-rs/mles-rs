@@ -18,9 +18,11 @@ Every session between Mles server and client is authenticated using 64-bit SipHa
 
 After Mles server has authenticated the session and moved the connected Mles client to its channel context, the SipHash key SHOULD be ignored by the Mles server. After context change, the SipHash key MAY be changed and used by Mles clients within the channel context.
 
-An Mles server MAY contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, but yet simple manner between other Mles servers. 
+An Mles server MAY contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, yet simple manner between other Mles servers.
 
-Every connection has also 32-bit connection id (CID) which equals to the lowest 4 bytes of SipHash key. If an Mles server has a CID as part of an active connection, it MUST drop further incoming connections with the same CID. This allows effectively autonomous loop protection in case peer servers are configured into a topology that creates a loop.
+Every connection has also 32-bit connection id (CID) which SHOULD equal to the lowest 4 bytes of SipHash key. If an Mles server has a CID as part of an active connection, it MUST drop further incoming connections with the same CID. This allows effectively autonomous loop protection in case peer servers are configured into a topology that creates a loop.
+
+An Mles server MAY be configured to have a static CID value with a peer server configuration to create a load-balancing/protection group. All group members MUST have the same static CID configured. The group may also be a ring of servers.
 
 In case Mles server is restarted, Mles peer server, or even an Mles client, MAY provide history data for the Mles server as a resynchronization for those channels that it has the history available. This allows distributed data protection for the channel information.  
 
