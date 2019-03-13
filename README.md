@@ -20,7 +20,7 @@ After Mles server has authenticated the session and moved the connected Mles cli
 
 An Mles server MAY contact to an Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, yet simple manner between other Mles servers.
 
-Every connection has also 32-bit connection id (CID) which SHOULD equal to the lowest 4 bytes of SipHash key. However, CID MUST be configured in a deterministic manner. If an Mles server has a CID as part of an active connection on the same channel, it MUST drop further incoming connections with the same CID. This allows effectively autonomous loop protection in case peer servers are configured into a topology that creates a loop.
+Every connection has also 32-bit connection id (CID) which SHOULD equal to the lowest 4 bytes of SipHash key. If SipHash key is not used, CID MUST still be configured in a deterministic manner. If an Mles server has a CID as part of an active connection on the same channel, it MUST drop further incoming connections with the same CID. This allows effectively autonomous loop protection in case peer servers are configured into a topology that creates a loop.
 
 An Mles server MAY be configured to have a static CID value with a peer server configuration to create a load-balancing/protection group. All group members MUST have the same static CID configured. The group may also be a ring of servers.
 
