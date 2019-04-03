@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 Sysutils:
- - Fix paths
+ - Fix paths, define longer history by default
 
 ## [1.1.1]
 
