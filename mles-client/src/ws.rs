@@ -2,10 +2,9 @@
 *  License, v. 2.0. If a copy of the MPL was not distributed with this
 *  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 *
-*  Copyright (C) 2017-2018  Mles developers
+*  Copyright (C) 2017-2019  Mles developers
 * */
 use std::io::{Error,ErrorKind};
-use std::thread;
 use std::net::SocketAddr;
 use std::time::Duration;
 use std::str;
@@ -20,7 +19,11 @@ use tungstenite::protocol::Message;
 use tungstenite::handshake::server::Request;
 
 use tokio_tungstenite::accept_hdr_async;
-use crate::{KEEPALIVE, process_mles_client};
+use crate::KEEPALIVE;
+use tokio::net::TcpStream;
+use tokio_codec::Decoder;
+use crate::Bytes;
+use mles_utils::*;
 
 const WSPORT: &str = ":8076";
 const SECPROT: &str = "Sec-WebSocket-Protocol";
@@ -53,7 +56,6 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
 
         let keyval_inner = keyval.clone();
         let keyaddr_inner = keyaddr.clone();
-        let ws_tx_inner = ws_tx.clone();
 
         let callback = |req: &Request| {
             for &(ref header, ref value) in req.headers.iter() {
@@ -85,8 +87,73 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
         let accept = accept.and_then(move |ws_stream| {
             println!("New WebSocket connection {}: {}", cnt, addr);
 
-            thread::spawn(move || process_mles_client(raddr, keyval_inner, keyaddr_inner,
-                                                        ws_tx_inner, mles_rx));
+            let tcp = TcpStream::connect(&raddr);
+            let mut cid: Option<u32> = None;
+            let mut key: Option<u64> = None;
+            let mut keys = Vec::new();
+
+            let client = tcp.and_then(move |stream| {
+                let _val = stream.set_nodelay(true)
+                    .map_err(|_| panic!("Cannot set to no delay"));
+                let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
+                    .map_err(|_| panic!("Cannot set keepalive"));
+                let laddr = match stream.local_addr() {
+                    Ok(laddr) => laddr,
+                    Err(_) => {
+                        let addr = "0.0.0.0:0";
+                        addr.parse::<SocketAddr>().unwrap()
+                    }
+                };
+                if  !keyval_inner.is_empty() {
+                    keys.push(keyval_inner);
+                } else {
+                    keys.push(MsgHdr::addr2str(&laddr));
+                    if !keyaddr_inner.is_empty() {
+                        keys.push(keyaddr_inner);
+                    }
+                }
+
+                let (sink, stream) = Bytes.framed(stream).split();
+
+                let mles_rx = mles_rx.map_err(|_| panic!()); // errors not possible on rx XXX
+
+                let mles_rx = mles_rx.and_then(move |buf: Vec<_>| {
+                    if buf.is_empty() {
+                        return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
+                    }
+                    if None == key {
+                        //create hash for verification
+                        let decoded_message = Msg::decode(buf.as_slice());
+                        keys.push(decoded_message.get_uid().to_string());
+                        keys.push(decoded_message.get_channel().to_string());
+                        key = Some(MsgHdr::do_hash(&keys));
+                        cid = Some(MsgHdr::select_cid(key.unwrap()));
+                    }
+                    let msghdr = MsgHdr::new(buf.len() as u32, cid.unwrap(), key.unwrap());
+                    let mut msgv = msghdr.encode();
+                    msgv.extend(buf);
+                    Ok(msgv)
+                });
+
+                let send_wsrx = mles_rx.forward(sink);
+                let write_wstx = stream.for_each(move |buf| {
+                    let ws_tx_inner = ws_tx.clone();
+                    // send to websocket
+                    let _ = ws_tx_inner.send(buf.to_vec()).wait().map_err(|err| {
+                        Error::new(ErrorKind::Other, err)
+                    });
+                    Ok(())
+                });
+
+                send_wsrx
+                    .map(|_| ())
+                    .select(write_wstx.map(|_| ()))
+                    .then(|_| Ok(()))
+            }).map_err(|_| {});
+            TaskExecutor::current().spawn_local(Box::new(client.then(move |_| {
+                println!("Connection {} proxy closed.", cnt);
+                Ok(())
+            }))).unwrap();
 
             let (sink, stream) = ws_stream.split();
 

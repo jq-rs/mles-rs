@@ -8,7 +8,6 @@
 *
 *  Copyright (C) 2017-2018  Mles developers
 * */
-
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_cbor;
