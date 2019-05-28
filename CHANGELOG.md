@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+Client:
+ - Change WebSocket proxy to use a task instead of thread for every connection.
+
 Sysutils:
  - Fix paths, define longer history by default
 
