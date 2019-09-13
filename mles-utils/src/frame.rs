@@ -6,17 +6,23 @@
 * */
 use std::io::{Error, ErrorKind};
 
-use tokio::net::TcpStream;
+use bytes::{Bytes, BytesMut};
 use tokio::io;
-use bytes::{BytesMut, Bytes};
+use tokio::net::TcpStream;
 
 use super::*;
 
-pub(crate) fn process_hdr_dummy_key(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut) -> Result<(io::ReadHalf<TcpStream>, BytesMut, usize), Error> {
+pub(crate) fn process_hdr_dummy_key(
+    reader: io::ReadHalf<TcpStream>,
+    hdr_key: BytesMut,
+) -> Result<(io::ReadHalf<TcpStream>, BytesMut, usize), Error> {
     process_hdr(reader, hdr_key)
 }
 
-pub(crate) fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: BytesMut) -> Result<(io::ReadHalf<TcpStream>, BytesMut, usize), Error> {
+pub(crate) fn process_hdr(
+    reader: io::ReadHalf<TcpStream>,
+    hdr: BytesMut,
+) -> Result<(io::ReadHalf<TcpStream>, BytesMut, usize), Error> {
     if hdr.is_empty() {
         return Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"));
     }
@@ -30,15 +36,23 @@ pub(crate) fn process_hdr(reader: io::ReadHalf<TcpStream>, hdr: BytesMut) -> Res
     Ok((reader, hdr, hdr_len))
 }
 
-pub(crate) fn process_msg(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut) -> Result<(io::ReadHalf<TcpStream>, BytesMut, BytesMut), Error> {
+pub(crate) fn process_msg(
+    reader: io::ReadHalf<TcpStream>,
+    hdr_key: BytesMut,
+    message: BytesMut,
+) -> Result<(io::ReadHalf<TcpStream>, BytesMut, BytesMut), Error> {
     if message.is_empty() {
         return Err(Error::new(ErrorKind::BrokenPipe, "incorrect message len"));
     }
     Ok((reader, hdr_key, message))
 }
 
-pub(crate) fn process_key(reader: io::ReadHalf<TcpStream>, hdr_key: BytesMut, message: BytesMut, mut keys: Vec<String>) -> Result<(io::ReadHalf<TcpStream>, Vec<Bytes>, Msg), Error> {
-
+pub(crate) fn process_key(
+    reader: io::ReadHalf<TcpStream>,
+    hdr_key: BytesMut,
+    message: BytesMut,
+    mut keys: Vec<String>,
+) -> Result<(io::ReadHalf<TcpStream>, Vec<Bytes>, Msg), Error> {
     //decode message(s)
     let messages = message_decode(message, hdr_key);
     if messages.is_empty() {
@@ -70,8 +84,7 @@ fn message_decode(message: BytesMut, mut hdr_key: BytesMut) -> Vec<Bytes> {
         for msg in decoded_resync_message.get_messages() {
             msgs.push(Bytes::from(msg));
         }
-    }
-    else {
+    } else {
         hdr_key.unsplit(message);
         let msg = hdr_key.freeze();
         msgs.push(msg);
@@ -95,7 +108,7 @@ mod tests {
         let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();
-        let msg =  "a test msg".to_string().into_bytes();
+        let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         let messages = message_decode(BytesMut::from(encoded_msg), BytesMut::from(hdrkey));
@@ -120,7 +133,7 @@ mod tests {
         let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone();
-        let msg =  "a test msg".to_string().into_bytes();
+        let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         hdr.extend(encoded_msg);
@@ -149,7 +162,7 @@ mod tests {
         let keyhdr: BytesMut = write_key(key);
         hdr.extend(keyhdr);
         let hdrkey = hdr.clone().to_vec();
-        let msg =  "a test msg".to_string().into_bytes();
+        let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         hdr.extend(encoded_msg);
@@ -172,6 +185,3 @@ mod tests {
         assert_eq!(decoded_msg.message, orig_msg.message);
     }
 }
-
-
-

@@ -5,9 +5,9 @@
 *  Copyright (C) 2017-2018  Mles developers
 * */
 
-use std::{process, env};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use mles_utils::*;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::{env, process};
 
 const SRVPORT: &str = ":8077";
 
@@ -27,7 +27,7 @@ fn main() {
         let v: Vec<&str> = this_arg.split("--history-limit=").collect();
         if v.len() > 1 {
             if let Some(limitstr) = v.get(1) {
-                if let Ok(limit)= limitstr.parse::<usize>() {
+                if let Ok(limit) = limitstr.parse::<usize>() {
                     hist_limit = limit;
                     println!("History limit: {}", hist_limit);
                     continue;
@@ -35,20 +35,21 @@ fn main() {
             }
             println!("{}", USAGE);
             process::exit(1);
-        }
-        else {
+        } else {
             let peerarg = item + SRVPORT;
-            let rpeer: Vec<_> = peerarg.to_socket_addrs()
-                                       .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
-                                       .collect();
+            let rpeer: Vec<_> = peerarg
+                .to_socket_addrs()
+                .unwrap_or_else(|_| {
+                    vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter()
+                })
+                .collect();
             let rpeer = *rpeer.first().unwrap();
             let rpeer = Some(rpeer);
             // check that we really got a proper peer
             if mles_utils::has_peer(&rpeer) {
                 println!("Using peer domain {}", peerarg);
                 peer = rpeer;
-            }
-            else {
+            } else {
                 println!("Unable to resolve peer domain {}", peerarg);
             }
         }
@@ -70,7 +71,6 @@ fn main() {
 
     server_run(addr, peer, keyval, keyaddr, hist_limit, 1);
 }
-
 
 #[cfg(test)]
 mod tests {

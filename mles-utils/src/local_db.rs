@@ -4,8 +4,8 @@
 *
 *  Copyright (C) 2017-2018  Mles developers
 * */
-use std::collections::HashMap;
 use futures::sync::mpsc::UnboundedSender;
+use std::collections::HashMap;
 
 use bytes::Bytes;
 
@@ -194,7 +194,6 @@ impl MlesPeerDb {
     //pub fn get_tx_stats(&self) -> u64 {
     //    self.tx_stats
     //}
-
 }
 
 #[cfg(test)]

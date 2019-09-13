@@ -1,11 +1,11 @@
 #![feature(test)]
-extern crate test;
 extern crate mles_utils;
+extern crate test;
 
 #[cfg(test)]
 mod tests {
-    use test::Bencher;
     use mles_utils::*;
+    use test::Bencher;
 
     #[bench]
     fn bench_encode_key_from_string(b: &mut Bencher) {
@@ -25,4 +25,3 @@ mod tests {
         b.iter(|| MsgHdr::do_hash(&vec));
     }
 }
- 
