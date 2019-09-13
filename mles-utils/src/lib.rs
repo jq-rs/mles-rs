@@ -10,28 +10,28 @@
 * */
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_cbor;
 extern crate serde_bytes;
+extern crate serde_cbor;
 
-mod server;
-mod local_db;
 mod frame;
+mod local_db;
 mod peer;
+mod server;
 
-use std::io::Cursor;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
-use std::net::TcpStream;
+use std::io::Cursor;
 use std::io::Write;
-use std::io::{Read, Error};
+use std::io::{Error, Read};
+use std::net::TcpStream;
 
+use bytes::{Buf, BufMut, BytesMut};
 use std::net::{IpAddr, SocketAddr};
-use bytes::{BytesMut, BufMut, Buf};
 
 /// HDRL defines the size of the header including version, length and timestamp
 pub(crate) const HDRL: usize = 8;
 /// CIDL defines the size of the connection id
-pub(crate) const CIDL:  usize = 4;
+pub(crate) const CIDL: usize = 4;
 /// KEYL defines the size of the key
 pub(crate) const KEYL: usize = 8;
 /// HDRKEYL defines the size of the header + key
@@ -49,9 +49,9 @@ const KEEPALIVE: u64 = 5;
 /// Encoded message will always be in network byte order.
 ///
 pub struct MsgHdr {
-    thlen:  u32,
-    cid:    u32,
-    key:    u64,
+    thlen: u32,
+    cid: u32,
+    key: u64,
 }
 
 impl MsgHdr {
@@ -243,7 +243,11 @@ impl MsgHdr {
     /// assert_eq!(len, msgh.get_len());
     /// ```
     pub fn decode(buf: Vec<u8>) -> MsgHdr {
-        MsgHdr::new(read_hdr_len(&buf) as u32, read_cid_from_hdr(&buf), read_key_from_hdr(&buf))
+        MsgHdr::new(
+            read_hdr_len(&buf) as u32,
+            read_cid_from_hdr(&buf),
+            read_key_from_hdr(&buf),
+        )
     }
     /// Do a valid hash for Mles over provided UTF-8 String list.
     ///
@@ -256,7 +260,7 @@ impl MsgHdr {
     /// let hashable = vec![hashstr1, hashstr2];
     /// let key: u64 = MsgHdr::do_hash(&hashable);
     /// ```
-#[inline]
+    #[inline]
     pub fn do_hash(t: &[String]) -> u64 {
         let mut s = SipHasher::new();
         for item in t {
@@ -274,7 +278,7 @@ impl MsgHdr {
     /// let cid = MsgHdr::select_cid(0x1000000100000001);
     /// assert_eq!(cid, 0x00000001);
     /// ```
-#[inline]
+    #[inline]
     pub fn select_cid(key: u64) -> u32 {
         key as u32
     }
@@ -300,23 +304,36 @@ impl MsgHdr {
     ///
     /// assert_eq!("[ff03:0:0:0:0:0:0:1]:8077", addrstr);
     /// ```
-#[inline]
+    #[inline]
     pub fn addr2str(addr: &SocketAddr) -> String {
         let ipaddr = addr.ip();
         match ipaddr {
             IpAddr::V4(v4) => {
                 let v4oct = v4.octets();
-                let v4str = format!("{}.{}.{}.{}:{}",
-                                    v4oct[0], v4oct[1], v4oct[2], v4oct[3],
-                                    addr.port());
+                let v4str = format!(
+                    "{}.{}.{}.{}:{}",
+                    v4oct[0],
+                    v4oct[1],
+                    v4oct[2],
+                    v4oct[3],
+                    addr.port()
+                );
                 v4str
             }
             IpAddr::V6(v6) => {
                 let v6seg = v6.segments();
-                let v6str = format!("[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}",
-                                    v6seg[0], v6seg[1], v6seg[2], v6seg[3],
-                                    v6seg[4], v6seg[5], v6seg[6], v6seg[7],
-                                    addr.port());
+                let v6str = format!(
+                    "[{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}]:{}",
+                    v6seg[0],
+                    v6seg[1],
+                    v6seg[2],
+                    v6seg[3],
+                    v6seg[4],
+                    v6seg[5],
+                    v6seg[6],
+                    v6seg[7],
+                    addr.port()
+                );
                 v6str
             }
         }
@@ -335,7 +352,6 @@ fn hdr_get_type(thlen: u32) -> u8 {
     (thlen >> 24) as u8
 }
 
-
 /// Msg structure
 ///
 /// This structure defines the Mles interface value triplet (uid, channel, message).
@@ -343,7 +359,7 @@ fn hdr_get_type(thlen: u32) -> u8 {
 ///
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Msg {
-    uid:     String,
+    uid: String,
     channel: String,
     #[serde(with = "serde_bytes")]
     message: Vec<u8>,
@@ -358,12 +374,12 @@ impl Msg {
     ///
     /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
     /// ```
-#[inline]
+    #[inline]
     pub fn new(uid: String, channel: String, message: Vec<u8>) -> Msg {
         Msg {
             uid: uid,
             channel: channel,
-            message: message
+            message: message,
         }
     }
 
@@ -378,7 +394,7 @@ impl Msg {
     ///
     /// assert_eq!("New uid".to_string(), *msg.get_uid());
     /// ```
-#[inline]
+    #[inline]
     pub fn set_uid(mut self, uid: String) -> Msg {
         self.uid = uid;
         self
@@ -395,7 +411,7 @@ impl Msg {
     ///
     /// assert_eq!("New channel".to_string(), *msg.get_channel());
     /// ```
-#[inline]
+    #[inline]
     pub fn set_channel(mut self, channel: String) -> Msg {
         self.channel = channel;
         self
@@ -411,20 +427,20 @@ impl Msg {
     /// let new_message: Vec<u8> = "New message".to_string().into_bytes();
     /// let msg = msg.set_message(new_message);
     /// ```
-#[inline]
+    #[inline]
     pub fn set_message(mut self, message: Vec<u8>) -> Msg {
         self.message = message;
         self
     }
 
     /// Get uid for Msg object. See example for set uid.
-#[inline]
+    #[inline]
     pub fn get_uid(&self) -> &String {
         &self.uid
     }
 
     /// Get channel for Msg object. See example for set channel.
-#[inline]
+    #[inline]
     pub fn get_channel(&self) -> &String {
         &self.channel
     }
@@ -438,7 +454,7 @@ impl Msg {
     /// let mut msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
     /// let msg: &Vec<u8> = msg.get_message();
     /// ```
-#[inline]
+    #[inline]
     pub fn get_message(&self) -> &Vec<u8> {
         &self.message
     }
@@ -452,7 +468,7 @@ impl Msg {
     /// let mut msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
     /// let msg_len: usize = msg.get_message_len();
     /// ```
-#[inline]
+    #[inline]
     pub fn get_message_len(&self) -> usize {
         self.message.len()
     }
@@ -469,15 +485,15 @@ impl Msg {
     /// let msg = Msg::new("My uid".to_string(), "My channel".to_string(), Vec::new());
     /// let encoded_msg: Vec<u8> = msg.encode();
     /// ```
-#[inline]
+    #[inline]
     pub fn encode(&self) -> Vec<u8> {
         let encoded = serde_cbor::to_vec(self);
         match encoded {
             Ok(encoded) => encoded,
-                Err(err) => {
-                    println!("Error on encode: {}", err);
-                    Vec::new()
-                }
+            Err(err) => {
+                println!("Error on encode: {}", err);
+                Vec::new()
+            }
         }
     }
 
@@ -494,16 +510,18 @@ impl Msg {
     /// let encoded_msg: Vec<u8> = msg.encode();
     /// let decoded_msg: Msg = Msg::decode(&encoded_msg);
     /// ```
-#[inline]
+    #[inline]
     pub fn decode(slice: &[u8]) -> Msg {
         let value = serde_cbor::from_slice(slice);
         match value {
-            Ok(value) => {
-                value
-            },
+            Ok(value) => value,
             Err(err) => {
                 println!("Error on decode: {}", err);
-                Msg { uid: "".to_string(), channel: "".to_string(), message: Vec::new() } // return empty vec in case of error
+                Msg {
+                    uid: "".to_string(),
+                    channel: "".to_string(),
+                    message: Vec::new(),
+                } // return empty vec in case of error
             }
         }
     }
@@ -539,7 +557,6 @@ pub struct ResyncMsg {
     resync_message: Vec<MsgVec>,
 }
 
-
 impl ResyncMsg {
     /// Create a new ResyncMsg object with encoded message vector.
     ///
@@ -552,7 +569,7 @@ impl ResyncMsg {
     /// let vec = vec![msg];
     /// let rmsg = ResyncMsg::new(&vec);
     /// ```
-#[inline]
+    #[inline]
     pub fn new(messages: &Vec<Vec<u8>>) -> ResyncMsg {
         let mut rmsg = ResyncMsg {
             resync_message: Vec::new(),
@@ -576,7 +593,7 @@ impl ResyncMsg {
     /// let rmsg = ResyncMsg::new(&vec);
     /// assert_eq!(1, rmsg.len());
     /// ```
-#[inline]
+    #[inline]
     pub fn len(&self) -> usize {
         self.resync_message.len()
     }
@@ -594,7 +611,7 @@ impl ResyncMsg {
     /// let rvec = rmsg.get_messages();
     /// assert_eq!(vec[0], rvec[0]);
     /// ```
-#[inline]
+    #[inline]
     pub fn get_messages(&self) -> Vec<Vec<u8>> {
         //transform to correct format
         let mut messages = Vec::new();
@@ -620,15 +637,15 @@ impl ResyncMsg {
     /// let rmsg = ResyncMsg::new(&vec);
     /// let encoded_msg: Vec<u8> = rmsg.encode();
     /// ```
-#[inline]
+    #[inline]
     pub fn encode(&self) -> Vec<u8> {
         let encoded = serde_cbor::to_vec(self);
         match encoded {
             Ok(encoded) => encoded,
-                Err(err) => {
-                    println!("Error on resync encode: {}", err);
-                    Vec::new()
-                }
+            Err(err) => {
+                println!("Error on resync encode: {}", err);
+                Vec::new()
+            }
         }
     }
 
@@ -649,14 +666,16 @@ impl ResyncMsg {
     /// let decoded_msg: ResyncMsg = ResyncMsg::decode(&encoded_msg);
     /// assert_eq!(1, decoded_msg.len());
     /// ```
-#[inline]
+    #[inline]
     pub fn decode(slice: &[u8]) -> ResyncMsg {
         let value = serde_cbor::from_slice(slice);
         match value {
             Ok(value) => value,
-                Err(_) => {
-                    ResyncMsg { resync_message: Vec::new() } // return empty vec in case of error
-                }
+            Err(_) => {
+                ResyncMsg {
+                    resync_message: Vec::new(),
+                } // return empty vec in case of error
+            }
         }
     }
 }
@@ -666,14 +685,13 @@ impl ResyncMsg {
 /// This structure defines the Mles connection for simple synchronous connections.
 ///
 pub struct MsgConn {
-    uid:     String,
+    uid: String,
     channel: String,
-    key:     Option<u64>,
-    stream:  Option<TcpStream>,
+    key: Option<u64>,
+    stream: Option<TcpStream>,
 }
 
 impl MsgConn {
-
     /// Create a new MsgConn object for a connection.
     ///
     /// # Example
@@ -682,13 +700,13 @@ impl MsgConn {
     ///
     /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
     /// ```
-#[inline]
+    #[inline]
     pub fn new(uid: String, channel: String) -> MsgConn {
         MsgConn {
             uid: uid,
             channel: channel,
             key: None,
-            stream: None
+            stream: None,
         }
     }
 
@@ -701,7 +719,7 @@ impl MsgConn {
     /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
     /// assert_eq!("My uid".to_string(), conn.get_uid());
     /// ```
-#[inline]
+    #[inline]
     pub fn get_uid(&self) -> String {
         self.uid.clone()
     }
@@ -715,7 +733,7 @@ impl MsgConn {
     /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
     /// assert_eq!("My channel".to_string(), conn.get_channel());
     /// ```
-#[inline]
+    #[inline]
     pub fn get_channel(&self) -> String {
         self.channel.clone()
     }
@@ -730,14 +748,14 @@ impl MsgConn {
     /// let conn = MsgConn::new("My uid".to_string(), "My channel".to_string());
     /// assert_eq!(true, conn.get_key().is_none());
     /// ```
-#[inline]
+    #[inline]
     pub fn get_key(&self) -> Option<u64> {
         self.key
     }
 
     /// Connects to the defined address with a message.
     ///
-#[inline]
+    #[inline]
     pub fn connect_with_message(mut self, raddr: SocketAddr, msg: Vec<u8>) -> MsgConn {
         let msg = Msg::new(self.get_uid(), self.get_channel(), msg);
         match TcpStream::connect(raddr) {
@@ -749,10 +767,10 @@ impl MsgConn {
 
                     let laddr = match stream.local_addr() {
                         Ok(laddr) => laddr,
-                            Err(_) => {
-                                let addr = "0.0.0.0:0";
-                                addr.parse::<SocketAddr>().unwrap()
-                            }
+                        Err(_) => {
+                            let addr = "0.0.0.0:0";
+                            addr.parse::<SocketAddr>().unwrap()
+                        }
                     };
                     keys.push(MsgHdr::addr2str(&laddr));
                     keys.push(self.get_uid());
@@ -763,8 +781,11 @@ impl MsgConn {
                 let encoded_msg = msg.encode();
                 let key = self.get_key().unwrap();
                 let keyv = write_key(key);
-                let mut msgv = write_hdr_with_capacity(encoded_msg.len(), MsgHdr::select_cid(key),
-                                                       HDRKEYL + encoded_msg.len());
+                let mut msgv = write_hdr_with_capacity(
+                    encoded_msg.len(),
+                    MsgHdr::select_cid(key),
+                    HDRKEYL + encoded_msg.len(),
+                );
                 msgv.extend(keyv);
                 msgv.extend(encoded_msg);
                 let msgv = msgv.freeze();
@@ -776,17 +797,17 @@ impl MsgConn {
                     }
                 }
                 self
-            },
+            }
             Err(_) => {
                 println!("Could not connect to server {}", raddr);
                 self
-            },
+            }
         }
     }
 
     /// Connects to the defined address (without a message).
     ///
-#[inline]
+    #[inline]
     pub fn connect(self, raddr: SocketAddr) -> MsgConn {
         self.connect_with_message(raddr, Vec::new())
     }
@@ -796,14 +817,17 @@ impl MsgConn {
     /// # Errors
     /// If a message cannot be sent, stream is set to None.
     ///
-#[inline]
+    #[inline]
     pub fn send_message(mut self, msg: Vec<u8>) -> MsgConn {
         let message = Msg::new(self.get_uid(), self.get_channel(), msg);
         let encoded_msg = message.encode();
         let key = self.get_key().unwrap();
         let keyv = write_key(key);
-        let mut msgv = write_hdr_with_capacity(encoded_msg.len(), MsgHdr::select_cid(key),
-                                               HDRKEYL + encoded_msg.len());
+        let mut msgv = write_hdr_with_capacity(
+            encoded_msg.len(),
+            MsgHdr::select_cid(key),
+            HDRKEYL + encoded_msg.len(),
+        );
         msgv.extend(keyv);
         msgv.extend(encoded_msg);
         let msgv = msgv.freeze();
@@ -823,7 +847,7 @@ impl MsgConn {
     /// # Errors
     /// If message cannot be read, an empty message is returned.
     ///
-#[inline]
+    #[inline]
     pub fn read_message(mut self) -> (MsgConn, Vec<u8>) {
         let stream = self.stream.unwrap();
         loop {
@@ -834,7 +858,7 @@ impl MsgConn {
                     println!("Read failed: eof");
                     self.stream = None;
                     return (self, Vec::new());
-                },
+                }
                 _ => {}
             }
             let buf = tuple.1;
@@ -852,7 +876,7 @@ impl MsgConn {
             let status = tuple.0;
             match status {
                 Ok(0) => continue,
-                _ =>  {}
+                _ => {}
             }
             let payload = tuple.1;
             if payload.len() != (hdr_len as usize) {
@@ -869,7 +893,7 @@ impl MsgConn {
 
     /// Closes the connection.
     ///
-#[inline]
+    #[inline]
     pub fn close(mut self) -> MsgConn {
         if self.stream.is_some() {
             drop(self.stream.unwrap());
@@ -877,7 +901,6 @@ impl MsgConn {
         self.stream = None;
         self
     }
-
 }
 
 #[inline]
@@ -922,13 +945,12 @@ fn write_hdr_without_cid(len: usize) -> BytesMut {
     msgv
 }
 
-
 #[inline]
 pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: BytesMut) -> BytesMut {
     if hdrv.len() < HDRL {
         return BytesMut::new();
     }
-    let tail = hdrv.split_off(HDRL-CIDL);
+    let tail = hdrv.split_off(HDRL - CIDL);
     let mut nhdrv = write_hdr_without_cid(len);
     nhdrv.extend(tail);
     nhdrv
@@ -947,7 +969,6 @@ fn write_hdr_with_key(len: usize, key: u64) -> BytesMut {
     hdrv
 }
 
-
 fn read_key_from_hdr(keyv: &[u8]) -> u64 {
     if keyv.len() < HDRKEYL {
         return 0;
@@ -960,7 +981,7 @@ fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
     if hdrv.len() < HDRL {
         return 0;
     }
-    let mut buf = Cursor::new(&hdrv[(HDRL-CIDL)..]);
+    let mut buf = Cursor::new(&hdrv[(HDRL - CIDL)..]);
     buf.get_u32_be()
 }
 
@@ -979,7 +1000,8 @@ pub fn has_peer(peer: &Option<SocketAddr>) -> bool {
 }
 
 fn read_n<R>(reader: R, bytes_to_read: usize) -> (Result<usize, Error>, Vec<u8>)
-where R: Read,
+where
+    R: Read,
 {
     let mut buf = Vec::with_capacity(bytes_to_read);
     let mut chunk = reader.take(bytes_to_read as u64);
@@ -1005,16 +1027,23 @@ where R: Read,
 /// drop(child);
 /// ```
 #[inline]
-pub fn server_run(address: SocketAddr, peer: Option<SocketAddr>, keyval: String, keyaddr: String,  hist_limit: usize, debug_flags: u64) {
+pub fn server_run(
+    address: SocketAddr,
+    peer: Option<SocketAddr>,
+    keyval: String,
+    keyaddr: String,
+    hist_limit: usize,
+    debug_flags: u64,
+) {
     server::run(address, peer, keyval, keyaddr, hist_limit, debug_flags);
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::net::SocketAddr;
     use std::thread;
     use std::time::Duration;
-    use super::*;
 
     #[test]
     fn test_read_hdr_len_one() {
@@ -1044,7 +1073,7 @@ mod tests {
     fn test_encode_decode_msg() {
         let uid = "User".to_string();
         let channel = "Channel".to_string();
-        let msg =  "a test msg".to_string().into_bytes();
+        let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         let decoded_msg = Msg::decode(&encoded_msg);
@@ -1057,12 +1086,12 @@ mod tests {
     fn test_encode_decode_resync_msg() {
         let uid = "User".to_string();
         let channel = "Channel".to_string();
-        let msg =  "a test msg".to_string().into_bytes();
+        let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
         let uid2 = "User two".to_string();
         let channel2 = "Channel two".to_string();
-        let msg2 =  "a test msg two".to_string().into_bytes();
+        let msg2 = "a test msg two".to_string().into_bytes();
         let orig_msg2 = Msg::new(uid2, channel2, msg2);
         let encoded_msg2 = orig_msg2.encode();
         let vec = vec![encoded_msg, encoded_msg2];
@@ -1076,8 +1105,7 @@ mod tests {
                 assert_eq!(decoded_msg.uid, orig_msg.uid);
                 assert_eq!(decoded_msg.channel, orig_msg.channel);
                 assert_eq!(decoded_msg.message, orig_msg.message);
-            }
-            else {
+            } else {
                 assert_eq!(decoded_msg.uid, orig_msg2.uid);
                 assert_eq!(decoded_msg.channel, orig_msg2.channel);
                 assert_eq!(decoded_msg.message, orig_msg2.message);
@@ -1088,9 +1116,9 @@ mod tests {
 
     #[test]
     fn test_set_get_msg() {
-        let uid =  "User".to_string();
-        let channel =  "Channel".to_string();
-        let msg =  "a test msg".to_string().into_bytes();
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new("".to_string(), channel.to_string(), Vec::new());
         let orig_msg = orig_msg.set_uid(uid.clone());
         let orig_msg = orig_msg.set_channel(channel.clone());
@@ -1117,7 +1145,7 @@ mod tests {
 
     #[test]
     fn test_msgconn_send_read() {
-        let sec = Duration::new(1,0);
+        let sec = Duration::new(1, 0);
         let addr = "127.0.0.1:8077";
         let addr = addr.parse::<SocketAddr>().unwrap();
         let raddr = addr.clone();
@@ -1127,7 +1155,8 @@ mod tests {
         let message = "Hello World!".to_string();
 
         //create server
-        let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
+        let child =
+            thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
 
         //send hello world
@@ -1151,7 +1180,7 @@ mod tests {
 
     #[test]
     fn test_msgconn_read_send() {
-        let sec = Duration::new(1,0);
+        let sec = Duration::new(1, 0);
         let addr = "127.0.0.1:8076";
         let addr = addr.parse::<SocketAddr>().unwrap();
         let raddr = addr.clone();
@@ -1161,7 +1190,8 @@ mod tests {
         let message = "Hello World!".to_string();
 
         //create server
-        let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
+        let child =
+            thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
 
         //read connect
@@ -1187,7 +1217,7 @@ mod tests {
 
     #[test]
     fn test_msgconn_peer_send_read() {
-        let sec = Duration::new(1,0);
+        let sec = Duration::new(1, 0);
         let addr = "127.0.0.1:8075";
         let addr = addr.parse::<SocketAddr>().unwrap();
         let paddr = "127.0.0.1:8074";
@@ -1199,11 +1229,14 @@ mod tests {
         let message = "Hello World!".to_string();
 
         //create server
-        let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
+        let child =
+            thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
 
         //create peer server
-        let pchild = thread::spawn(move || server_run(paddr, Some(addr), "".to_string(), "".to_string(), 100, 0));
+        let pchild = thread::spawn(move || {
+            server_run(paddr, Some(addr), "".to_string(), "".to_string(), 100, 0)
+        });
         thread::sleep(sec);
 
         //send hello world
@@ -1230,7 +1263,7 @@ mod tests {
 
     #[test]
     fn test_msgconn_peer_read_send() {
-        let sec = Duration::new(1,0);
+        let sec = Duration::new(1, 0);
         let addr = "127.0.0.1:8073";
         let addr = addr.parse::<SocketAddr>().unwrap();
         let paddr = "127.0.0.1:8072";
@@ -1242,11 +1275,14 @@ mod tests {
         let message = "Hello World!".to_string();
 
         //create server
-        let child = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
+        let child =
+            thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 100, 0));
         thread::sleep(sec);
 
         //create peer server
-        let pchild = thread::spawn(move || server_run(paddr, Some(addr), "".to_string(), "".to_string(), 100, 0));
+        let pchild = thread::spawn(move || {
+            server_run(paddr, Some(addr), "".to_string(), "".to_string(), 100, 0)
+        });
         thread::sleep(sec);
 
         //read connect
@@ -1275,11 +1311,12 @@ mod tests {
 
     #[test]
     fn test_msgconn_basic_read_send() {
-        let sec = Duration::new(1,0);
+        let sec = Duration::new(1, 0);
         //set server address to connect
         let addr = "127.0.0.1:8071".parse::<SocketAddr>().unwrap();
         //create server
-        let serv = thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
+        let serv =
+            thread::spawn(move || server_run(addr, None, "".to_string(), "".to_string(), 0, 0));
         thread::sleep(sec);
 
         let child = thread::spawn(|| {
@@ -1313,6 +1350,3 @@ mod tests {
         drop(serv);
     }
 }
-
-
-

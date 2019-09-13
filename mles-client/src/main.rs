@@ -28,26 +28,24 @@
  * Mles-support Copyright (c) 2017-2019  Mles developers
  *
  */
-
 /*
  * Mles client example based on Tokio core-connect example.
  */
-
 mod ws;
 
-use std::{env, process};
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::thread;
 use std::time::Duration;
+use std::{env, process};
 
 use bytes::BytesMut;
-use futures::{Sink, Future, Stream};
 use futures::sync::mpsc;
-use tokio::net::TcpStream;
-use tokio_codec::{Encoder, Decoder};
-use tokio::runtime::current_thread::{Runtime};
+use futures::{Future, Sink, Stream};
 use mles_utils::*;
+use tokio::net::TcpStream;
+use tokio::runtime::current_thread::Runtime;
+use tokio_codec::{Decoder, Encoder};
 
 use crate::ws::*;
 
@@ -59,16 +57,17 @@ fn main() {
     let mut ws_enabled: Option<bool> = None;
 
     // Parse what address we're going to connect to
-    let addr = env::args()
-        .nth(1)
-        .unwrap_or_else(|| {
-                            println!("{}", USAGE);
-                            process::exit(1);
-                        });
+    let addr = env::args().nth(1).unwrap_or_else(|| {
+        println!("{}", USAGE);
+        process::exit(1);
+    });
 
     let raddr = addr + SRVPORT;
-    let raddr: Vec<_> = raddr.to_socket_addrs()
-        .unwrap_or_else(|_| vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter())
+    let raddr: Vec<_> = raddr
+        .to_socket_addrs()
+        .unwrap_or_else(|_| {
+            vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0)].into_iter()
+        })
         .collect();
     let raddr = *raddr.first().unwrap();
     let raddr = Some(raddr).unwrap();
@@ -115,67 +114,73 @@ fn main() {
         let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
         let mut stdout = io::stdout();
-        let client = tcp.and_then(move |stream| {
-            let _val = stream.set_nodelay(true)
-                             .map_err(|_| panic!("Cannot set to no delay"));
-            let _val = stream.set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
-                             .map_err(|_| panic!("Cannot set keepalive"));
-            let laddr = match stream.local_addr() {
-                Ok(laddr) => laddr,
-                Err(_) => {
-                    let addr = "0.0.0.0:0";
-                    addr.parse::<SocketAddr>().unwrap()
+        let client = tcp
+            .and_then(move |stream| {
+                let _val = stream
+                    .set_nodelay(true)
+                    .map_err(|_| panic!("Cannot set to no delay"));
+                let _val = stream
+                    .set_keepalive(Some(Duration::new(KEEPALIVE, 0)))
+                    .map_err(|_| panic!("Cannot set keepalive"));
+                let laddr = match stream.local_addr() {
+                    Ok(laddr) => laddr,
+                    Err(_) => {
+                        let addr = "0.0.0.0:0";
+                        addr.parse::<SocketAddr>().unwrap()
+                    }
+                };
+                if !keyval.is_empty() {
+                    keys.push(keyval.clone());
+                } else {
+                    keys.push(MsgHdr::addr2str(&laddr));
+                    if !keyaddr.is_empty() {
+                        keys.push(keyaddr.clone());
+                    }
                 }
-            };
-            if  !keyval.is_empty() {
-                keys.push(keyval.clone());
-            } else {
-                keys.push(MsgHdr::addr2str(&laddr));
-                if !keyaddr.is_empty() {
-                    keys.push(keyaddr.clone());
-                }
-            }
-            let (sink, stream) = Bytes.framed(stream).split();
-            let stdin_rx = stdin_rx.and_then(move |buf| {
-                if None == key {
-                    //create hash for verification
-                    let decoded_message = Msg::decode(buf.as_slice());
-                    keys.push(decoded_message.get_uid().to_string());
-                    keys.push(decoded_message.get_channel().to_string());
-                    key = Some(MsgHdr::do_hash(&keys));
-                    cid = Some(MsgHdr::select_cid(key.unwrap()));
-                }
-                let msghdr = MsgHdr::new(buf.len() as u32, cid.unwrap(), key.unwrap());
-                let mut msgv = msghdr.encode();
-                msgv.extend(buf);
-                Ok(msgv)
-            });
+                let (sink, stream) = Bytes.framed(stream).split();
+                let stdin_rx = stdin_rx.and_then(move |buf| {
+                    if None == key {
+                        //create hash for verification
+                        let decoded_message = Msg::decode(buf.as_slice());
+                        keys.push(decoded_message.get_uid().to_string());
+                        keys.push(decoded_message.get_channel().to_string());
+                        key = Some(MsgHdr::do_hash(&keys));
+                        cid = Some(MsgHdr::select_cid(key.unwrap()));
+                    }
+                    let msghdr = MsgHdr::new(buf.len() as u32, cid.unwrap(), key.unwrap());
+                    let mut msgv = msghdr.encode();
+                    msgv.extend(buf);
+                    Ok(msgv)
+                });
 
-            let send_stdin = stdin_rx.forward(sink);
-            let write_stdout = stream.for_each(move |buf| {
-                let mut msg = "".to_string();
-                let buf = buf.to_vec();
-                /* Just ignore Resyncs */
-                let rdecoded = ResyncMsg::decode(buf.as_slice());
-                if rdecoded.get_messages().len() > 0 {
-                    return stdout.write_all(&msg.into_bytes());
-                }
-                let decoded = Msg::decode(buf.as_slice());
-                if !decoded.get_message().is_empty() {
-                    msg.push_str(decoded.get_uid());
-                    msg.push_str(":");
-                    msg.push_str(String::from_utf8_lossy(decoded.get_message().as_slice())
-                                     .into_owned()
-                                     .as_str());
-                }
-                stdout.write_all(&msg.into_bytes())
-            });
+                let send_stdin = stdin_rx.forward(sink);
+                let write_stdout = stream.for_each(move |buf| {
+                    let mut msg = "".to_string();
+                    let buf = buf.to_vec();
+                    /* Just ignore Resyncs */
+                    let rdecoded = ResyncMsg::decode(buf.as_slice());
+                    if rdecoded.get_messages().len() > 0 {
+                        return stdout.write_all(&msg.into_bytes());
+                    }
+                    let decoded = Msg::decode(buf.as_slice());
+                    if !decoded.get_message().is_empty() {
+                        msg.push_str(decoded.get_uid());
+                        msg.push_str(":");
+                        msg.push_str(
+                            String::from_utf8_lossy(decoded.get_message().as_slice())
+                                .into_owned()
+                                .as_str(),
+                        );
+                    }
+                    stdout.write_all(&msg.into_bytes())
+                });
 
-            send_stdin
-                .map(|_| ())
-                .select(write_stdout.map(|_| ()))
-                .then(|_| Ok(()))
-        }).map_err(|_| {});
+                send_stdin
+                    .map(|_| ())
+                    .select(write_stdout.map(|_| ()))
+                    .then(|_| Ok(()))
+            })
+            .map_err(|_| {});
 
         runtime.spawn(client);
         match runtime.run() {
@@ -285,7 +290,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
     let _val = stdout.write_all(welcome.as_bytes());
 
     loop {
-        let mut buf = vec![0;80];
+        let mut buf = vec![0; 80];
         let n = match stdin.read(&mut buf) {
             Err(_) | Ok(0) => break,
             Ok(n) => n,
