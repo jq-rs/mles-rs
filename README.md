@@ -187,7 +187,7 @@ fn main() {
 ## Existing client implementations over Mles (WebSocket) protocol
 
  * [Reference client](https://github.com/jq-rs/mles-rs/tree/master/mles-client) in Rust
- * [MlesTalk Open Messager](http://mles.io/app) in JavaScript
+ * [MlesTalk](http://mles.io/app) in JavaScript
  * <Please add your client here!>
 
 ## References:
