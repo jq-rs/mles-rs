@@ -6,8 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+Generic:
+ - Include TLS support as option for session transport 
+
 Client:
- - Change WebSocket proxy to use a task instead of thread for every connection.
+ - Change WebSocket proxy to use a task instead of thread for every connection
 
 Sysutils:
  - Fix paths, define longer history by default
