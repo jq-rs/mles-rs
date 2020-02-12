@@ -6,7 +6,7 @@
 
 Mles (_Modern Lightweight channEl Service_) is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish/subscribe data service. The reference implementation consists of _Mles-utils_, _Mles_ server and _Mles-client/WebSocket-proxy_.
 
-Please check http://mles.io and http://mles.io/blog for a generic overview of Mles.
+Please check https://mles.io and https://mles.io/blog.html for a generic overview of Mles.
 
 ## Mles protocol overview
 
@@ -185,7 +185,7 @@ fn main() {
 ## Existing client implementations over Mles (WebSocket) protocol
 
  * [Reference client](https://github.com/jq-rs/mles-rs/tree/master/mles-client) in Rust
- * [MlesTalk](http://mles.io/app) in JavaScript
+ * [MlesTalk](https://mles.io/app.html) in JavaScript
  * <Please add your client here!>
 
 ## References:
