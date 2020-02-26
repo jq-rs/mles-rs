@@ -473,6 +473,22 @@ impl Msg {
         self.message.len()
     }
 
+    /// Get mutable message reference for Msg object.
+    ///
+    /// # Example
+    /// ```
+    /// use mles_utils::Msg;
+    ///
+    /// let mut msg = Msg::new("My uid".to_string(), "My channel".to_string(), "My
+    /// message".to_string().into_bytes());
+    /// let message = msg.get_mut_message();
+    /// message.extend_from_slice(&" is mutable".to_string().into_bytes());
+    /// ```
+    #[inline]
+    pub fn get_mut_message(&mut self) -> &mut Vec<u8> {
+        &mut self.message
+    }
+
     /// Encode Msg object to CBOR.
     ///
     /// # Errors
@@ -1129,6 +1145,22 @@ mod tests {
     }
 
     #[test]
+    fn test_set_get_mut_msg() {
+        let uid = "User".to_string();
+        let channel = "Channel".to_string();
+        let omsg = "a test ".to_string().into_bytes();
+        let nmsg = "a test mut msg".to_string().into_bytes();
+        let orig_msg = Msg::new("".to_string(), channel.to_string(), omsg);
+        let orig_msg = orig_msg.set_uid(uid.clone());
+        let mut orig_msg = orig_msg.set_channel(channel.clone());
+        let mut_msg = orig_msg.get_mut_message();
+        mut_msg.extend_from_slice(&"mut msg".to_string().into_bytes());
+        assert_eq!(&uid, orig_msg.get_uid());
+        assert_eq!(&channel, orig_msg.get_channel());
+        assert_eq!(&nmsg, orig_msg.get_message());
+    }
+
+    #[test]
     fn test_cid() {
         let orig_key = 0xffeffe;
         let hdrv = write_hdr_with_key(64, orig_key);
@@ -1146,7 +1178,7 @@ mod tests {
     #[test]
     fn test_msgconn_send_read() {
         let sec = Duration::new(1, 0);
-        let addr = "127.0.0.1:8077";
+        let addr = "127.0.0.1:8078";
         let addr = addr.parse::<SocketAddr>().unwrap();
         let raddr = addr.clone();
         let uid = "User".to_string();

@@ -6,11 +6,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-Generic:
+## [1.1.2]
+
+Specification:
  - Include TLS support as option for session transport 
 
 Client:
  - Change WebSocket proxy to use a task instead of thread for every connection
+
+Utils:
+ - Add mutable message get
 
 Sysutils:
  - Fix paths, define longer history by default
