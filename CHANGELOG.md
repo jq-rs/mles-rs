@@ -6,9 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-Specification:
- - Move TLS support as mandatory for session transport 
-
+Specification for 2.0:
+ - Move TLS support as mandatory for session transport
+ - Set Mles WebSocket multiplexing as mandatory feature
+ - Set 16 bytes of secure random data as mandatory on Mles WebSocket data part
+ 
 ## [1.1.2]
 
 Specification:
