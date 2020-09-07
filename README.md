@@ -185,6 +185,7 @@ fn main() {
 ## Existing client implementations over Mles (WebSocket) protocol
 
  * [Reference client](https://github.com/jq-rs/mles-rs/tree/master/mles-client) in Rust
+ * TLS and multichannel capable [mles-webproxy](https://github.com/jq-rs/mles-webproxy) in Rust on Warp
  * [MlesTalk](https://mles.io/app.html) in JavaScript
  * <Please add your client here!>
 
