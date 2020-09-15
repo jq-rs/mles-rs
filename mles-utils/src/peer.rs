@@ -72,7 +72,6 @@ pub(crate) fn peer_conn(
             .unbounded_send((peer_cid, channel.clone(), tx.clone(), tx_orig_chan.clone()))
             .map_err(|err| {
                 println!("Cannot send from peer: {}", err);
-                ()
             });
 
         let loopcnt_inner = loopcnt.clone();
@@ -186,7 +185,6 @@ pub(crate) fn peer_conn(
                     for msg in mles_peer_db_once.get_messages().iter() {
                         let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| {
                             //unlikely to happen, ignore
-                            ()
                         });
                     }
                     Ok(())
@@ -209,7 +207,7 @@ pub(crate) fn peer_conn(
                 let tx_removals_inner = tx_removals.clone();
                 let iter = stream::iter_ok::<_, io::Error>(iter::repeat(()));
                 let socket_reader = iter.fold(reader, move |reader, _| {
-                    let slice = [0;HDRKEYL];
+                    let slice = [0; HDRKEYL];
                     let mut buf = BytesMut::with_capacity(HDRKEYL);
                     buf.put_slice(&slice);
                     let frame = io::read_exact(reader, buf);
@@ -239,7 +237,7 @@ pub(crate) fn peer_conn(
                         let mut mles_peer_db = mles_peer_db_frame.borrow_mut();
                         for (cid, tx_orig) in mles_peer_db.get_channels().iter() {
                             let _res = tx_orig.unbounded_send(msg.clone()).map_err(|_| {
-                                let _rem = tx_removals.unbounded_send(cid.clone()).map_err(|_| ());
+                                let _rem = tx_removals.unbounded_send(*cid).map_err(|_| ());
                             });
                         }
                         //push message to history

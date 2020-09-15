@@ -70,8 +70,8 @@ impl MsgHdr {
     pub fn new(len: u32, cid: u32, key: u64) -> MsgHdr {
         MsgHdr {
             thlen: hdr_set_len(len),
-            cid: cid,
-            key: key,
+            cid,
+            key,
         }
     }
 
@@ -377,9 +377,9 @@ impl Msg {
     #[inline]
     pub fn new(uid: String, channel: String, message: Vec<u8>) -> Msg {
         Msg {
-            uid: uid,
-            channel: channel,
-            message: message,
+            uid,
+            channel,
+            message,
         }
     }
 
@@ -719,8 +719,8 @@ impl MsgConn {
     #[inline]
     pub fn new(uid: String, channel: String) -> MsgConn {
         MsgConn {
-            uid: uid,
-            channel: channel,
+            uid,
+            channel,
             key: None,
             stream: None,
         }
@@ -869,16 +869,13 @@ impl MsgConn {
         loop {
             let tuple = read_n(&stream, HDRKEYL);
             let status = tuple.0;
-            match status {
-                Ok(0) => {
-                    println!("Read failed: eof");
-                    self.stream = None;
-                    return (self, Vec::new());
-                }
-                _ => {}
+            if let Ok(0) = status {
+                println!("Read failed: eof");
+                self.stream = None;
+                return (self, Vec::new());
             }
             let buf = tuple.1;
-            if 0 == buf.len() {
+            if buf.is_empty() {
                 continue;
             }
             if read_hdr_type(buf.as_slice()) != 'M' as u32 {
@@ -890,10 +887,9 @@ impl MsgConn {
             }
             let tuple = read_n(&stream, hdr_len);
             let status = tuple.0;
-            match status {
-                Ok(0) => continue,
-                _ => {}
-            }
+            if let Ok(0) = status {
+                continue;
+            };
             let payload = tuple.1;
             if payload.len() != (hdr_len as usize) {
                 continue;

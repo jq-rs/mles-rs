@@ -110,10 +110,7 @@ impl MlesDb {
     }
 
     pub fn check_peer(&self) -> bool {
-        match self.peer_tx {
-            Some(_) => true,
-            None => false,
-        }
+        self.peer_tx.is_some()
     }
 }
 

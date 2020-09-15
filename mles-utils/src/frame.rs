@@ -111,7 +111,9 @@ mod tests {
         let msg = "a test msg".to_string().into_bytes();
         let orig_msg = Msg::new(uid, channel, msg);
         let encoded_msg = orig_msg.encode();
-        let messages = message_decode(BytesMut::from(encoded_msg), BytesMut::from(hdrkey));
+        let mut buf = BytesMut::with_capacity(encoded_msg.len());
+        buf.put_slice(&encoded_msg);
+        let messages = message_decode(buf, BytesMut::from(hdrkey));
         assert_eq!(1, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
@@ -140,7 +142,9 @@ mod tests {
         let vec = vec![hdr.clone().to_vec()];
         let rmsg = ResyncMsg::new(&vec);
         let encoded_resync_msg: Vec<u8> = rmsg.encode();
-        let messages = message_decode(BytesMut::from(encoded_resync_msg), BytesMut::from(hdrkey));
+        let mut buf = BytesMut::with_capacity(encoded_resync_msg.len());
+        buf.put_slice(&encoded_resync_msg);
+        let messages = message_decode(buf, BytesMut::from(hdrkey));
         assert_eq!(1, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);
@@ -169,7 +173,11 @@ mod tests {
         let vec = vec![hdr.clone().to_vec(), hdr.clone().to_vec()];
         let rmsg = ResyncMsg::new(&vec);
         let encoded_resync_msg: Vec<u8> = rmsg.encode();
-        let messages = message_decode(BytesMut::from(encoded_resync_msg), BytesMut::from(hdrkey));
+        let mut buf = BytesMut::with_capacity(encoded_resync_msg.len());
+        buf.put_slice(&encoded_resync_msg);
+        let mut hdr = BytesMut::with_capacity(hdrkey.len());
+        hdr.put_slice(&hdrkey);
+        let messages = message_decode(buf, hdr);
         assert_eq!(2, messages.len());
         let mut message = messages[0].clone();
         let msg = message.split_off(HDRKEYL);

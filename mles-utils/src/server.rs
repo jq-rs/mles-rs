@@ -24,7 +24,7 @@ use futures::stream::{self, Stream};
 use futures::sync::mpsc::unbounded;
 use futures::Future;
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 
 use super::*;
 use crate::frame::*;
@@ -123,7 +123,7 @@ pub(crate) fn run(
                 process_key(reader, hdr_key, message, keys)
             });
 
-            let tx_inner = tx.clone();
+            let tx_inner = tx;
             let channel_db_inner = channel_db.clone();
             let mles_db_inner = mles_db.clone();
             let keyaddr_inner = keyaddr.clone();
@@ -192,19 +192,15 @@ pub(crate) fn run(
                                     .unbounded_send(tx_inner.clone())
                                     .map_err(|err| {
                                         println!("Cannot reach peer: {}", err);
-                                        ()
                                     });
-                        } else {
-                            if debug_flags != 0 {
-                                println!("Cannot find channel peer for channel {}", channel);
-                            }
+                        } else if debug_flags != 0 {
+                            println!("Cannot find channel peer for channel {}", channel);
                         }
                     } else {
                         // send history to client if peer is not set
                         for msg in mles_db_entry.get_messages() {
                             let _res = tx_inner.unbounded_send(msg.clone()).map_err(|err| {
                                 println!("Send history failed: {}", err);
-                                ()
                             });
                         }
                     }
@@ -216,7 +212,7 @@ pub(crate) fn run(
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                     if let Some(channels) = mles_db_entry.get_channels() {
                         for msg in &messages {
-                            for (ocid, tx) in channels.iter().filter(|(&x,_)| x != cid) {
+                            for (ocid, tx) in channels.iter().filter(|(&x, _)| x != cid) {
                                 let _res = tx.unbounded_send(msg.clone()).map_err(|_| {
                                     let _rem = tx_removals_iter
                                         .unbounded_send((*ocid, channel.clone()))
@@ -249,10 +245,10 @@ pub(crate) fn run(
 
             let keyaddr_inner = keyaddr.clone();
             let mles_db_inner = mles_db.clone();
-            let tx_peer_for_msgs_inner = tx_peer_for_msgs.clone();
-            let tx_peer_remover_inner = tx_peer_remover.clone();
+            let tx_peer_for_msgs_inner = tx_peer_for_msgs;
+            let tx_peer_remover_inner = tx_peer_remover;
             let socket_next = socket_once.and_then(move |(reader, cid, channel)| {
-                let channel_next = channel.clone();
+                let channel_next = channel;
                 let tx_removals_iter = tx_removals.clone();
                 let iter = stream::iter_ok(iter::repeat(()).map(Ok::<(), Error>));
                 iter.fold(reader, move |reader, _| {
@@ -345,7 +341,6 @@ pub(crate) fn run(
                                     .unbounded_send(tx_entry.clone())
                                     .map_err(|err| {
                                         println!("Cannot reach peer: {}", err);
-                                        ()
                                     });
                         }
                     }
@@ -387,7 +382,6 @@ pub(crate) fn run(
                 .unwrap();
 
             let socket_writer = rx.fold(writer, |writer, msg| {
-                let msg = Bytes::from(msg);
                 let amt = io::write_all(writer, msg);
                 let amt = amt.map(|(writer, _)| writer);
                 amt.map_err(|_| ())
