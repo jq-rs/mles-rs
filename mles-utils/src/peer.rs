@@ -147,7 +147,9 @@ pub(crate) fn peer_conn(
                             laddr,
                         );
                     }
+                    let mut msg = BytesMut::from(msg.as_ref());
                     msg.extend(message);
+                    let msg = msg.freeze();
 
                     //send message to peer
                     let _res = tx.unbounded_send(msg.clone()).map_err(|err| {
@@ -207,12 +209,18 @@ pub(crate) fn peer_conn(
                 let tx_removals_inner = tx_removals.clone();
                 let iter = stream::iter_ok::<_, io::Error>(iter::repeat(()));
                 let socket_reader = iter.fold(reader, move |reader, _| {
-                    let frame = io::read_exact(reader, BytesMut::from(vec![0; HDRKEYL]));
+                    let slice = [0;HDRKEYL];
+                    let mut buf = BytesMut::with_capacity(HDRKEYL);
+                    buf.put_slice(&slice);
+                    let frame = io::read_exact(reader, buf);
                     let frame = frame
                         .and_then(move |(reader, hdr_key)| process_hdr_dummy_key(reader, hdr_key));
 
                     let frame = frame.and_then(move |(reader, hdr_key, hdr_len)| {
-                        let mut hdr = BytesMut::from(vec![0; HDRKEYL + hdr_len]);
+                        let len = HDRKEYL + hdr_len;
+                        let slice = vec![0; len];
+                        let mut hdr = BytesMut::with_capacity(len);
+                        hdr.put_slice(&slice);
                         let message = hdr.split_off(HDRKEYL);
                         let tframe = io::read_exact(reader, message);
                         tframe.and_then(move |(reader, message)| {
