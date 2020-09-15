@@ -210,14 +210,12 @@ pub(crate) fn run(
                 if let Some(mles_db_entry) = mles_db_once.get_mut(&channel) {
                     if let Some(channels) = mles_db_entry.get_channels() {
                         for msg in &messages {
-                            for (ocid, tx) in channels.iter() {
-                                if *ocid != cid {
-                                    let _res = tx.unbounded_send(msg.clone()).map_err(|_| {
-                                        let _rem = tx_removals_iter
-                                            .unbounded_send((*ocid, channel.clone()))
-                                            .map_err(|_| ());
-                                    });
-                                }
+                            for (ocid, tx) in channels.iter().filter(|(&x,_)| x != cid) {
+                                let _res = tx.unbounded_send(msg.clone()).map_err(|_| {
+                                    let _rem = tx_removals_iter
+                                        .unbounded_send((*ocid, channel.clone()))
+                                        .map_err(|_| ());
+                                });
                             }
                         }
                     }
