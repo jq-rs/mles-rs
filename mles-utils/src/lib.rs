@@ -925,7 +925,7 @@ pub(crate) fn read_hdr_type(hdr: &[u8]) -> u32 {
         return 0;
     }
     let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.get_u32_be();
+    let num = buf.get_u32();
     num >> 24
 }
 
@@ -934,30 +934,30 @@ fn read_hdr_len(hdr: &[u8]) -> usize {
         return 0;
     }
     let mut buf = Cursor::new(&hdr[..]);
-    let num = buf.get_u32_be();
+    let num = buf.get_u32();
     (num & 0xffffff) as usize
 }
 
 fn write_hdr(len: usize, cid: u32) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = BytesMut::from(Vec::with_capacity(HDRKEYL));
-    msgv.put_u32_be(hdr);
-    msgv.put_u32_be(cid);
+    let mut msgv = BytesMut::with_capacity(HDRKEYL);
+    msgv.put_u32(hdr);
+    msgv.put_u32(cid);
     msgv
 }
 
 fn write_hdr_with_capacity(len: usize, cid: u32, cap: usize) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = BytesMut::from(Vec::with_capacity(cap));
-    msgv.put_u32_be(hdr);
-    msgv.put_u32_be(cid);
+    let mut msgv = BytesMut::with_capacity(cap);
+    msgv.put_u32(hdr);
+    msgv.put_u32(cid);
     msgv
 }
 
 fn write_hdr_without_cid(len: usize) -> BytesMut {
     let hdr = (('M' as u32) << 24) | len as u32;
-    let mut msgv = BytesMut::from(Vec::with_capacity(HDRL));
-    msgv.put_u32_be(hdr);
+    let mut msgv = BytesMut::with_capacity(HDRL);
+    msgv.put_u32(hdr);
     msgv
 }
 
@@ -974,8 +974,8 @@ pub(crate) fn write_len_to_hdr(len: usize, mut hdrv: BytesMut) -> BytesMut {
 
 fn write_key(val: u64) -> BytesMut {
     let key = val;
-    let mut msgv = BytesMut::from(Vec::with_capacity(KEYL));
-    msgv.put_u64_be(key);
+    let mut msgv = BytesMut::with_capacity(KEYL);
+    msgv.put_u64(key);
     msgv
 }
 
@@ -990,7 +990,7 @@ fn read_key_from_hdr(keyv: &[u8]) -> u64 {
         return 0;
     }
     let mut buf = Cursor::new(&keyv[HDRL..]);
-    buf.get_u64_be()
+    buf.get_u64()
 }
 
 fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
@@ -998,7 +998,7 @@ fn read_cid_from_hdr(hdrv: &[u8]) -> u32 {
         return 0;
     }
     let mut buf = Cursor::new(&hdrv[(HDRL - CIDL)..]);
-    buf.get_u32_be()
+    buf.get_u32()
 }
 
 /// Check if a peer is defined
