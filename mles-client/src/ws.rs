@@ -171,7 +171,7 @@ pub fn process_ws_proxy(raddr: SocketAddr, keyval: String, keyaddr: String) {
                     let mles_tx = mles_tx.clone();
                     let mles_message = message.into_data();
                     let _ = mles_tx
-                        .send(mles_message.clone())
+                        .send(mles_message)
                         .wait()
                         .map_err(|err| Error::new(ErrorKind::Other, err));
                     Ok(())

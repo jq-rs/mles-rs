@@ -159,7 +159,7 @@ fn main() {
                     let buf = buf.to_vec();
                     /* Just ignore Resyncs */
                     let rdecoded = ResyncMsg::decode(buf.as_slice());
-                    if rdecoded.get_messages().len() > 0 {
+                    if !rdecoded.get_messages().is_empty() {
                         return stdout.write_all(&msg.into_bytes());
                     }
                     let decoded = Msg::decode(buf.as_slice());
@@ -195,35 +195,39 @@ fn main() {
 
 struct Bytes;
 
+fn msg_decode(msghdr: MsgHdr, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
+    if msghdr.get_type() != b'M' {
+        let len = buf.len();
+        buf.split_to(len);
+        return Ok(None);
+    }
+    let hdr_len = msghdr.get_len() as usize;
+    if 0 == hdr_len {
+        let len = buf.len();
+        buf.split_to(len);
+        return Ok(None);
+    }
+    let len = buf.len();
+    if len < (MsgHdr::get_hdrkey_len() + hdr_len) {
+        return Ok(None);
+    }
+    if MsgHdr::get_hdrkey_len() + hdr_len < len {
+        buf.split_to(MsgHdr::get_hdrkey_len());
+        return Ok(Some(buf.split_to(hdr_len)));
+    }
+    buf.split_to(MsgHdr::get_hdrkey_len());
+    Ok(Some(buf.split_to(hdr_len)))
+}
+
 impl Decoder for Bytes {
     type Item = BytesMut;
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<BytesMut>> {
+        // HDRKEYL is header min size
         if buf.len() >= MsgHdr::get_hdrkey_len() {
             let msghdr = MsgHdr::decode(buf.to_vec());
-            // HDRKEYL is header min size
-            if msghdr.get_type() != 'M' as u8 {
-                let len = buf.len();
-                buf.split_to(len);
-                return Ok(None);
-            }
-            let hdr_len = msghdr.get_len() as usize;
-            if 0 == hdr_len {
-                let len = buf.len();
-                buf.split_to(len);
-                return Ok(None);
-            }
-            let len = buf.len();
-            if len < (MsgHdr::get_hdrkey_len() + hdr_len) {
-                return Ok(None);
-            }
-            if MsgHdr::get_hdrkey_len() + hdr_len < len {
-                buf.split_to(MsgHdr::get_hdrkey_len());
-                return Ok(Some(buf.split_to(hdr_len)));
-            }
-            buf.split_to(MsgHdr::get_hdrkey_len());
-            return Ok(Some(buf.split_to(hdr_len)));
+            return msg_decode(msghdr, buf);
         }
         Ok(None)
     }
@@ -254,7 +258,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         Ok(n) => n,
     };
     buf.truncate(n - 1);
-    let mut userstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
+    let mut userstr = String::from_utf8_lossy(buf.as_slice()).into_owned();
     if userstr.ends_with('\r') {
         let len = userstr.len();
         userstr.truncate(len - 1);
@@ -268,7 +272,7 @@ fn read_stdin(mut rx: mpsc::Sender<Vec<u8>>) {
         Ok(n) => n,
     };
     buf.truncate(n - 1);
-    let mut channelstr = String::from_utf8_lossy(buf.clone().as_slice()).into_owned();
+    let mut channelstr = String::from_utf8_lossy(buf.as_slice()).into_owned();
     if channelstr.ends_with('\r') {
         let len = channelstr.len();
         channelstr.truncate(len - 1);
