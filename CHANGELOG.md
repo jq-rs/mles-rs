@@ -21,7 +21,7 @@ Update to bytes 0.5, siphasher 0.3 and serde_bytes 0.11.
 ## [1.1.2]
 
 Specification:
- - Include TLS support as option for session transport 
+ - Include TLS support as an option for session transport 
 
 Client:
  - Change WebSocket proxy to use a task instead of thread for every connection
