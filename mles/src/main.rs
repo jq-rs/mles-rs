@@ -15,7 +15,7 @@ const USAGE: &str = "Usage: mles [peer-address] [--history-limit=N]";
 const HISTLIMIT: usize = 100;
 
 fn main() {
-    let addr = "0.0.0.0:8077";
+    let addr = "[::]:8077";
     let addr = addr.parse::<SocketAddr>().unwrap();
     let mut peer: Option<SocketAddr> = None;
     let mut hist_limit = HISTLIMIT;

@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+Updated to support IPv6 by default.
+
 ## [1.1.5]
 
 Downgrade bytes back to 0.4.
