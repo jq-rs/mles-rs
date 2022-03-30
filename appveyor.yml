@@ -8,9 +8,7 @@ install:
   - set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
   - rustc -V
   - cargo -V
-
-build: 'off'
-
+build: off
 test_script:
   - cargo build --manifest-path mles-utils/Cargo.toml
   - cargo test --manifest-path mles-utils/Cargo.toml 
