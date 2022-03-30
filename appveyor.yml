@@ -9,7 +9,7 @@ install:
   - rustc -V
   - cargo -V
 
-build: false
+build: Off
 
 test_script:
   - cargo build --manifest-path mles-utils/Cargo.toml
