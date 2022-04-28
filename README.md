@@ -6,7 +6,7 @@
 
 Mles (_Modern Lightweight channEl Service_) is a client-server data distribution protocol targeted to serve as a lightweight and reliable distributed publish-subscribe data service. The reference implementation consists of _Mles-utils_, _Mles_ server and _Mles-client/WebSocket-proxy_.
 
-Please check https://mles.io and https://mles.io/blog.html for a generic overview of Mles. Please check [/r/mles](https://reddit.com/r/mles) for the latest news.
+Please check https://mles.io and https://mles.io/blog.html for a generic overview of Mles and [/r/mles](https://reddit.com/r/mles) for the latest news.
 
 ## Mles protocol overview
 
