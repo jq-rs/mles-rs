@@ -107,7 +107,7 @@ mles [peer-address] [--history-limit=N]
 mles-client <server-address> [--use-websockets]
 ```
 
-Shared key setting for Mles connections behind NAT:
+Shared key setting for Mles connections behind NAT (this key is in use by default at mles.io):
 ```
 MLES_KEY=mles-devel-frank mles [peer-address] [--history-limit=N]
 ```
