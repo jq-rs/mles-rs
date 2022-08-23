@@ -1,7 +1,7 @@
 #!/bin/sh 
 
 start() {
-  exec /home/ubuntu/mles/mles-rs/mles/target/release/mles --history-limit=1000
+  exec /home/ubuntu/mles/mles-rs/mles/target/release/mles --history-limit=3000
 }
 
 stop() {
