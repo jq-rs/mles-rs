@@ -2,9 +2,9 @@
 Description=Mles server
 
 [Service]
-WorkingDirectory = /home/ubuntu/mles/mles-rs/sysutils
-ExecStart = /home/ubuntu/mles/mles-rs/sysutils/mles-manage.sh start
-ExecStop = /home/ubuntu/mles/mles-rs/sysutils/mles-manage.sh stop
+WorkingDirectory = /home/ubuntu/mles-rs/sysutils
+ExecStart = /home/ubuntu/mles-rs/sysutils/mles-manage.sh start
+ExecStop = /home/ubuntu/mles-rs/sysutils/mles-manage.sh stop
 Restart=always
 
 [Install]
