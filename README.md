@@ -8,6 +8,8 @@ Mles (_Modern Lightweight channEl Service_) is a client-server data distribution
 
 Please check https://mles.io and https://mles.io/blog.html for a generic overview of Mles and [/c/mles](https://lemmy.world/c/mles) for the latest news.
 
+**_Note: Mles version 2.0 process has been initiated. Please check in to the discussion at [/c/mles](https://lemmy.world/c/mles)!_**
+
 ## Mles protocol overview
 
 Mles clients connect to a Mles server using Mles protocol header and (uid, channel, message) value triplet on a TCP or TLS [1] session where the triplet is Concise Binary Object Representation (CBOR) [1] encapsulated. A Mles client first subscribes to a channel by sending correct Mles protocol header and value triplet (uid, channel, msg) where the _channel_ is the channel to publish/subscribe. The _msg_ MAY be either empty or include the first published message. The Mles server verifies Mles protocol header and then joins the Mles client to the selected channel. Every channel uses its own context and is independent of other channels: therefore a TCP/TLS session per (uid, channel) pair is always used. After joining, the Mles server distributes the value triplet between all clients on the same channel. If a Mles client wants to depart from a channel, it just closes the TCP/TLS session. If a Mles client does not want to receive any message, it just closes TCP/TLS session receive side. TLS session SHOULD be selected as a session type by default.
