@@ -8,7 +8,7 @@ Mles (_Modern Lightweight channEl Service_) is a client-server data distribution
 
 Please check https://mles.io and https://mles.io/blog.html for a generic overview of Mles and [/c/mles](https://lemmy.world/c/mles) for the latest news.
 
-**_Notice: Mles version 2.0 draft process has been initiated. Please check in to the discussion at [/c/mles](https://lemmy.world/c/mles)!_**
+**_Notice: Mles version 1.X is deprecated and will be obsolete from the beginning of year 2024. Please consider upgrading to Mles v2. Please check discussion and details at [/c/mles](https://lemmy.world/c/mles)!_**
 
 ## Mles 1.0 protocol overview
 
