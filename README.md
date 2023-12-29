@@ -31,7 +31,7 @@ The protocol header first frame for Mles is as follows:
 ## Existing client implementations over Mles (WebSocket) protocol
 
  * [MlesTalk](https://mles.io/app.html) in JavaScript
- * <Please add your client here!>
+ * <please add your client here!>
 
 ## References:
 
