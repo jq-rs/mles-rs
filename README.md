@@ -28,6 +28,16 @@ The protocol header first frame for Mles is as follows:
 }
 ```
 
+## Example client
+
+An example client session with `websocat` looks like this:
+
+```
+% websocat wss://mles.io --header "Sec-WebSocket-Protocol: mles-websocket"
+{ "uid":"alice", "channel":"example" }
+Hello Bob!
+```
+
 ## Existing client implementations over Mles (WebSocket) protocol
 
  * [MlesTalk](https://mles.io/app.html) in JavaScript
