@@ -5,8 +5,6 @@ Mles (_Modern Lightweight channEl Service_) is a client-server data distribution
 
 Please check https://mles.io and https://mles.io/blog.html for a generic overview of Mles and [/c/mles](https://lemmy.world/c/mles) for the latest news.
 
-**_Notice: Mles version 1.X is deprecated and will be obsolete from the beginning of year 2024. Please consider upgrading to Mles v2. Please check discussion and details at [/c/mles](https://lemmy.world/c/mles)!_**
-
 ## Mles v2 protocol overview
 
 Mles clients connect to a Mles server using Mles protocol header first frame (uid, channel, optional auth) value triplet on a TLS [1] WebSocket [2] session where the triplet is JavaScript Object Notation (JSON) encapsulated. A Mles client first subscribes to a channel by sending the correct Mles protocol header first frame value triplet (uid, channel, optional auth) where the _channel_ is the channel to publish/subscribe. The _auth_ MAY be included in case authentication is needed on top of WebSocket TLS. A Mles client MUST set Sec-WebSocket-Protocol subprotocol to "mles-websocket" [3] to be able to establish a connection to a Mles client with Mles server successfully. 
