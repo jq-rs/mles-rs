@@ -46,9 +46,9 @@ Options:
  * Acquire a public Internet server with a static IP + domain
  * Open TLS port 443 of firewall
  * Ensure that your wwwroot-directory has the static web pages under it e.g. static/your.domain
- * Run Mles server with Let's Encrypt caching enabled as shown below
+ * Run Mles server with Let's Encrypt caching and debug logging enabled as shown below
 
-`mles --domains your.domain --cache . --wwwroot static` 
+`RUST_LOG=debug mles --domains your.domain --cache . --wwwroot static` 
 
 You can have several domains listed e.g. `--domains your.domain --domains www.your.domain`.
 
