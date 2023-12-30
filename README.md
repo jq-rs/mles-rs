@@ -28,12 +28,36 @@ The protocol header first frame for Mles is as follows:
 }
 ```
 
+## Server usage
+```
+Usage: mles [OPTIONS] --domains <DOMAINS> --wwwroot <WWWROOT>
+
+Options:
+  -d, --domains <DOMAINS>  Domain(s)
+  -e, --email <EMAIL>      Contact info
+  -c, --cache <CACHE>      Cache directory
+  -l, --limit <LIMIT>      History limit [default: 200]
+  -w, --wwwroot <WWWROOT>  Www-root directory for domain(s) (e.g. /path/static where domain mles.io goes to static/mles.io)
+  -s, --staging            Use Let's Encrypt staging environment (see https://letsencrypt.org/docs/staging-environment/)
+  -p, --port <PORT>        [default: 443]
+  -h, --help               Print help
+```
+## Example server
+ * Acquire a public Internet server with a static IP + domain
+ * Open TLS port 443 of firewall
+ * Ensure that your wwwroot-directory has the static web pages under it e.g. static/your.domain
+ * Run Mles server with Let's Encrypt caching enabled as shown below
+
+`mles --domains your.domain --cache . --wwwroot static` 
+
+You can have several domains listed e.g. `--domains your.domain --domains www.your.domain`.
+
 ## Example client
 
 An example client session with `websocat` looks like this:
 
 ```
-% websocat wss://mles.io --header "Sec-WebSocket-Protocol: mles-websocket"
+% websocat wss://mles.io --header "Sec-WebSocket-Protocol: mles-web socket"
 { "uid":"alice", "channel":"example" }
 Hello Bob!
 ```
