@@ -57,7 +57,7 @@ You can have several domains listed e.g. `--domains your.domain --domains www.yo
 An example client session with `websocat` looks like this:
 
 ```
-% websocat wss://mles.io --header "Sec-WebSocket-Protocol: mles-web socket"
+% websocat wss://mles.io --header "Sec-WebSocket-Protocol: mles-websocket"
 { "uid":"alice", "channel":"example" }
 Hello Bob!
 ```
