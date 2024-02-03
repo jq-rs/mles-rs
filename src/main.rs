@@ -17,6 +17,8 @@ use std::net::Ipv6Addr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::net::SocketAddr;
+use std::str::FromStr;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
@@ -55,8 +57,8 @@ struct Args {
     #[arg(short, long, default_value = HISTORY_LIMIT, value_parser = clap::value_parser!(u32).range(1..1_000_000))]
     limit: u32,
 
-    /// Www-root directory for domain(s) (e.g. /path/static where domain mles.io goes to
-    /// static/mles.io)
+    /// Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to
+    /// static/example.io)
     #[arg(short, long, required = true)]
     wwwroot: PathBuf,
 
@@ -67,6 +69,10 @@ struct Args {
 
     #[arg(short, long, default_value = TLS_PORT, value_parser = clap::value_parser!(u16).range(1..))]
     port: u16,
+
+    /// Use http redirect for port 80
+    #[arg(short, long)]
+    redirect: bool,
 }
 
 const ACCEPTED_PROTOCOL: &str = "mles-websocket";
@@ -330,18 +336,51 @@ async fn main() {
             ACCEPTED_PROTOCOL,
         ));
 
+    if args.redirect {
+        let domains = args.domains.clone();
+        let mut http_index = Vec::new();
+        for domain in domains {
+            let redirect = warp::get()
+                .and(warp::header::<String>("host"))
+                .and(warp::path::tail())
+                .and(warp::addr::remote())
+                .map(move |uri: String, path: warp::path::Tail, addr: Option<SocketAddr>| {
+                    (
+                        uri,
+                        domain.clone(),
+                        path,
+                        addr,
+                        )
+                })
+            .and_then(dyn_hreply);
+            http_index.push(redirect);
+        }
+
+        let mut hindex: BoxedFilter<_> = http_index.swap_remove(0).boxed();
+        for val in http_index {
+            hindex = val.or(hindex).unify().boxed();
+        }
+
+        tokio::spawn(async move {
+            warp::serve(hindex).run(([0, 0, 0, 0, 0, 0, 0, 0], 80)).await;
+        });
+    }
+
+
     let mut vindex = Vec::new();
     for domain in args.domains {
         let www_root = www_root_dir.clone();
         let index = warp::get()
             .and(warp::header::<String>("host"))
             .and(warp::path::tail())
-            .map(move |uri: String, path: warp::path::Tail| {
+            .and(warp::addr::remote())
+            .map(move |uri: String, path: warp::path::Tail, addr: Option<SocketAddr>| {
                 (
                     uri,
                     domain.clone(),
                     www_root.to_str().unwrap().to_string(),
                     path,
+                    addr,
                 )
             })
             .and_then(dyn_reply);
@@ -359,10 +398,29 @@ async fn main() {
     unreachable!()
 }
 
-async fn dyn_reply(
-    tuple: (String, String, String, warp::path::Tail),
+async fn dyn_hreply(
+    tuple: (String, String, warp::path::Tail, Option<SocketAddr>),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (uri, domain, www_root, tail) = tuple;
+    let (uri, domain, tail, addr) = tuple;
+
+    log::debug!("redirecting, uri {uri}, http remote {:?}", addr);
+
+    if uri != domain {
+        return Err(warp::reject::not_found());
+    }
+
+    Ok(Box::new(warp::redirect::redirect(
+                    warp::http::Uri::from_str(&format!("https://{}/{}", &domain, tail.as_str()))
+                        .expect("problem with uri?"),
+                )))
+}
+
+async fn dyn_reply(
+    tuple: (String, String, String, warp::path::Tail, Option<SocketAddr>),
+) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
+    let (uri, domain, www_root, tail, addr) = tuple;
+
+    log::debug!("Remote {:?}", addr);
 
     if uri != domain {
         return Err(warp::reject::not_found());
