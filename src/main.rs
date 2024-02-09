@@ -13,14 +13,15 @@ use siphasher::sip::SipHasher;
 use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap};
 use std::hash::{Hash, Hasher};
+use std::io;
 use std::net::Ipv6Addr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::net::SocketAddr;
-use std::str::FromStr;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
@@ -81,6 +82,7 @@ const WS_BUF: usize = 128;
 const HISTORY_LIMIT: &str = "200";
 const TLS_PORT: &str = "443";
 const PING_INTERVAL: u64 = 12000;
+const BACKLOG: u32 = 1024;
 
 #[derive(Debug)]
 enum WsEvent {
@@ -109,7 +111,7 @@ fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() {
+async fn main() -> io::Result<()> {
     simple_logger::init_with_env().unwrap();
     let args = Args::parse();
     let limit = args.limit;
@@ -117,9 +119,16 @@ async fn main() {
 
     let (tx, rx) = mpsc::channel::<WsEvent>(TASK_BUF);
     let mut rx = ReceiverStream::new(rx);
-    let tcp_listener = tokio::net::TcpListener::bind((Ipv6Addr::UNSPECIFIED, args.port))
-        .await
+
+    let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, args.port)
+        .parse()
         .unwrap();
+    let socket = TcpSocket::new_v6()?;
+    socket.set_keepalive(true)?;
+    socket.set_nodelay(true)?;
+    socket.bind(addr)?;
+
+    let tcp_listener = socket.listen(BACKLOG)?;
     let tcp_incoming = TcpListenerStream::new(tcp_listener);
 
     let tls_incoming = AcmeConfig::new(args.domains.clone())
@@ -343,16 +352,8 @@ async fn main() {
             let redirect = warp::get()
                 .and(warp::header::<String>("host"))
                 .and(warp::path::tail())
-                .and(warp::addr::remote())
-                .map(move |uri: String, path: warp::path::Tail, addr: Option<SocketAddr>| {
-                    (
-                        uri,
-                        domain.clone(),
-                        path,
-                        addr,
-                        )
-                })
-            .and_then(dyn_hreply);
+                .map(move |uri: String, path: warp::path::Tail| (uri, domain.clone(), path))
+                .and_then(dyn_hreply);
             http_index.push(redirect);
         }
 
@@ -362,10 +363,11 @@ async fn main() {
         }
 
         tokio::spawn(async move {
-            warp::serve(hindex).run(([0, 0, 0, 0, 0, 0, 0, 0], 80)).await;
+            warp::serve(hindex)
+                .run(([0, 0, 0, 0, 0, 0, 0, 0], 80))
+                .await;
         });
     }
-
 
     let mut vindex = Vec::new();
     for domain in args.domains {
@@ -373,14 +375,12 @@ async fn main() {
         let index = warp::get()
             .and(warp::header::<String>("host"))
             .and(warp::path::tail())
-            .and(warp::addr::remote())
-            .map(move |uri: String, path: warp::path::Tail, addr: Option<SocketAddr>| {
+            .map(move |uri: String, path: warp::path::Tail| {
                 (
                     uri,
                     domain.clone(),
                     www_root.to_str().unwrap().to_string(),
                     path,
-                    addr,
                 )
             })
             .and_then(dyn_reply);
@@ -399,28 +399,24 @@ async fn main() {
 }
 
 async fn dyn_hreply(
-    tuple: (String, String, warp::path::Tail, Option<SocketAddr>),
+    tuple: (String, String, warp::path::Tail),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (uri, domain, tail, addr) = tuple;
-
-    log::debug!("redirecting, uri {uri}, http remote {:?}", addr);
+    let (uri, domain, tail) = tuple;
 
     if uri != domain {
         return Err(warp::reject::not_found());
     }
 
     Ok(Box::new(warp::redirect::redirect(
-                    warp::http::Uri::from_str(&format!("https://{}/{}", &domain, tail.as_str()))
-                        .expect("problem with uri?"),
-                )))
+        warp::http::Uri::from_str(&format!("https://{}/{}", &domain, tail.as_str()))
+            .expect("problem with uri?"),
+    )))
 }
 
 async fn dyn_reply(
-    tuple: (String, String, String, warp::path::Tail, Option<SocketAddr>),
+    tuple: (String, String, String, warp::path::Tail),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (uri, domain, www_root, tail, addr) = tuple;
-
-    log::debug!("Remote {:?}", addr);
+    let (uri, domain, www_root, tail) = tuple;
 
     if uri != domain {
         return Err(warp::reject::not_found());
