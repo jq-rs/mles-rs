@@ -1,6 +1,6 @@
 [package]
 name = "mles"
-version = "2.2.0"
+version = "2.2.1"
 authors = ["jq-rs"]
 edition = "2021"
 
