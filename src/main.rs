@@ -15,6 +15,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::net::Ipv6Addr;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -110,6 +111,16 @@ fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
     queue.push_back(msg);
 }
 
+fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
+    let socket = TcpSocket::new_v6()?;
+    socket.set_keepalive(true)?;
+    socket.set_nodelay(true)?;
+    socket.set_reuseaddr(true)?;
+    socket.bind(addr)?;
+    let tcp_listener = socket.listen(BACKLOG)?;
+    Ok(TcpListenerStream::new(tcp_listener))
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
     simple_logger::init_with_env().unwrap();
@@ -123,13 +134,7 @@ async fn main() -> io::Result<()> {
     let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, args.port)
         .parse()
         .unwrap();
-    let socket = TcpSocket::new_v6()?;
-    socket.set_keepalive(true)?;
-    socket.set_nodelay(true)?;
-    socket.bind(addr)?;
-
-    let tcp_listener = socket.listen(BACKLOG)?;
-    let tcp_incoming = TcpListenerStream::new(tcp_listener);
+    let tcp_incoming = create_tcp_incoming(addr)?;
 
     let tls_incoming = AcmeConfig::new(args.domains.clone())
         .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
@@ -363,9 +368,12 @@ async fn main() -> io::Result<()> {
         }
 
         tokio::spawn(async move {
-            warp::serve(hindex)
-                .run(([0, 0, 0, 0, 0, 0, 0, 0], 80))
-                .await;
+            let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, 80)
+                .parse()
+                .unwrap();
+            if let Ok(tcp_incoming) = create_tcp_incoming(addr) {
+                warp::serve(hindex).run_incoming(tcp_incoming).await;
+            }
         });
     }
 
