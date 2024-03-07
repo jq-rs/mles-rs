@@ -34,6 +34,7 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
+use http_types::mime;
 
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
@@ -440,6 +441,18 @@ async fn dyn_reply(
     // Open the file
     match File::open(&file_path).await {
         Ok(mut file) => {
+            let parts: Vec<&str> = file_path.split('.').collect();
+            let ctype = match parts.last() {
+                Some(v) => {
+                    let mime = mime::Mime::from_extension(*v);
+                    match mime {
+                        Some(mime) => mime.basetype().to_string(),
+                        None => mime::ANY.basetype().to_string()
+                    }
+                }
+                None => mime::ANY.basetype().to_string()
+            };
+
             // Read the file content into a Vec<u8>
             let mut buffer = Vec::new();
             if (file.read_to_end(&mut buffer).await).is_err() {
@@ -452,7 +465,7 @@ async fn dyn_reply(
             log::debug!("...OK.");
 
             // Create a custom response with the file content
-            Ok(Box::new(warp::reply::Response::new(buffer.into())))
+            Ok(Box::new(warp::reply::with_header(warp::reply::Response::new(buffer.into()), "Content-Type", &ctype)))
         }
         Err(_) => {
             // Handle the case where the file doesn't exist or other errors
