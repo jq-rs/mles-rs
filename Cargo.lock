@@ -1412,7 +1412,7 @@ dependencies = [
 
 [[package]]
 name = "mles"
-version = "2.2.3"
+version = "2.3.0"
 dependencies = [
  "base64 0.22.0",
  "clap",

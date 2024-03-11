@@ -38,12 +38,18 @@ use http_types::mime;
 use tungstenite::handshake::client::Request;
 use tokio_tungstenite::client_async_tls;
 use tokio::net::TcpStream;
-use base64::{Engine as _, engine::{self, general_purpose}, alphabet};
+use base64::{Engine as _, engine::general_purpose};
+use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
     uid: String,
     channel: String,
+}
+
+enum ConsolidatedError {
+    WarpError(warp::Error),
+    TungsteniteError(tungstenite::Error),
 }
 
 #[derive(Parser, Debug)]
@@ -99,9 +105,10 @@ enum WsEvent {
     Init(
         u64,
         u64,
-        Sender<Option<Result<Message, warp::Error>>>,
+        Sender<Option<Result<Message, ConsolidatedError>>>,
         oneshot::Sender<u64>,
         Message,
+        bool
     ),
     Msg(u64, u64, Message),
     Logoff(u64, u64),
@@ -136,7 +143,7 @@ fn get_random_buf() -> Result<[u8; 16], getrandom::Error> {
     Ok(buf)
 }
 
-fn generate_node_id() -> u64 {
+fn generate_id() -> u64 {
     let rarray = get_random_buf();
     if let Ok(rarray) = rarray {
         let hasher = SipHasher::new_with_key(&rarray);
@@ -166,44 +173,18 @@ async fn main() -> io::Result<()> {
         .directory_lets_encrypt(!args.staging)
         .tokio_incoming(tcp_incoming, Vec::new());
 
-    /* Generate node-id */
-    let nodeid = generate_node_id();
-    log::debug!("Node id: 0x{nodeid:x}");
-
-    if let Some(peers) = args.peers {
-        let port = args.port;
-        tokio::spawn(async move {
-            log::debug!("Peers {peers:?}");
-
-            for peer in &peers {
-                let url = "wss://".to_owned() + peer;
-                log::debug!("Url: {url}");
-                let request = Request::builder()
-                    .uri(&url)
-                    .header("Host", peer)
-                    .header("Connection", "keep-alive, upgrade")
-                    .header("Upgrade", "websocket")
-                    .header("Sec-WebSocket-Version", "13")
-                    .header("Sec-WebSocket-Protocol", "mles-websocket")
-                    .header("Sec-WebSocket-Key", general_purpose::STANDARD.encode(nodeid.to_be_bytes()))
-                    .body(())
-                    .unwrap();
-                let cparam = format!("{peer}:{port}");
-
-                let tcp_stream = TcpStream::connect(&cparam).await.unwrap();
-                let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
-                println!("WebSocket handshake to {url} has been successfully completed");
-            }
-        });
-    }
+    /* Generate node-id and key*/
+    let nodeid = generate_id();
+    let key = generate_id();
+    log::debug!("Node id: 0x{nodeid:x}, key: 0x{key:x}");
 
     tokio::spawn(async move {
         let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
-        let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, warp::Error>>>>> =
+        let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, ConsolidatedError>>>>> =
             HashMap::new();
         while let Some(event) = rx.next().await {
             match event {
-                WsEvent::Init(h, ch, tx2, err_tx, msg) => {
+                WsEvent::Init(h, ch, tx2, err_tx, msg, is_peer) => {
                     if !ch_db.contains_key(&ch) {
                         ch_db.entry(ch).or_default();
                     }
@@ -213,9 +194,11 @@ async fn main() -> io::Result<()> {
                             e.insert(tx2.clone());
                             log::info!("Added {h:x} into {ch:x}.");
 
-                            let val = err_tx.send(h);
-                            if let Err(err) = val {
-                                log::info!("Got err tx msg err {err}");
+                            if !is_peer {
+                                let val = err_tx.send(h);
+                                if let Err(err) = val {
+                                    log::info!("Got err tx msg err {err}");
+                                }
                             }
 
                             for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
@@ -227,10 +210,12 @@ async fn main() -> io::Result<()> {
 
                             let queue = msg_db.get_mut(&ch);
                             if let Some(queue) = queue {
-                                for qmsg in &*queue {
-                                    let res = tx2.send(Some(Ok(qmsg.clone()))).await;
-                                    if let Err(err) = res {
-                                        log::info!("Got tx snd qmsg err {err}");
+                                if !is_peer { 
+                                    for qmsg in &*queue {
+                                        let res = tx2.send(Some(Ok(qmsg.clone()))).await;
+                                        if let Err(err) = res {
+                                            log::info!("Got tx snd qmsg err {err}");
+                                        }
                                     }
                                 }
                                 add_message(msg, limit, queue);
@@ -275,8 +260,9 @@ async fn main() -> io::Result<()> {
         ))
         .map(move |ws: warp::ws::Ws| {
             let tx_inner = tx_clone.clone();
+            let peers = args.peers.clone();
             ws.on_upgrade(move |websocket| {
-                let (tx2, rx2) = mpsc::channel::<Option<Result<Message, warp::Error>>>(WS_BUF);
+                let (tx2, rx2) = mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
                 let (err_tx, err_rx) = oneshot::channel();
                 let mut rx2 = ReceiverStream::new(rx2);
                 let (mut ws_tx, mut ws_rx) = websocket.split();
@@ -284,6 +270,60 @@ async fn main() -> io::Result<()> {
                 let ch = Arc::new(AtomicU64::new(0));
                 let ping_cntr = Arc::new(AtomicU64::new(0));
                 let pong_cntr = Arc::new(AtomicU64::new(0));
+
+                let tx_peer = tx_inner.clone();
+                //Peering support
+                if let Some(peers) = peers {
+                    let port = args.port;
+                    tokio::spawn(async move {
+                        log::debug!("Peers {peers:?}");
+            
+                        for peer in &peers {
+                            let url = "wss://".to_owned() + peer;
+                            let key = general_purpose::STANDARD.encode(key.to_be_bytes());
+                            log::debug!("Url: {url}");
+                            log::debug!("Key: {key}");
+                            let request = Request::builder()
+                                .uri(&url)
+                                .header("Host", peer)
+                                .header("Connection", "keep-alive, upgrade")
+                                .header("Upgrade", "websocket")
+                                .header("Sec-WebSocket-Version", "13")
+                                .header("Sec-WebSocket-Protocol", "mles-websocket")
+                                .header("Sec-WebSocket-Key", key.clone())
+                                .body(())
+                                .unwrap();
+                            let cparam = format!("{peer}:{port}");
+            
+                            let tcp_stream = TcpStream::connect(&cparam).await.unwrap();
+                            let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
+            
+                            let (mut peer_tx, mut peer_rx) = ws_stream.split();
+                            let res = peer_tx.send(WebMessage::text(format!("{{ \"uid\": \"{key}\", \"channel\": \"test\" }}"))).await;
+                            match res {
+                                Ok(_) => {},
+                                Err(err) => println!("Error {:?}", err)
+                            }
+            
+                            //TODO receive peer ack, send frames to all sockets and send frames also to peer socket
+                            //TODO in case of connection close, implement reconnect attempt
+                            //With several peers send at most one in alphabetical order?
+                            while let Some(message) = peer_rx.next().await {
+                                match message {
+                                    Ok(msg) => {
+                                        // Handle the message
+                                        println!("Received message: {:?}", msg);
+                                    }
+                                    Err(e) => {
+                                        // Handle error
+                                        eprintln!("Error receiving message: {:?}", e);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
 
                 let tx = tx_inner.clone();
                 let tx2_inner = tx2.clone();
@@ -315,6 +355,7 @@ async fn main() -> io::Result<()> {
                                         tx2_spawn,
                                         err_tx,
                                         msg,
+                                        false
                                     ))
                                     .await;
                             }
