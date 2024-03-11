@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
- *  Copyright (C) 2023  Mles developers
+ *  Copyright (C) 2023-2024  Mles developers
  */
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -35,6 +35,10 @@ use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
 use http_types::mime;
+use tungstenite::handshake::client::Request;
+use tokio_tungstenite::client_async_tls;
+use tokio::net::TcpStream;
+use base64::{Engine as _, engine::{self, general_purpose}, alphabet};
 
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
@@ -47,6 +51,10 @@ struct Args {
     /// Domain(s)
     #[arg(short, long, required = true)]
     domains: Vec<String>,
+
+    /// Peer(s)
+    #[arg(long)]
+    peers: Option<Vec<String>>,
 
     /// Contact info
     #[arg(short, long)]
@@ -122,6 +130,21 @@ fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
     Ok(TcpListenerStream::new(tcp_listener))
 }
 
+fn get_random_buf() -> Result<[u8; 16], getrandom::Error> {
+    let mut buf = [0u8; 16];
+    getrandom::getrandom(&mut buf)?;
+    Ok(buf)
+}
+
+fn generate_node_id() -> u64 {
+    let rarray = get_random_buf();
+    if let Ok(rarray) = rarray {
+        let hasher = SipHasher::new_with_key(&rarray);
+        return hasher.finish();
+    }
+    panic!("No random available!")
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
     simple_logger::init_with_env().unwrap();
@@ -142,6 +165,37 @@ async fn main() -> io::Result<()> {
         .cache_option(args.cache.clone().map(DirCache::new))
         .directory_lets_encrypt(!args.staging)
         .tokio_incoming(tcp_incoming, Vec::new());
+
+    /* Generate node-id */
+    let nodeid = generate_node_id();
+    log::debug!("Node id: 0x{nodeid:x}");
+
+    if let Some(peers) = args.peers {
+        let port = args.port;
+        tokio::spawn(async move {
+            log::debug!("Peers {peers:?}");
+
+            for peer in &peers {
+                let url = "wss://".to_owned() + peer;
+                log::debug!("Url: {url}");
+                let request = Request::builder()
+                    .uri(&url)
+                    .header("Host", peer)
+                    .header("Connection", "keep-alive, upgrade")
+                    .header("Upgrade", "websocket")
+                    .header("Sec-WebSocket-Version", "13")
+                    .header("Sec-WebSocket-Protocol", "mles-websocket")
+                    .header("Sec-WebSocket-Key", general_purpose::STANDARD.encode(nodeid.to_be_bytes()))
+                    .body(())
+                    .unwrap();
+                let cparam = format!("{peer}:{port}");
+
+                let tcp_stream = TcpStream::connect(&cparam).await.unwrap();
+                let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
+                println!("WebSocket handshake to {url} has been successfully completed");
+            }
+        });
+    }
 
     tokio::spawn(async move {
         let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
