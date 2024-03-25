@@ -10,8 +10,8 @@ use rustls_acme::caches::DirCache;
 use rustls_acme::AcmeConfig;
 use serde::{Deserialize, Serialize};
 use siphasher::sip::SipHasher;
-use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap};
+
+
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::net::Ipv6Addr;
@@ -24,7 +24,7 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
+
 use tokio::sync::oneshot;
 use tokio::time;
 use tokio::time::Duration;
@@ -174,7 +174,7 @@ async fn main() -> io::Result<()> {
                 let ping_cntr = Arc::new(AtomicU64::new(0));
                 let pong_cntr = Arc::new(AtomicU64::new(0));
 
-                let tx_peer = tx_inner.clone();
+                let _tx_peer = tx_inner.clone();
                 //Peering support
                 if let Some(peers) = peers {
                     let port = args.port;
