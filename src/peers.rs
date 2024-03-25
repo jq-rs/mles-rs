@@ -85,11 +85,11 @@ pub fn init_peers(
                         WsPeerEvent::Msg(h, ch, msg) => {
                             //Find out msg hdr with h + ch
                             //Send first msg hdr and then msg as below
-                            if let Some(ref tx) = ptx {
+                            if let Some(ref ptx) = ptx {
                                 let first = chdb.get(&(h, ch));
                                 if let Some((first_msg, _)) = first {
-                                    let _ = tx.send(Some(Ok(first_msg.clone()))).await;
-                                    let _ = tx.send(Some(Ok(msg))).await;
+                                    let _ = ptx.send(Some(Ok(first_msg.clone()))).await;
+                                    let _ = ptx.send(Some(Ok(msg))).await;
                                 }
                             }
                         }
