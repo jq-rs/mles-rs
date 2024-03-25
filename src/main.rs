@@ -41,6 +41,8 @@ use tokio::net::TcpStream;
 use base64::{Engine as _, engine::general_purpose};
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 
+mod channels;
+
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
     uid: String,
@@ -100,33 +102,6 @@ const TLS_PORT: &str = "443";
 const PING_INTERVAL: u64 = 12000;
 const BACKLOG: u32 = 1024;
 
-#[derive(Debug)]
-enum WsEvent {
-    Init(
-        u64,
-        u64,
-        Sender<Option<Result<Message, ConsolidatedError>>>,
-        oneshot::Sender<u64>,
-        Message,
-        bool
-    ),
-    Msg(u64, u64, Message),
-    Logoff(u64, u64),
-}
-
-fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
-    let limit = limit as usize;
-    let len = queue.len();
-    let cap = queue.capacity();
-    if cap < limit && len == cap && cap * 2 >= limit {
-        queue.reserve(limit - queue.capacity())
-    }
-    if len == limit {
-        queue.pop_front();
-    }
-    queue.push_back(msg);
-}
-
 fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
     let socket = TcpSocket::new_v6()?;
     socket.set_keepalive(true)?;
@@ -159,8 +134,8 @@ async fn main() -> io::Result<()> {
     let limit = args.limit;
     let www_root_dir = args.wwwroot;
 
-    let (tx, rx) = mpsc::channel::<WsEvent>(TASK_BUF);
-    let mut rx = ReceiverStream::new(rx);
+    let (tx, rx) = mpsc::channel::<channels::WsEvent>(TASK_BUF);
+    let rx = ReceiverStream::new(rx);
 
     let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, args.port)
         .parse()
@@ -178,79 +153,7 @@ async fn main() -> io::Result<()> {
     let key = generate_id();
     log::debug!("Node id: 0x{nodeid:x}, key: 0x{key:x}");
 
-    tokio::spawn(async move {
-        let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
-        let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, ConsolidatedError>>>>> =
-            HashMap::new();
-        while let Some(event) = rx.next().await {
-            match event {
-                WsEvent::Init(h, ch, tx2, err_tx, msg, is_peer) => {
-                    if !ch_db.contains_key(&ch) {
-                        ch_db.entry(ch).or_default();
-                    }
-                    if let Some(uid_db) = ch_db.get_mut(&ch) {
-                        if let Entry::Vacant(e) = uid_db.entry(h) {
-                            msg_db.entry(ch).or_default();
-                            e.insert(tx2.clone());
-                            log::info!("Added {h:x} into {ch:x}.");
-
-                            if !is_peer {
-                                let val = err_tx.send(h);
-                                if let Err(err) = val {
-                                    log::info!("Got err tx msg err {err}");
-                                }
-                            }
-
-                            for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
-                                let res = tx.send(Some(Ok(msg.clone()))).await;
-                                if let Err(err) = res {
-                                    log::info!("Got tx msg err {err}");
-                                }
-                            }
-
-                            let queue = msg_db.get_mut(&ch);
-                            if let Some(queue) = queue {
-                                if !is_peer { 
-                                    for qmsg in &*queue {
-                                        let res = tx2.send(Some(Ok(qmsg.clone()))).await;
-                                        if let Err(err) = res {
-                                            log::info!("Got tx snd qmsg err {err}");
-                                        }
-                                    }
-                                }
-                                add_message(msg, limit, queue);
-                            }
-                        } else {
-                            log::warn!("Init done to {h:x} into {ch:x}, closing!");
-                        }
-                    }
-                }
-                WsEvent::Msg(h, ch, msg) => {
-                    if let Some(uid_db) = ch_db.get(&ch) {
-                        for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
-                            let res = tx.send(Some(Ok(msg.clone()))).await;
-                            if let Err(err) = res {
-                                log::info!("Got tx snd msg err {err}");
-                            }
-                        }
-                        let queue = msg_db.get_mut(&ch);
-                        if let Some(queue) = queue {
-                            add_message(msg, limit, queue);
-                        }
-                    }
-                }
-                WsEvent::Logoff(h, ch) => {
-                    if let Some(uid_db) = ch_db.get_mut(&ch) {
-                        uid_db.remove(&h);
-                        if uid_db.is_empty() {
-                            ch_db.remove(&ch);
-                        }
-                        log::info!("Removed {h:x} from {ch:x}.");
-                    }
-                }
-            }
-        }
-    });
+    channels::init_channels(rx, limit);
 
     let tx_clone = tx.clone();
     let ws = warp::ws()
@@ -299,7 +202,7 @@ async fn main() -> io::Result<()> {
                             let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
             
                             let (mut peer_tx, mut peer_rx) = ws_stream.split();
-                            let res = peer_tx.send(WebMessage::text(format!("{{ \"uid\": \"{key}\", \"channel\": \"test\" }}"))).await;
+                            let res = peer_tx.send(WebMessage::text(format!("{{ \"peerid\": \"{nodeid}\" }}"))).await;
                             match res {
                                 Ok(_) => {},
                                 Err(err) => println!("Error {:?}", err)
@@ -349,7 +252,7 @@ async fn main() -> io::Result<()> {
                                 let hasher = SipHasher::new();
                                 ch.store(hasher.hash(msghdr.channel.as_bytes()), Ordering::SeqCst);
                                 let _ = tx
-                                    .send(WsEvent::Init(
+                                    .send(channels::WsEvent::Init(
                                         h.load(Ordering::SeqCst),
                                         ch.load(Ordering::SeqCst),
                                         tx2_spawn,
@@ -381,7 +284,7 @@ async fn main() -> io::Result<()> {
                             break;
                         }
                         let val = tx
-                            .send(WsEvent::Msg(
+                            .send(channels::WsEvent::Msg(
                                 h.load(Ordering::SeqCst),
                                 ch.load(Ordering::SeqCst),
                                 msg,
@@ -436,7 +339,7 @@ async fn main() -> io::Result<()> {
                     let h = h.load(Ordering::SeqCst);
                     let ch = ch.load(Ordering::SeqCst);
                     if h != 0 && ch != 0 {
-                        let _ = tx.send(WsEvent::Logoff(h, ch)).await;
+                        let _ = tx.send(channels::WsEvent::Logoff(h, ch)).await;
                     }
                 }
             })
