@@ -141,11 +141,11 @@ async fn main() -> io::Result<()> {
     let tcp_incoming = create_tcp_incoming(addr)?;
 
     /*let tls_incoming = AcmeConfig::new(args.domains.clone())
-        .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
-        .cache_option(args.cache.clone().map(DirCache::new))
-        .directory_lets_encrypt(!args.staging)
-        .tokio_incoming(tcp_incoming, Vec::new());
-*/
+            .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
+            .cache_option(args.cache.clone().map(DirCache::new))
+            .directory_lets_encrypt(!args.staging)
+            .tokio_incoming(tcp_incoming, Vec::new());
+    */
     /* Generate node-id and key*/
     let nodeid = generate_id();
     let key = generate_id();
@@ -216,7 +216,13 @@ async fn main() -> io::Result<()> {
                                     false,
                                 ))
                                 .await;
-                            let _ = peertx.send(peers::WsPeerEvent::InitChannel(h.load(Ordering::SeqCst), ch.load(Ordering::SeqCst), msg)).await;
+                            let _ = peertx
+                                .send(peers::WsPeerEvent::InitChannel(
+                                    h.load(Ordering::SeqCst),
+                                    ch.load(Ordering::SeqCst),
+                                    msg,
+                                ))
+                                .await;
                         } else if let Ok(msghdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
                             let _ = peertx
                                 .send(peers::WsPeerEvent::Init(msghdr, tx2_spawn.clone()))

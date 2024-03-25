@@ -8,17 +8,17 @@
 use futures_util::{SinkExt, StreamExt};
 
 use base64::{engine::general_purpose, Engine as _};
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
-use serde::{Deserialize, Serialize};
 
-use crate::ReceiverStream;
 use crate::ConsolidatedError;
 use crate::Message;
+use crate::ReceiverStream;
 
 #[derive(Debug, Serialize, Deserialize, Hash)]
 pub struct MlesPeerHeader {
@@ -31,16 +31,8 @@ pub enum WsPeerEvent {
         MlesPeerHeader,
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
-    InitChannel(
-        u64,
-        u64,
-        Message
-    ),
-    Msg(
-        u64,
-        u64,
-        Message
-    )
+    InitChannel(u64, u64, Message),
+    Msg(u64, u64, Message),
 }
 
 pub fn init_peers(
@@ -55,14 +47,18 @@ pub fn init_peers(
             match event {
                 WsPeerEvent::Init(msg, tx) => {
                     log::debug!("Got msg {msg:?}");
-                    let peerhdr = MlesPeerHeader { peerid: format!("{nodeid:x}") };
+                    let peerhdr = MlesPeerHeader {
+                        peerid: format!("{nodeid:x}"),
+                    };
                     let _ = tx
-                        .send(Some(Ok(Message::text(serde_json::to_string(&peerhdr).unwrap()))))
+                        .send(Some(Ok(Message::text(
+                            serde_json::to_string(&peerhdr).unwrap(),
+                        ))))
                         .await;
-                },
+                }
                 WsPeerEvent::InitChannel(h, ch, msg) => { // Save to database
-                },
-                WsPeerEvent::Msg(h, ch, msg) => { // Forward to channel with msg header 
+                }
+                WsPeerEvent::Msg(h, ch, msg) => { // Forward to channel with msg header
                 }
             }
         }
@@ -92,7 +88,9 @@ pub fn init_peers(
                 let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
 
                 let (mut peer_tx, mut peer_rx) = ws_stream.split();
-                let peerhdr = MlesPeerHeader { peerid: format!("{nodeid:x}") };
+                let peerhdr = MlesPeerHeader {
+                    peerid: format!("{nodeid:x}"),
+                };
                 log::info!("Send to peer {}", serde_json::to_string(&peerhdr).unwrap());
                 let res = peer_tx
                     .send(WebMessage::text(serde_json::to_string(&peerhdr).unwrap()))
@@ -105,7 +103,7 @@ pub fn init_peers(
                 //Receive first acknowledge from peer
                 if let Some(message) = peer_rx.next().await {
                     match message {
-                        Ok(msg)  => 'message: {
+                        Ok(msg) => 'message: {
                             if msg.is_text() {
                                 let msg = msg.to_text().unwrap();
                                 if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msg) {
@@ -114,7 +112,7 @@ pub fn init_peers(
                                 }
                             }
                             log::info!("NOT valid valid peer header {msg:?}");
-                        },
+                        }
                         Err(err) => {
                             log::error!("{}", err);
                             return;
