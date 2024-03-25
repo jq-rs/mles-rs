@@ -38,10 +38,15 @@ use warp::Filter;
 mod channels;
 mod peers;
 
-#[derive(Serialize, Deserialize, Hash)]
+#[derive(Debug, Serialize, Deserialize, Hash)]
 struct MlesHeader {
     uid: String,
     channel: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Hash)]
+struct MlesPeerHeader {
+    peerid: String,
 }
 
 enum ConsolidatedError {
@@ -170,11 +175,13 @@ async fn main() -> io::Result<()> {
                 let ping_cntr = Arc::new(AtomicU64::new(0));
                 let pong_cntr = Arc::new(AtomicU64::new(0));
 
+                let (peertx, peerrx) = mpsc::channel::<peers::WsPeerEvent>(TASK_BUF);
+
                 let _tx_peer = tx_inner.clone();
                 //Peering support
                 if let Some(peers) = peers {
                     let port = args.port;
-                    peers::init_peers(peers, port, nodeid, key);
+                    peers::init_peers(peers, peerrx, port, nodeid, key);
                 }
 
                 let tx = tx_inner.clone();
@@ -182,36 +189,38 @@ async fn main() -> io::Result<()> {
                 let h_clone = h.clone();
                 let ch_clone = ch.clone();
                 let pong_cntr_clone = pong_cntr.clone();
+                let peertx_inner = peertx.clone();
                 tokio::spawn(async move {
                     let h = h_clone;
                     let ch = ch_clone;
                     let tx2_spawn = tx2_inner.clone();
                     let pong_cntr_inner = pong_cntr_clone.clone();
+                    let peertx = peertx_inner.clone();
                     if let Some(Ok(msg)) = ws_rx.next().await {
                         if !msg.is_text() {
                             return;
                         }
-                        let msghdr: Result<MlesHeader, serde_json::Error> =
-                            serde_json::from_str(msg.to_str().unwrap());
-                        match msghdr {
-                            Ok(msghdr) => {
-                                let mut hasher = SipHasher::new();
-                                msghdr.hash(&mut hasher);
-                                h.store(hasher.finish(), Ordering::SeqCst);
-                                let hasher = SipHasher::new();
-                                ch.store(hasher.hash(msghdr.channel.as_bytes()), Ordering::SeqCst);
-                                let _ = tx
-                                    .send(channels::WsEvent::Init(
-                                        h.load(Ordering::SeqCst),
-                                        ch.load(Ordering::SeqCst),
-                                        tx2_spawn,
-                                        err_tx,
-                                        msg,
-                                        false,
-                                    ))
-                                    .await;
-                            }
-                            Err(_) => return,
+                        let msgstr = msg.to_str().unwrap();
+                        if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
+                            let mut hasher = SipHasher::new();
+                            msghdr.hash(&mut hasher);
+                            h.store(hasher.finish(), Ordering::SeqCst);
+                            let hasher = SipHasher::new();
+                            ch.store(hasher.hash(msghdr.channel.as_bytes()), Ordering::SeqCst);
+                            let _ = tx
+                                .send(channels::WsEvent::Init(
+                                    h.load(Ordering::SeqCst),
+                                    ch.load(Ordering::SeqCst),
+                                    tx2_spawn.clone(),
+                                    err_tx,
+                                    msg,
+                                    false,
+                                ))
+                                .await;
+                        } else if let Ok(msghdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
+                            let _ = peertx
+                                .send(peers::WsPeerEvent::Init(msghdr, tx2_spawn.clone()))
+                                .await;
                         }
                     }
                     match err_rx.await {
