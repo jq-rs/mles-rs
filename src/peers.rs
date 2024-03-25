@@ -15,12 +15,17 @@ use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
+use tokio::sync::mpsc;
 
 use crate::ConsolidatedError;
 use crate::Message;
 use crate::ReceiverStream;
 
 use std::collections::{hash_map::Entry, HashMap};
+use siphasher::sip::SipHasher;
+use std::hash::{Hash, Hasher};
+
+use crate::MlesHeader;
 
 #[derive(Debug, Serialize, Deserialize, Hash)]
 pub struct MlesPeerHeader {
@@ -50,13 +55,70 @@ pub fn init_peers(
     nodeid: u64,
     key: u64,
 ) {
+    let (tx, mut rx) = mpsc::channel::<WebMessage>(16);
     tokio::spawn(async move {
         let mut ptx: Option<Sender<Option<Result<Message, ConsolidatedError>>>> = None;
         let mut chdb: HashMap<
             (u64, u64),
             (Message, Sender<Option<Result<Message, ConsolidatedError>>>),
         > = HashMap::new();
-        while let Some(event) = peerrx.next().await {
+
+        loop {
+            tokio::select! {
+                Some(event) = peerrx.next() => {
+                    match event {
+                        WsPeerEvent::Init(msg, tx) => {
+                            log::debug!("Got msg {msg:?}");
+                            let peerhdr = MlesPeerHeader {
+                                peerid: format!("{nodeid:x}"),
+                            };
+                            let _ = tx
+                                .send(Some(Ok(Message::text(
+                                    serde_json::to_string(&peerhdr).unwrap(),
+                                ))))
+                                .await;
+                            ptx = Some(tx);
+                        }
+                        WsPeerEvent::InitChannel(h, ch, msg, ctx) => {
+                            chdb.insert((h, ch), (msg, ctx));
+                        }
+                        WsPeerEvent::Msg(h, ch, msg) => {
+                            //Find out msg hdr with h + ch
+                            //Send first msg hdr and then msg as below
+                            if let Some(ref tx) = ptx {
+                                let first = chdb.get(&(h, ch));
+                                if let Some((first_msg, _)) = first {
+                                    let _ = tx.send(Some(Ok(first_msg.clone()))).await;
+                                    let _ = tx.send(Some(Ok(msg))).await;
+                                }
+                            }
+                        }
+                        WsPeerEvent::Logoff(h, ch) => {
+                            chdb.remove(&(h, ch));
+                        }
+                    }
+                },
+                msg = rx.recv() => {
+                    if let Some(msg) = msg {
+                        let msgstr = msg.to_text().unwrap();
+                        if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
+                            let mut hasher = SipHasher::new();
+                            msghdr.hash(&mut hasher);
+                            let h = hasher.finish();
+                            let hasher = SipHasher::new();
+                            let ch = hasher.hash(msghdr.channel.as_bytes());
+                            let entry = chdb.get(&(h, ch));
+                            if let Some((_, ctx)) = entry {
+                                let next_msg: WebMessage = rx.recv().await.unwrap();
+                                let _ = ctx.send(Some(Ok(Message::binary(next_msg.into_data())))).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+            
+       /* while let Some(event) = peerrx.next().await {
             match event {
                 WsPeerEvent::Init(msg, tx) => {
                     log::debug!("Got msg {msg:?}");
@@ -88,7 +150,7 @@ pub fn init_peers(
                     chdb.remove(&(h, ch));
                 }
             }
-        }
+        }*/
     });
 
     if let Some(peers) = peers {
@@ -157,6 +219,7 @@ pub fn init_peers(
                         Ok(msg) => {
                             // Handle the message
                             log::info!("Received message: {:?}", msg);
+                            let _ = tx.send(msg).await;
                         }
                         Err(e) => {
                             // Handle error
