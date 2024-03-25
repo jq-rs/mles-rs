@@ -15,6 +15,7 @@ use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
 
+use crate::ReceiverStream;
 use crate::ConsolidatedError;
 use crate::Message;
 use crate::MlesPeerHeader;
@@ -29,14 +30,26 @@ pub enum WsPeerEvent {
 
 pub fn init_peers(
     peers: Vec<String>,
-    peerrx: Receiver<WsPeerEvent>,
+    mut peerrx: ReceiverStream<WsPeerEvent>,
     port: u16,
     nodeid: u64,
     key: u64,
 ) {
     tokio::spawn(async move {
-        log::debug!("Peers {peers:?}");
+        while let Some(event) = peerrx.next().await {
+            match event {
+                WsPeerEvent::Init(msg, tx) => {
+                    let peerhdr = MlesPeerHeader { peerid: format!("{nodeid:x}") };
+                    let res = tx
+                        .send(Some(Ok(Message::text(serde_json::to_string(&peerhdr).unwrap()))))
+                        .await;
+                }
+            }
+        }
+    });
 
+    tokio::spawn(async move {
+        log::debug!("Peers {peers:?}");
         for peer in &peers {
             let url = "wss://".to_owned() + peer;
             let key = general_purpose::STANDARD.encode(key.to_be_bytes());

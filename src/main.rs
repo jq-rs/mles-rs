@@ -176,8 +176,8 @@ async fn main() -> io::Result<()> {
                 let pong_cntr = Arc::new(AtomicU64::new(0));
 
                 let (peertx, peerrx) = mpsc::channel::<peers::WsPeerEvent>(TASK_BUF);
+                let peerrx = ReceiverStream::new(peerrx);
 
-                let _tx_peer = tx_inner.clone();
                 //Peering support
                 if let Some(peers) = peers {
                     let port = args.port;
