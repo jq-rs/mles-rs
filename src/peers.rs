@@ -14,11 +14,16 @@ use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
+use serde::{Deserialize, Serialize};
 
 use crate::ReceiverStream;
 use crate::ConsolidatedError;
 use crate::Message;
-use crate::MlesPeerHeader;
+
+#[derive(Debug, Serialize, Deserialize, Hash)]
+pub struct MlesPeerHeader {
+    peerid: String,
+}
 
 #[derive(Debug)]
 pub enum WsPeerEvent {
@@ -26,10 +31,20 @@ pub enum WsPeerEvent {
         MlesPeerHeader,
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
+    InitChannel(
+        u64,
+        u64,
+        Message
+    ),
+    Msg(
+        u64,
+        u64,
+        Message
+    )
 }
 
 pub fn init_peers(
-    peers: Vec<String>,
+    peers: Option<Vec<String>>,
     mut peerrx: ReceiverStream<WsPeerEvent>,
     port: u16,
     nodeid: u64,
@@ -39,84 +54,92 @@ pub fn init_peers(
         while let Some(event) = peerrx.next().await {
             match event {
                 WsPeerEvent::Init(msg, tx) => {
+                    log::debug!("Got msg {msg:?}");
                     let peerhdr = MlesPeerHeader { peerid: format!("{nodeid:x}") };
-                    let res = tx
+                    let _ = tx
                         .send(Some(Ok(Message::text(serde_json::to_string(&peerhdr).unwrap()))))
                         .await;
+                },
+                WsPeerEvent::InitChannel(h, ch, msg) => { // Save to database
+                },
+                WsPeerEvent::Msg(h, ch, msg) => { // Forward to channel with msg header 
                 }
             }
         }
     });
 
-    tokio::spawn(async move {
-        log::debug!("Peers {peers:?}");
-        for peer in &peers {
-            let url = "wss://".to_owned() + peer;
-            let key = general_purpose::STANDARD.encode(key.to_be_bytes());
-            log::debug!("Url: {url}");
-            log::debug!("Key: {key}");
-            let request = Request::builder()
-                .uri(&url)
-                .header("Host", peer)
-                .header("Connection", "keep-alive, upgrade")
-                .header("Upgrade", "websocket")
-                .header("Sec-WebSocket-Version", "13")
-                .header("Sec-WebSocket-Protocol", "mles-websocket")
-                .header("Sec-WebSocket-Key", key.clone())
-                .body(())
-                .unwrap();
-            let cparam = format!("{peer}:{port}");
+    if let Some(peers) = peers {
+        tokio::spawn(async move {
+            log::debug!("Peers {peers:?}");
+            for peer in &peers {
+                let url = "wss://".to_owned() + peer;
+                let key = general_purpose::STANDARD.encode(key.to_be_bytes());
+                log::debug!("Url: {url}");
+                log::debug!("Key: {key}");
+                let request = Request::builder()
+                    .uri(&url)
+                    .header("Host", peer)
+                    .header("Connection", "keep-alive, upgrade")
+                    .header("Upgrade", "websocket")
+                    .header("Sec-WebSocket-Version", "13")
+                    .header("Sec-WebSocket-Protocol", "mles-websocket")
+                    .header("Sec-WebSocket-Key", key.clone())
+                    .body(())
+                    .unwrap();
+                let cparam = format!("{peer}:{port}");
 
-            let tcp_stream = TcpStream::connect(&cparam).await.unwrap();
-            let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
+                let tcp_stream = TcpStream::connect(&cparam).await.unwrap();
+                let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
 
-            let (mut peer_tx, mut peer_rx) = ws_stream.split();
-            let peerhdr = MlesPeerHeader { peerid: format!("{nodeid:x}") };
-            let res = peer_tx
-                .send(WebMessage::text(serde_json::to_string(&peerhdr).unwrap()))
-                .await;
-            match res {
-                Ok(_) => {}
-                Err(err) => println!("Error {:?}", err),
-            }
+                let (mut peer_tx, mut peer_rx) = ws_stream.split();
+                let peerhdr = MlesPeerHeader { peerid: format!("{nodeid:x}") };
+                log::info!("Send to peer {}", serde_json::to_string(&peerhdr).unwrap());
+                let res = peer_tx
+                    .send(WebMessage::text(serde_json::to_string(&peerhdr).unwrap()))
+                    .await;
+                match res {
+                    Ok(_) => {}
+                    Err(err) => println!("Error {:?}", err),
+                }
 
-            //Receive first acknowledge from peer
-            if let Some(message) = peer_rx.next().await {
-                match message {
-                    Ok(msg)  => 'message: {
-                        if msg.is_text() {
-                            let msg = msg.to_text().unwrap();
-                            if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msg) {
-                                log::info!("Got valid peer header {peerhdr:?}");
-                                break 'message;
+                //Receive first acknowledge from peer
+                if let Some(message) = peer_rx.next().await {
+                    match message {
+                        Ok(msg)  => 'message: {
+                            if msg.is_text() {
+                                let msg = msg.to_text().unwrap();
+                                if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msg) {
+                                    log::info!("Got valid peer header {peerhdr:?}");
+                                    break 'message;
+                                }
                             }
+                            log::info!("NOT valid valid peer header {msg:?}");
+                        },
+                        Err(err) => {
+                            log::error!("{}", err);
+                            return;
                         }
-                        log::info!("NOT valid valid peer header {msg:?}");
-                    },
-                    Err(err) => {
-                        log::error!("{}", err);
-                        return;
                     }
                 }
-            }
-            //IF not ok, return or retry etc...
+                //IF not ok, return or retry etc...
 
-            //TODO receive peer ack, send frames to all sockets and send frames also to peer socket
-            //TODO in case of connection close, implement reconnect attempt
-            //With several peers send at most one in alphabetical order?
-            while let Some(message) = peer_rx.next().await {
-                match message {
-                    Ok(msg) => {
-                        // Handle the message
-                        println!("Received message: {:?}", msg);
-                    }
-                    Err(e) => {
-                        // Handle error
-                        eprintln!("Error receiving message: {:?}", e);
-                        break;
+                //TODO receive peer ack, send frames to all sockets and send frames also to peer socket
+                //TODO in case of connection close, implement reconnect attempt
+                //With several peers send at most one in alphabetical order?
+                while let Some(message) = peer_rx.next().await {
+                    match message {
+                        Ok(msg) => {
+                            // Handle the message
+                            log::info!("Received message: {:?}", msg);
+                        }
+                        Err(e) => {
+                            // Handle error
+                            log::error!("Error receiving message: {:?}", e);
+                            break;
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+    }
 }

@@ -38,15 +38,13 @@ use warp::Filter;
 mod channels;
 mod peers;
 
+use crate::peers::MlesPeerHeader;
+use crate::peers::WsPeerEvent;
+
 #[derive(Debug, Serialize, Deserialize, Hash)]
 struct MlesHeader {
     uid: String,
     channel: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Hash)]
-struct MlesPeerHeader {
-    peerid: String,
 }
 
 enum ConsolidatedError {
@@ -142,12 +140,12 @@ async fn main() -> io::Result<()> {
         .unwrap();
     let tcp_incoming = create_tcp_incoming(addr)?;
 
-    let tls_incoming = AcmeConfig::new(args.domains.clone())
+    /*let tls_incoming = AcmeConfig::new(args.domains.clone())
         .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
         .cache_option(args.cache.clone().map(DirCache::new))
         .directory_lets_encrypt(!args.staging)
         .tokio_incoming(tcp_incoming, Vec::new());
-
+*/
     /* Generate node-id and key*/
     let nodeid = generate_id();
     let key = generate_id();
@@ -155,7 +153,17 @@ async fn main() -> io::Result<()> {
 
     channels::init_channels(rx, limit);
 
+    let peers = args.peers;
+    let (peertx, peerrx) = mpsc::channel::<peers::WsPeerEvent>(TASK_BUF);
+    let peerrx = ReceiverStream::new(peerrx);
+
+    //Peering support
+    let port = args.port;
+    peers::init_peers(peers, peerrx, port, nodeid, key);
+
     let tx_clone = tx.clone();
+    let peertx_clone = peertx.clone();
+
     let ws = warp::ws()
         .and(warp::header::exact(
             "Sec-WebSocket-Protocol",
@@ -163,7 +171,7 @@ async fn main() -> io::Result<()> {
         ))
         .map(move |ws: warp::ws::Ws| {
             let tx_inner = tx_clone.clone();
-            let peers = args.peers.clone();
+            let peertx = peertx_clone.clone();
             ws.on_upgrade(move |websocket| {
                 let (tx2, rx2) =
                     mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
@@ -174,15 +182,6 @@ async fn main() -> io::Result<()> {
                 let ch = Arc::new(AtomicU64::new(0));
                 let ping_cntr = Arc::new(AtomicU64::new(0));
                 let pong_cntr = Arc::new(AtomicU64::new(0));
-
-                let (peertx, peerrx) = mpsc::channel::<peers::WsPeerEvent>(TASK_BUF);
-                let peerrx = ReceiverStream::new(peerrx);
-
-                //Peering support
-                if let Some(peers) = peers {
-                    let port = args.port;
-                    peers::init_peers(peers, peerrx, port, nodeid, key);
-                }
 
                 let tx = tx_inner.clone();
                 let tx2_inner = tx2.clone();
@@ -213,10 +212,11 @@ async fn main() -> io::Result<()> {
                                     ch.load(Ordering::SeqCst),
                                     tx2_spawn.clone(),
                                     err_tx,
-                                    msg,
+                                    msg.clone(),
                                     false,
                                 ))
                                 .await;
+                            let _ = peertx.send(peers::WsPeerEvent::InitChannel(h.load(Ordering::SeqCst), ch.load(Ordering::SeqCst), msg)).await;
                         } else if let Ok(msghdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
                             let _ = peertx
                                 .send(peers::WsPeerEvent::Init(msghdr, tx2_spawn.clone()))
@@ -243,6 +243,13 @@ async fn main() -> io::Result<()> {
                         }
                         let val = tx
                             .send(channels::WsEvent::Msg(
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst),
+                                msg.clone(),
+                            ))
+                            .await;
+                        let val = peertx
+                            .send(peers::WsPeerEvent::Msg(
                                 h.load(Ordering::SeqCst),
                                 ch.load(Ordering::SeqCst),
                                 msg,
@@ -358,7 +365,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+    warp::serve(tlsroutes).run_incoming(tcp_incoming).await;
 
     unreachable!()
 }
