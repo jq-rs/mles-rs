@@ -42,6 +42,7 @@ use base64::{Engine as _, engine::general_purpose};
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 
 mod channels;
+mod peers;
 
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
@@ -178,54 +179,7 @@ async fn main() -> io::Result<()> {
                 //Peering support
                 if let Some(peers) = peers {
                     let port = args.port;
-                    tokio::spawn(async move {
-                        log::debug!("Peers {peers:?}");
-            
-                        for peer in &peers {
-                            let url = "wss://".to_owned() + peer;
-                            let key = general_purpose::STANDARD.encode(key.to_be_bytes());
-                            log::debug!("Url: {url}");
-                            log::debug!("Key: {key}");
-                            let request = Request::builder()
-                                .uri(&url)
-                                .header("Host", peer)
-                                .header("Connection", "keep-alive, upgrade")
-                                .header("Upgrade", "websocket")
-                                .header("Sec-WebSocket-Version", "13")
-                                .header("Sec-WebSocket-Protocol", "mles-websocket")
-                                .header("Sec-WebSocket-Key", key.clone())
-                                .body(())
-                                .unwrap();
-                            let cparam = format!("{peer}:{port}");
-            
-                            let tcp_stream = TcpStream::connect(&cparam).await.unwrap();
-                            let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
-            
-                            let (mut peer_tx, mut peer_rx) = ws_stream.split();
-                            let res = peer_tx.send(WebMessage::text(format!("{{ \"peerid\": \"{nodeid}\" }}"))).await;
-                            match res {
-                                Ok(_) => {},
-                                Err(err) => println!("Error {:?}", err)
-                            }
-            
-                            //TODO receive peer ack, send frames to all sockets and send frames also to peer socket
-                            //TODO in case of connection close, implement reconnect attempt
-                            //With several peers send at most one in alphabetical order?
-                            while let Some(message) = peer_rx.next().await {
-                                match message {
-                                    Ok(msg) => {
-                                        // Handle the message
-                                        println!("Received message: {:?}", msg);
-                                    }
-                                    Err(e) => {
-                                        // Handle error
-                                        eprintln!("Error receiving message: {:?}", e);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    });
+                    peers::init_peers(peers, port, nodeid, key);
                 }
 
                 let tx = tx_inner.clone();
