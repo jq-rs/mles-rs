@@ -221,54 +221,88 @@ async fn main() -> io::Result<()> {
                                     h.load(Ordering::SeqCst),
                                     ch.load(Ordering::SeqCst),
                                     msg,
+                                    tx2_spawn.clone(),
                                 ))
                                 .await;
+                            match err_rx.await {
+                                Ok(_) => {}
+                                Err(_) => {
+                                    log::info!("Got error from oneshot!");
+                                    return;
+                                }
+                            }
+                            let tx2_sign = tx2_inner.clone();
+                            while let Some(Ok(msg)) = ws_rx.next().await {
+                                let tx2 = tx2_sign.clone();
+                                if msg.is_pong() {
+                                    pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
+                                    continue;
+                                }
+                                if msg.is_close() {
+                                    let _ = tx2.send(None).await;
+                                    break;
+                                }
+                                let val = tx
+                                    .send(channels::WsEvent::Msg(
+                                        h.load(Ordering::SeqCst),
+                                        ch.load(Ordering::SeqCst),
+                                        msg.clone(),
+                                    ))
+                                    .await;
+                                let val = peertx
+                                    .send(peers::WsPeerEvent::Msg(
+                                        h.load(Ordering::SeqCst),
+                                        ch.load(Ordering::SeqCst),
+                                        msg,
+                                    ))
+                                    .await;
+                                if let Err(err) = val {
+                                    log::warn!("Invalid tx {:?}", err);
+                                    break;
+                                }
+                            }
                         } else if let Ok(msghdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
+                            //This is a peer channel, expect always msg header + msg after this
                             let _ = peertx
                                 .send(peers::WsPeerEvent::Init(msghdr, tx2_spawn.clone()))
                                 .await;
-                        }
-                    }
-                    match err_rx.await {
-                        Ok(_) => {}
-                        Err(_) => {
-                            log::info!("Got error from oneshot!");
-                            return;
-                        }
-                    }
-                    let tx2_sign = tx2_inner.clone();
-                    while let Some(Ok(msg)) = ws_rx.next().await {
-                        let tx2 = tx2_sign.clone();
-                        if msg.is_pong() {
-                            pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
-                            continue;
-                        }
-                        if msg.is_close() {
-                            let _ = tx2.send(None).await;
-                            break;
-                        }
-                        let val = tx
-                            .send(channels::WsEvent::Msg(
-                                h.load(Ordering::SeqCst),
-                                ch.load(Ordering::SeqCst),
-                                msg.clone(),
-                            ))
-                            .await;
-                        let val = peertx
-                            .send(peers::WsPeerEvent::Msg(
-                                h.load(Ordering::SeqCst),
-                                ch.load(Ordering::SeqCst),
-                                msg,
-                            ))
-                            .await;
-                        if let Err(err) = val {
-                            log::warn!("Invalid tx {:?}", err);
-                            break;
+
+                            match err_rx.await {
+                                Ok(_) => {}
+                                Err(_) => {
+                                    log::info!("Got error from oneshot!");
+                                    return;
+                                }
+                            }
+                            let tx2_sign = tx2_inner.clone();
+                            while let Some(Ok(msg)) = ws_rx.next().await {
+                                let tx2 = tx2_sign.clone();
+                                if msg.is_pong() {
+                                    pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
+                                    continue;
+                                }
+                                if msg.is_close() {
+                                    let _ = tx2.send(None).await;
+                                    break;
+                                }
+                                let val = tx
+                                    .send(channels::WsEvent::Msg(
+                                        h.load(Ordering::SeqCst),
+                                        ch.load(Ordering::SeqCst),
+                                        msg.clone(),
+                                    ))
+                                    .await;
+                                if let Err(err) = val {
+                                    log::warn!("Invalid tx {:?}", err);
+                                    break;
+                                }
+                            }
                         }
                     }
                 });
 
                 let tx2_inner = tx2.clone();
+                let peertx_inner = peertx.clone();
                 let ping_cntr_inner = ping_cntr.clone();
                 let pong_cntr_inner = pong_cntr.clone();
                 tokio::spawn(async move {
@@ -298,6 +332,7 @@ async fn main() -> io::Result<()> {
                 });
 
                 let tx_clone = tx_inner.clone();
+                let peertx_clone = peertx_inner.clone();
                 async move {
                     while let Some(Some(Ok(msg))) = rx2.next().await {
                         let val = ws_tx.send(msg).await;
@@ -307,10 +342,12 @@ async fn main() -> io::Result<()> {
                         }
                     }
                     let tx = tx_clone.clone();
+                    let peertx = peertx_clone.clone();
                     let h = h.load(Ordering::SeqCst);
                     let ch = ch.load(Ordering::SeqCst);
                     if h != 0 && ch != 0 {
                         let _ = tx.send(channels::WsEvent::Logoff(h, ch)).await;
+                        let _ = peertx.send(peers::WsPeerEvent::Logoff(h, ch)).await;
                     }
                 }
             })

@@ -20,6 +20,8 @@ use crate::ConsolidatedError;
 use crate::Message;
 use crate::ReceiverStream;
 
+use std::collections::{hash_map::Entry, HashMap};
+
 #[derive(Debug, Serialize, Deserialize, Hash)]
 pub struct MlesPeerHeader {
     peerid: String,
@@ -31,8 +33,14 @@ pub enum WsPeerEvent {
         MlesPeerHeader,
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
-    InitChannel(u64, u64, Message),
+    InitChannel(
+        u64,
+        u64,
+        Message,
+        Sender<Option<Result<Message, ConsolidatedError>>>,
+    ),
     Msg(u64, u64, Message),
+    Logoff(u64, u64),
 }
 
 pub fn init_peers(
@@ -43,6 +51,11 @@ pub fn init_peers(
     key: u64,
 ) {
     tokio::spawn(async move {
+        let mut ptx: Option<Sender<Option<Result<Message, ConsolidatedError>>>> = None;
+        let mut chdb: HashMap<
+            (u64, u64),
+            (Message, Sender<Option<Result<Message, ConsolidatedError>>>),
+        > = HashMap::new();
         while let Some(event) = peerrx.next().await {
             match event {
                 WsPeerEvent::Init(msg, tx) => {
@@ -55,10 +68,24 @@ pub fn init_peers(
                             serde_json::to_string(&peerhdr).unwrap(),
                         ))))
                         .await;
+                    ptx = Some(tx);
                 }
-                WsPeerEvent::InitChannel(h, ch, msg) => { // Save to database
+                WsPeerEvent::InitChannel(h, ch, msg, ctx) => {
+                    chdb.insert((h, ch), (msg, ctx));
                 }
-                WsPeerEvent::Msg(h, ch, msg) => { // Forward to channel with msg header
+                WsPeerEvent::Msg(h, ch, msg) => {
+                    //Find out msg hdr with h + ch
+                    //Send first msg hdr and then msg as below
+                    if let Some(ref tx) = ptx {
+                        let first = chdb.get(&(h, ch));
+                        if let Some((first_msg, _)) = first {
+                            let _ = tx.send(Some(Ok(first_msg.clone()))).await;
+                            let _ = tx.send(Some(Ok(msg))).await;
+                        }
+                    }
+                }
+                WsPeerEvent::Logoff(h, ch) => {
+                    chdb.remove(&(h, ch));
                 }
             }
         }
@@ -112,6 +139,7 @@ pub fn init_peers(
                                 }
                             }
                             log::info!("NOT valid valid peer header {msg:?}");
+                            return;
                         }
                         Err(err) => {
                             log::error!("{}", err);
