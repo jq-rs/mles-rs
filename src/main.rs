@@ -11,7 +11,6 @@ use rustls_acme::AcmeConfig;
 use serde::{Deserialize, Serialize};
 use siphasher::sip::SipHasher;
 
-
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::net::Ipv6Addr;
@@ -25,6 +24,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
 
+use http_types::mime;
 use tokio::sync::oneshot;
 use tokio::time;
 use tokio::time::Duration;
@@ -34,12 +34,6 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
-use http_types::mime;
-use tungstenite::handshake::client::Request;
-use tokio_tungstenite::client_async_tls;
-use tokio::net::TcpStream;
-use base64::{Engine as _, engine::general_purpose};
-use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 
 mod channels;
 mod peers;
@@ -166,7 +160,8 @@ async fn main() -> io::Result<()> {
             let tx_inner = tx_clone.clone();
             let peers = args.peers.clone();
             ws.on_upgrade(move |websocket| {
-                let (tx2, rx2) = mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
+                let (tx2, rx2) =
+                    mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
                 let (err_tx, err_rx) = oneshot::channel();
                 let mut rx2 = ReceiverStream::new(rx2);
                 let (mut ws_tx, mut ws_rx) = websocket.split();
@@ -212,7 +207,7 @@ async fn main() -> io::Result<()> {
                                         tx2_spawn,
                                         err_tx,
                                         msg,
-                                        false
+                                        false,
                                     ))
                                     .await;
                             }
@@ -399,10 +394,10 @@ async fn dyn_reply(
                     let mime = mime::Mime::from_extension(*v);
                     match mime {
                         Some(mime) => mime.basetype().to_string(),
-                        None => mime::ANY.basetype().to_string()
+                        None => mime::ANY.basetype().to_string(),
                     }
                 }
-                None => mime::ANY.basetype().to_string()
+                None => mime::ANY.basetype().to_string(),
             };
 
             // Read the file content into a Vec<u8>
@@ -417,7 +412,11 @@ async fn dyn_reply(
             log::debug!("...OK.");
 
             // Create a custom response with the file content
-            Ok(Box::new(warp::reply::with_header(warp::reply::Response::new(buffer.into()), "Content-Type", &ctype)))
+            Ok(Box::new(warp::reply::with_header(
+                warp::reply::Response::new(buffer.into()),
+                "Content-Type",
+                &ctype,
+            )))
         }
         Err(_) => {
             // Handle the case where the file doesn't exist or other errors

@@ -7,39 +7,15 @@
 
 use futures_util::{SinkExt, StreamExt};
 
-
-
-
 use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap};
-
-
-
-
-
-
-
-
-
-
-
 
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 
-
 use tokio_stream::wrappers::ReceiverStream;
 
-
-
 use warp::ws::Message;
-
-
-
-
-
-
-
 
 use crate::ConsolidatedError;
 
@@ -51,7 +27,7 @@ pub enum WsEvent {
         Sender<Option<Result<Message, ConsolidatedError>>>,
         oneshot::Sender<u64>,
         Message,
-        bool
+        bool,
     ),
     Msg(u64, u64, Message),
     Logoff(u64, u64),
@@ -73,8 +49,10 @@ fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
 pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
     tokio::spawn(async move {
         let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
-        let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, ConsolidatedError>>>>> =
-            HashMap::new();
+        let mut ch_db: HashMap<
+            u64,
+            HashMap<u64, Sender<Option<Result<Message, ConsolidatedError>>>>,
+        > = HashMap::new();
         while let Some(event) = rx.next().await {
             match event {
                 WsEvent::Init(h, ch, tx2, err_tx, msg, is_peer) => {
@@ -103,7 +81,7 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
 
                             let queue = msg_db.get_mut(&ch);
                             if let Some(queue) = queue {
-                                if !is_peer { 
+                                if !is_peer {
                                     for qmsg in &*queue {
                                         let res = tx2.send(Some(Ok(qmsg.clone()))).await;
                                         if let Err(err) = res {
