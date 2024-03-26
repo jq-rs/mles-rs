@@ -182,23 +182,15 @@ pub fn init_peers(
                 }
 
                 //Receive first acknowledge from peer
-                if let Some(message) = peer_rx.next().await {
-                    match message {
-                        Ok(msg) => 'message: {
-                            if msg.is_text() {
-                                let msg = msg.to_text().unwrap();
-                                if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msg) {
-                                    log::info!("Got valid peer header {peerhdr:?}");
-                                    break 'message;
-                                }
-                            }
-                            log::info!("NOT valid valid peer header {msg:?}");
-                            return;
+                if let Some(Ok(msg)) = peer_rx.next().await {
+                    if msg.is_text() {
+                        let msg = msg.to_text().unwrap();
+                        if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msg) {
+                            log::info!("Got valid peer header {peerhdr:?}");
                         }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            return;
-                        }
+                    }
+                    else {
+                        log::info!("NOT valid valid peer header {msg:?}");
                     }
                 }
                 //IF not ok, return or retry etc...
