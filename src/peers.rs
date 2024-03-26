@@ -55,7 +55,7 @@ pub fn init_peers(
     nodeid: u64,
     key: u64,
 ) {
-    let (tx, mut rx) = mpsc::channel::<WebMessage>(16);
+    let (tx, mut rx) = mpsc::channel::<(u64, u64, Message)>(16);
     tokio::spawn(async move {
         let mut ptx: Option<Sender<Option<Result<Message, ConsolidatedError>>>> = None;
         let mut chdb: HashMap<
@@ -99,18 +99,10 @@ pub fn init_peers(
                     }
                 },
                 msg = rx.recv() => {
-                    if let Some(msg) = msg {
-                        let msgstr = msg.to_text().unwrap();
-                        if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
-                            let mut hasher = SipHasher::new();
-                            msghdr.hash(&mut hasher);
-                            let h = hasher.finish();
-                            let hasher = SipHasher::new();
-                            let ch = hasher.hash(msghdr.channel.as_bytes());
-                            let entry = chdb.get(&(h, ch));
-                            if let Some((_, ctx)) = entry {
-                                let next_msg: WebMessage = rx.recv().await.unwrap();
-                                let _ = ctx.send(Some(Ok(Message::binary(next_msg.into_data())))).await;
+                    if let Some((h, ch, msg)) = msg {
+                        for ((_, dch),(_, ctx)) in chdb.iter() { // TODO Separate so that this can be done efficiently
+                            if ch == *dch {
+                                let _ = ctx.send(Some(Ok(msg.clone()))).await;
                             }
                         }
                     }
@@ -214,17 +206,25 @@ pub fn init_peers(
                 //TODO receive peer ack, send frames to all sockets and send frames also to peer socket
                 //TODO in case of connection close, implement reconnect attempt
                 //With several peers send at most one in alphabetical order?
-                while let Some(message) = peer_rx.next().await {
-                    match message {
-                        Ok(msg) => {
-                            // Handle the message
-                            log::info!("Received message: {:?}", msg);
-                            let _ = tx.send(msg).await;
-                        }
-                        Err(e) => {
-                            // Handle error
-                            log::error!("Error receiving message: {:?}", e);
-                            break;
+                while let Some(Ok(msg)) = peer_rx.next().await {
+                    // Handle the message
+                    log::info!("Received message: {:?}", msg);
+                    let msgstr = msg.to_text().unwrap();
+                    if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
+                        let mut hasher = SipHasher::new();
+                        msghdr.hash(&mut hasher);
+                        let h = hasher.finish();
+                        let hasher = SipHasher::new();
+                        let ch = hasher.hash(msghdr.channel.as_bytes());
+                        if let Some(Ok(next_msg))  = peer_rx.next().await {
+                            let msg: Message;
+                            if next_msg.is_text() {
+                                msg = Message::text(next_msg.into_text().unwrap());
+                            }
+                            else {
+                                msg = Message::binary(next_msg.into_data());
+                            }
+                            let _ = tx.send((h, ch, msg)).await;
                         }
                     }
                 }
