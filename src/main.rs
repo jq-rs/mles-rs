@@ -249,7 +249,7 @@ async fn main() -> io::Result<()> {
                                         msg.clone(),
                                     ))
                                     .await;
-                                let val = peertx
+                                let _val = peertx
                                     .send(peers::WsPeerEvent::Msg(
                                         h.load(Ordering::SeqCst),
                                         ch.load(Ordering::SeqCst),
@@ -286,8 +286,8 @@ async fn main() -> io::Result<()> {
                                     break;
                                 }
                                 // Handle the message
-                                log::info!("Received message: {:?}", msg);
-                                let msgstr = msg.to_text().unwrap();
+                                log::info!("Received peer message: {:?}", msg);
+                                let msgstr = msg.to_str().unwrap();
                                 if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
                                     let mut hasher = SipHasher::new();
                                     msghdr.hash(&mut hasher);
@@ -295,18 +295,11 @@ async fn main() -> io::Result<()> {
                                     let hasher = SipHasher::new();
                                     let ch = hasher.hash(msghdr.channel.as_bytes());
                                     if let Some(Ok(next_msg))  = ws_rx.next().await {
-                                        let msg: Message;
-                                        if next_msg.is_text() {
-                                            msg = Message::text(next_msg.into_text().unwrap());
-                                        }
-                                        else {
-                                            msg = Message::binary(next_msg.into_data());
-                                        }
-                                        let val = tx
+                                        let _val = peertx
                                             .send(peers::WsPeerEvent::PeerMsg(
-                                                    h.load(Ordering::SeqCst),
-                                                    ch.load(Ordering::SeqCst),
-                                                    msg.clone()
+                                                    h,
+                                                    ch,
+                                                    next_msg
                                                     ))
                                             .await;
                                     }

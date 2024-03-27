@@ -44,6 +44,7 @@ pub enum WsPeerEvent {
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
     Msg(u64, u64, Message),
+    PeerMsg(u64, u64, Message),
     Logoff(u64, u64),
 }
 
@@ -175,7 +176,7 @@ pub fn init_peers(
                 //With several peers send at most one in alphabetical order?
                 while let Some(Ok(msg)) = peer_rx.next().await {
                     // Handle the message
-                    log::info!("Received message: {:?}", msg);
+                    log::info!("Received peer message: {:?}", msg);
                     let msgstr = msg.to_text().unwrap();
                     if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
                         let mut hasher = SipHasher::new();
