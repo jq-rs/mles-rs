@@ -140,12 +140,12 @@ async fn main() -> io::Result<()> {
         .unwrap();
     let tcp_incoming = create_tcp_incoming(addr)?;
 
-    /*let tls_incoming = AcmeConfig::new(args.domains.clone())
+    let tls_incoming = AcmeConfig::new(args.domains.clone())
             .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
             .cache_option(args.cache.clone().map(DirCache::new))
             .directory_lets_encrypt(!args.staging)
             .tokio_incoming(tcp_incoming, Vec::new());
-    */
+    
     /* Generate node-id and key*/
     let nodeid = generate_id();
     let key = generate_id();
@@ -285,16 +285,31 @@ async fn main() -> io::Result<()> {
                                     let _ = tx2.send(None).await;
                                     break;
                                 }
-                                let val = tx
-                                    .send(channels::WsEvent::Msg(
-                                        h.load(Ordering::SeqCst),
-                                        ch.load(Ordering::SeqCst),
-                                        msg.clone(),
-                                    ))
-                                    .await;
-                                if let Err(err) = val {
-                                    log::warn!("Invalid tx {:?}", err);
-                                    break;
+                                // Handle the message
+                                log::info!("Received message: {:?}", msg);
+                                let msgstr = msg.to_text().unwrap();
+                                if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
+                                    let mut hasher = SipHasher::new();
+                                    msghdr.hash(&mut hasher);
+                                    let h = hasher.finish();
+                                    let hasher = SipHasher::new();
+                                    let ch = hasher.hash(msghdr.channel.as_bytes());
+                                    if let Some(Ok(next_msg))  = ws_rx.next().await {
+                                        let msg: Message;
+                                        if next_msg.is_text() {
+                                            msg = Message::text(next_msg.into_text().unwrap());
+                                        }
+                                        else {
+                                            msg = Message::binary(next_msg.into_data());
+                                        }
+                                        let val = tx
+                                            .send(peers::WsPeerEvent::PeerMsg(
+                                                    h.load(Ordering::SeqCst),
+                                                    ch.load(Ordering::SeqCst),
+                                                    msg.clone()
+                                                    ))
+                                            .await;
+                                    }
                                 }
                             }
                         }
@@ -305,7 +320,11 @@ async fn main() -> io::Result<()> {
                 let peertx_inner = peertx.clone();
                 let ping_cntr_inner = ping_cntr.clone();
                 let pong_cntr_inner = pong_cntr.clone();
+                let h_clone = h.clone();
+                let ch_clone = ch.clone();
                 tokio::spawn(async move {
+                    let h = h_clone;
+                    let ch = ch_clone;
                     let mut interval = time::interval(Duration::from_millis(PING_INTERVAL));
                     interval.tick().await;
 
@@ -315,7 +334,7 @@ async fn main() -> io::Result<()> {
                         let pong_cnt = pong_cntr_inner.load(Ordering::Relaxed);
                         let tx2 = tx2_clone.clone();
                         if pong_cnt + 2 < ping_cnt {
-                            log::info!("No pongs, close");
+                            log::info!("No pongs for {}:{}, close", h.load(Ordering::SeqCst), ch.load(Ordering::SeqCst));
                             let val = tx2.send(None).await;
                             if let Err(err) = val {
                                 log::warn!("Invalid close tx {:?}", err);
@@ -408,7 +427,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
-    warp::serve(tlsroutes).run_incoming(tcp_incoming).await;
+    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
 
     unreachable!()
 }

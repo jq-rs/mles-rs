@@ -93,6 +93,15 @@ pub fn init_peers(
                                 }
                             }
                         }
+                        WsPeerEvent::PeerMsg(h, ch, msg) => {
+                            //Find out msg hdr with h + ch
+                            //Send first msg hdr and then msg as below
+                            for ((_, dch),(_, ctx)) in chdb.iter() { // TODO Separate so that this can be done efficiently
+                                if ch == *dch {
+                                    let _ = ctx.send(Some(Ok(msg.clone()))).await;
+                                }
+                            }
+                        }
                         WsPeerEvent::Logoff(h, ch) => {
                             chdb.remove(&(h, ch));
                         }
