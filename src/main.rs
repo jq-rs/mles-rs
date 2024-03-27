@@ -140,11 +140,11 @@ async fn main() -> io::Result<()> {
         .unwrap();
     let tcp_incoming = create_tcp_incoming(addr)?;
 
-    let tls_incoming = AcmeConfig::new(args.domains.clone())
+    /*let tls_incoming = AcmeConfig::new(args.domains.clone())
             .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
             .cache_option(args.cache.clone().map(DirCache::new))
             .directory_lets_encrypt(!args.staging)
-            .tokio_incoming(tcp_incoming, Vec::new());
+            .tokio_incoming(tcp_incoming, Vec::new());*/
     
     /* Generate node-id and key*/
     let nodeid = generate_id();
@@ -173,6 +173,7 @@ async fn main() -> io::Result<()> {
             let tx_inner = tx_clone.clone();
             let peertx = peertx_clone.clone();
             ws.on_upgrade(move |websocket| {
+                log::info!("Got connection!");
                 let (tx2, rx2) =
                     mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
                 let (err_tx, err_rx) = oneshot::channel();
@@ -196,9 +197,6 @@ async fn main() -> io::Result<()> {
                     let pong_cntr_inner = pong_cntr_clone.clone();
                     let peertx = peertx_inner.clone();
                     if let Some(Ok(msg)) = ws_rx.next().await {
-                        if !msg.is_text() {
-                            return;
-                        }
                         let msgstr = msg.to_str().unwrap();
                         if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
                             log::info!("Got new channel {}!", msghdr.channel);
@@ -424,7 +422,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+    warp::serve(tlsroutes).run_incoming(tcp_incoming).await;
 
     unreachable!()
 }
