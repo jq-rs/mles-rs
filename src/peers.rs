@@ -15,6 +15,7 @@ use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 use crate::ConsolidatedError;
 use crate::Message;
@@ -35,6 +36,7 @@ pub struct MlesPeerHeader {
 pub enum WsPeerEvent {
     Init(
         MlesPeerHeader,
+        oneshot::Sender<u64>,
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
     InitChannel(
@@ -66,7 +68,7 @@ pub fn init_peers(
             tokio::select! {
                 Some(event) = peerrx.next() => {
                     match event {
-                        WsPeerEvent::Init(msg, tx) => {
+                        WsPeerEvent::Init(msg, err_tx, tx) => {
                             log::debug!("Got msg {msg:?}");
                             let peerhdr = MlesPeerHeader {
                                 peerid: format!("{nodeid:x}"),
@@ -77,6 +79,10 @@ pub fn init_peers(
                                 ))))
                                 .await;
                             ptx = Some(tx);
+                            let val = err_tx.send(0);
+                            if let Err(err) = val {
+                                log::info!("Got err tx msg err {err}");
+                            }
                         }
                         WsPeerEvent::InitChannel(h, ch, msg, ctx) => {
                             chdb.insert((h, ch), (msg, ctx));

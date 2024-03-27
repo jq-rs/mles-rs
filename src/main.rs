@@ -235,7 +235,7 @@ async fn main() -> io::Result<()> {
                             while let Some(Ok(msg)) = ws_rx.next().await {
                                 let tx2 = tx2_sign.clone();
                                 if msg.is_pong() {
-                                    log::info!("Got pong!");
+                                    log::info!("Got pong non peer, increasing pong cntr");
                                     pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
@@ -265,7 +265,7 @@ async fn main() -> io::Result<()> {
                         } else if let Ok(msghdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
                             //This is a peer channel, expect always msg header + msg after this
                             let _ = peertx
-                                .send(peers::WsPeerEvent::Init(msghdr, tx2_spawn.clone()))
+                                .send(peers::WsPeerEvent::Init(msghdr, err_tx, tx2_spawn.clone()))
                                 .await;
 
                             match err_rx.await {
