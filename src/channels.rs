@@ -11,7 +11,7 @@ use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap};
 
 use tokio::sync::mpsc::Sender;
-use tokio::sync::oneshot;
+use tokio::sync::broadcast;
 
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -25,7 +25,7 @@ pub enum WsEvent {
         u64,
         u64,
         Sender<Option<Result<Message, ConsolidatedError>>>,
-        oneshot::Sender<u64>,
+        broadcast::Sender<u64>,
         Message,
         bool,
     ),

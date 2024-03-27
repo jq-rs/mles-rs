@@ -15,7 +15,7 @@ use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use tokio::sync::broadcast;
 
 use crate::ConsolidatedError;
 use crate::Message;
@@ -36,7 +36,7 @@ pub struct MlesPeerHeader {
 pub enum WsPeerEvent {
     Init(
         MlesPeerHeader,
-        oneshot::Sender<u64>,
+        broadcast::Sender<u64>,
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
     InitChannel(

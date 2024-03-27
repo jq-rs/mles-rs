@@ -25,7 +25,7 @@ use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
 
 use http_types::mime;
-use tokio::sync::oneshot;
+use tokio::sync::broadcast;
 use tokio::time;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -176,7 +176,8 @@ async fn main() -> io::Result<()> {
                 log::info!("Got connection!");
                 let (tx2, rx2) =
                     mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
-                let (err_tx, err_rx) = oneshot::channel();
+                let (err_tx, mut err_rx) = broadcast::channel(1);
+                let mut err_rx2 = err_tx.subscribe();
                 let mut rx2 = ReceiverStream::new(rx2);
                 let (mut ws_tx, mut ws_rx) = websocket.split();
                 let h = Arc::new(AtomicU64::new(0));
@@ -197,6 +198,10 @@ async fn main() -> io::Result<()> {
                     let pong_cntr_inner = pong_cntr_clone.clone();
                     let peertx = peertx_inner.clone();
                     if let Some(Ok(msg)) = ws_rx.next().await {
+                        log::info!("Got msg {msg:?}");
+                        if !msg.is_text() {
+                            return;
+                        }
                         let msgstr = msg.to_str().unwrap();
                         if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
                             log::info!("Got new channel {}!", msghdr.channel);
@@ -223,10 +228,10 @@ async fn main() -> io::Result<()> {
                                     tx2_spawn.clone(),
                                 ))
                                 .await;
-                            match err_rx.await {
+                            match err_rx.recv().await {
                                 Ok(_) => {}
                                 Err(_) => {
-                                    log::info!("Got error from oneshot!");
+                                    log::info!("Got error from broadcast!");
                                     return;
                                 }
                             }
@@ -240,7 +245,7 @@ async fn main() -> io::Result<()> {
                                 }
                                 if msg.is_close() {
                                     let _ = tx2.send(None).await;
-                                    break;
+                                    return;
                                 }
                                 let val = tx
                                     .send(channels::WsEvent::Msg(
@@ -267,10 +272,10 @@ async fn main() -> io::Result<()> {
                                 .send(peers::WsPeerEvent::Init(msghdr, err_tx, tx2_spawn.clone()))
                                 .await;
 
-                            match err_rx.await {
+                            match err_rx.recv().await {
                                 Ok(_) => {}
                                 Err(_) => {
-                                    log::info!("Got error from oneshot!");
+                                    log::info!("Got error from broadcast!");
                                     return;
                                 }
                             }
@@ -285,7 +290,7 @@ async fn main() -> io::Result<()> {
                                 }
                                 if msg.is_close() {
                                     let _ = tx2.send(None).await;
-                                    break;
+                                    return;
                                 }
                                 // Handle the message
                                 log::info!("Received peer message: {:?}", msg);
@@ -318,6 +323,13 @@ async fn main() -> io::Result<()> {
                 let h_clone = h.clone();
                 let ch_clone = ch.clone();
                 tokio::spawn(async move {
+                    match err_rx2.recv().await {
+                        Ok(_) => {}
+                        Err(_) => {
+                            log::info!("Got error from broadcast!");
+                            return;
+                        }
+                    }
                     let h = h_clone;
                     let ch = ch_clone;
                     let mut interval = time::interval(Duration::from_millis(PING_INTERVAL));
