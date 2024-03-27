@@ -10,7 +10,6 @@ use futures_util::{SinkExt, StreamExt};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
@@ -21,7 +20,7 @@ use crate::ConsolidatedError;
 use crate::Message;
 use crate::ReceiverStream;
 
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 
@@ -62,7 +61,6 @@ pub fn init_peers(
             (u64, u64),
             (Message, Sender<Option<Result<Message, ConsolidatedError>>>),
         > = HashMap::new();
-
         loop {
             tokio::select! {
                 Some(event) = peerrx.next() => {
@@ -88,6 +86,7 @@ pub fn init_peers(
                             if let Some(ref ptx) = ptx {
                                 let first = chdb.get(&(h, ch));
                                 if let Some((first_msg, _)) = first {
+                                    //Sole sender to ptx so ordering is guaranteed
                                     let _ = ptx.send(Some(Ok(first_msg.clone()))).await;
                                     let _ = ptx.send(Some(Ok(msg))).await;
                                 }
@@ -109,40 +108,6 @@ pub fn init_peers(
                 }
             }
         }
-            
-       /* while let Some(event) = peerrx.next().await {
-            match event {
-                WsPeerEvent::Init(msg, tx) => {
-                    log::debug!("Got msg {msg:?}");
-                    let peerhdr = MlesPeerHeader {
-                        peerid: format!("{nodeid:x}"),
-                    };
-                    let _ = tx
-                        .send(Some(Ok(Message::text(
-                            serde_json::to_string(&peerhdr).unwrap(),
-                        ))))
-                        .await;
-                    ptx = Some(tx);
-                }
-                WsPeerEvent::InitChannel(h, ch, msg, ctx) => {
-                    chdb.insert((h, ch), (msg, ctx));
-                }
-                WsPeerEvent::Msg(h, ch, msg) => {
-                    //Find out msg hdr with h + ch
-                    //Send first msg hdr and then msg as below
-                    if let Some(ref tx) = ptx {
-                        let first = chdb.get(&(h, ch));
-                        if let Some((first_msg, _)) = first {
-                            let _ = tx.send(Some(Ok(first_msg.clone()))).await;
-                            let _ = tx.send(Some(Ok(msg))).await;
-                        }
-                    }
-                }
-                WsPeerEvent::Logoff(h, ch) => {
-                    chdb.remove(&(h, ch));
-                }
-            }
-        }*/
     });
 
     if let Some(peers) = peers {
