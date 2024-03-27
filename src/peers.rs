@@ -87,6 +87,7 @@ pub fn init_peers(
                                 let first = chdb.get(&(h, ch));
                                 if let Some((first_msg, _)) = first {
                                     //Sole sender to ptx so ordering is guaranteed
+                                    log::info!("Forward to peer");
                                     let _ = ptx.send(Some(Ok(first_msg.clone()))).await;
                                     let _ = ptx.send(Some(Ok(msg))).await;
                                 }
