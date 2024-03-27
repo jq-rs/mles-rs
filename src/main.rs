@@ -140,12 +140,12 @@ async fn main() -> io::Result<()> {
         .unwrap();
     let tcp_incoming = create_tcp_incoming(addr)?;
 
-    let tls_incoming = AcmeConfig::new(args.domains.clone())
+    /*let tls_incoming = AcmeConfig::new(args.domains.clone())
             .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
             .cache_option(args.cache.clone().map(DirCache::new))
             .directory_lets_encrypt(!args.staging)
             .tokio_incoming(tcp_incoming, Vec::new());
-    
+    */
     /* Generate node-id and key*/
     let nodeid = generate_id();
     let key = generate_id();
@@ -278,12 +278,8 @@ async fn main() -> io::Result<()> {
                             let tx2_sign = tx2_inner.clone();
                             while let Some(Ok(msg)) = ws_rx.next().await {
                                 let tx2 = tx2_sign.clone();
-                                if msg.is_ping() {
-                                    log::info!("Send pong!";
-                                    peertx.send(Message::Pong(Vec::new()));
-                                    continue;
-                                }
                                 if msg.is_pong() {
+                                    log::info!("Got pong, increasing pong cntr");
                                     pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
@@ -426,7 +422,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+    warp::serve(tlsroutes).run_incoming(tcp_incoming).await;
 
     unreachable!()
 }

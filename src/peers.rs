@@ -175,8 +175,14 @@ pub fn init_peers(
                 //TODO in case of connection close, implement reconnect attempt
                 //With several peers send at most one in alphabetical order?
                 while let Some(Ok(msg)) = peer_rx.next().await {
+
+                    if msg.is_ping() {
+                            log::info!("Send pong 2!");
+                            let _ = peer_tx.send(WebMessage::Pong(Vec::new())).await;
+                            continue;
+                    }
                     // Handle the message
-                    log::info!("Received peer message: {:?}", msg);
+                    log::info!("Received peer 2 message: {:?}", msg);
                     let msgstr = msg.to_text().unwrap();
                     if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
                         let mut hasher = SipHasher::new();
