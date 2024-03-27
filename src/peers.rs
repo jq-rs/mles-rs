@@ -204,6 +204,7 @@ pub fn init_peers(
                             else {
                                 msg = Message::binary(next_msg.into_data());
                             }
+                            log::info!("Got channel {ch:x}, sending to clients");
                             let _ = tx.send((h, ch, msg)).await;
                         }
                     }
