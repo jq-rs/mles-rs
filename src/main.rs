@@ -235,6 +235,7 @@ async fn main() -> io::Result<()> {
                             while let Some(Ok(msg)) = ws_rx.next().await {
                                 let tx2 = tx2_sign.clone();
                                 if msg.is_pong() {
+                                    log::info!("Got pong!");
                                     pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
                                     continue;
                                 }
@@ -277,6 +278,11 @@ async fn main() -> io::Result<()> {
                             let tx2_sign = tx2_inner.clone();
                             while let Some(Ok(msg)) = ws_rx.next().await {
                                 let tx2 = tx2_sign.clone();
+                                if msg.is_ping() {
+                                    log::info!("Send pong!";
+                                    peertx.send(Message::Pong(Vec::new()));
+                                    continue;
+                                }
                                 if msg.is_pong() {
                                     pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
                                     continue;
