@@ -91,6 +91,7 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
                                         }
                                     }
                                 }
+                                log::info!("Add {msg:?} ch {ch} to history!");
                                 add_message(msg, limit, queue);
                             }
                         } else {
@@ -108,19 +109,25 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
                         }
                         let queue = msg_db.get_mut(&ch);
                         if let Some(queue) = queue {
+                            log::info!("Add {msg:?} ch {ch} to history!");
                             add_message(msg, limit, queue);
                         }
                     }
                 },
                 WsEvent::SendHistory(ch, tx) => {
-                    let queue = msg_db.get_mut(&ch);
+                    let queue = msg_db.get(&ch);
                     if let Some(queue) = queue {
+                        log::info!("Sending history msg for channel {ch}!");
                         for qmsg in &*queue {
+                            log::info!("Sending history msg {qmsg:?}!");
                             let res = tx.send(Some(Ok(qmsg.clone()))).await;
                             if let Err(err) = res {
                                 log::info!("Got tx snd qmsg err {err}");
                             }
                         }
+                    }
+                    else {
+                        log::error!("Message queue empty for {ch}");
                     }
                 }
                 WsEvent::Logoff(h, ch) => {

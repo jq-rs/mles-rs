@@ -140,11 +140,11 @@ async fn main() -> io::Result<()> {
         .unwrap();
     let tcp_incoming = create_tcp_incoming(addr)?;
 
-    /*let tls_incoming = AcmeConfig::new(args.domains.clone())
+    let tls_incoming = AcmeConfig::new(args.domains.clone())
     .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
     .cache_option(args.cache.clone().map(DirCache::new))
     .directory_lets_encrypt(!args.staging)
-    .tokio_incoming(tcp_incoming, Vec::new());*/
+    .tokio_incoming(tcp_incoming, Vec::new());
 
     /* Generate node-id and key*/
     let nodeid = generate_id();
@@ -159,7 +159,7 @@ async fn main() -> io::Result<()> {
 
     //Peering support
     let port = args.port;
-    peers::init_peers(peers, peerrx, peertx.clone(), port, nodeid, key);
+    peers::init_peers(peers, peerrx, peertx.clone(), tx.clone(), port, nodeid, key);
 
     let tx_clone = tx.clone();
     let peertx_clone = peertx.clone();
@@ -306,6 +306,7 @@ async fn main() -> io::Result<()> {
                                     let hasher = SipHasher::new();
                                     let ch = hasher.hash(msghdr.channel.as_bytes());
                                     if !history_sent {
+                                        log::info!("Sending history!");
                                         let _val = peertx
                                         .send(peers::WsPeerEvent::ClientPeerInit(ch))
                                         .await;
@@ -445,7 +446,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
-    warp::serve(tlsroutes).run_incoming(tcp_incoming).await;
+    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
 
     unreachable!()
 }

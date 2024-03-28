@@ -67,6 +67,7 @@ pub fn init_peers(
     peers: Option<Vec<String>>,
     mut peerrx: ReceiverStream<WsPeerEvent>,
     mut peertx: Sender<WsPeerEvent>,
+    mut wstx: Sender<WsEvent>,
     port: u16,
     nodeid: u64,
     key: u64,
@@ -141,7 +142,8 @@ pub fn init_peers(
                         }
                         WsPeerEvent::ClientPeerInit(ch) => {
                             if let Some(ref ptx) = ptx {
-                                WsEvent::SendHistory(ch, ptx.clone());
+                                log::info!("Asking for history {ch}!");
+                                let _ = wstx.send(WsEvent::SendHistory(ch, ptx.clone())).await;
                             }
                         }
                         WsPeerEvent::PeerMsg(h, ch, msg) => {
