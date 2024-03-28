@@ -159,7 +159,7 @@ async fn main() -> io::Result<()> {
 
     //Peering support
     let port = args.port;
-    peers::init_peers(peers, peerrx, port, nodeid, key);
+    peers::init_peers(peers, peerrx, peertx.clone(), port, nodeid, key);
 
     let tx_clone = tx.clone();
     let peertx_clone = peertx.clone();
@@ -231,7 +231,7 @@ async fn main() -> io::Result<()> {
                             match err_rx.recv().await {
                                 Ok(_) => {}
                                 Err(_) => {
-                                    log::info!("Got error from broadcast!");
+                                    log::info!("Got error from broadcast! 1");
                                     return;
                                 }
                             }
@@ -275,7 +275,7 @@ async fn main() -> io::Result<()> {
                             match err_rx.recv().await {
                                 Ok(_) => {}
                                 Err(_) => {
-                                    log::info!("Got error from broadcast!");
+                                    log::info!("Got error from broadcast! 3");
                                     return;
                                 }
                             }
@@ -326,7 +326,7 @@ async fn main() -> io::Result<()> {
                     match err_rx2.recv().await {
                         Ok(_) => {}
                         Err(_) => {
-                            log::info!("Got error from broadcast!");
+                            log::info!("Got error from broadcast 2!");
                             return;
                         }
                     }

@@ -25,6 +25,9 @@ use std::collections::HashMap;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
 
+use tokio_tungstenite::WebSocketStream;
+use futures_util::stream::SplitSink;
+
 use crate::MlesHeader;
 
 #[derive(Debug, Serialize, Deserialize, Hash)]
@@ -45,6 +48,10 @@ pub enum WsPeerEvent {
         Message,
         Sender<Option<Result<Message, ConsolidatedError>>>,
     ),
+    InitPeer(
+        WebMessage,
+        SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tungstenite::Message>,
+    ),
     Msg(u64, u64, Message),
     PeerMsg(u64, u64, Message),
     Logoff(u64, u64),
@@ -53,6 +60,7 @@ pub enum WsPeerEvent {
 pub fn init_peers(
     peers: Option<Vec<String>>,
     mut peerrx: ReceiverStream<WsPeerEvent>,
+    mut peertx: Sender<WsPeerEvent>,
     port: u16,
     nodeid: u64,
     key: u64,
@@ -60,6 +68,7 @@ pub fn init_peers(
     let (tx, mut rx) = mpsc::channel::<(u64, u64, Message)>(16);
     tokio::spawn(async move {
         let mut ptx: Option<Sender<Option<Result<Message, ConsolidatedError>>>> = None;
+        let mut cptx: Option<SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tungstenite::Message>> = None;
         let mut chdb: HashMap<
             (u64, u64),
             (Message, Sender<Option<Result<Message, ConsolidatedError>>>),
@@ -69,7 +78,7 @@ pub fn init_peers(
                 Some(event) = peerrx.next() => {
                     match event {
                         WsPeerEvent::Init(msg, err_tx, tx) => {
-                            log::debug!("Got msg {msg:?}");
+                            log::info!("Init {msg:?}");
                             let peerhdr = MlesPeerHeader {
                                 peerid: format!("{nodeid:x}"),
                             };
@@ -78,33 +87,54 @@ pub fn init_peers(
                                     serde_json::to_string(&peerhdr).unwrap(),
                                 ))))
                                 .await;
-                            ptx = Some(tx);
+                            if ptx.is_none() {
+                                ptx = Some(tx);
+                            }
                             let val = err_tx.send(0);
                             if let Err(err) = val {
                                 log::info!("Got err tx msg err {err}");
                             }
                         }
                         WsPeerEvent::InitChannel(h, ch, msg, ctx) => {
+                            log::info!("Init channel {msg:?}");
                             chdb.insert((h, ch), (msg, ctx));
+                        },
+                        WsPeerEvent::InitPeer(msg, tx) => {
+                            log::info!("Init Peer {msg:?}");
+                            if cptx.is_none() {
+                                cptx = Some(tx);
+                            }
                         }
                         WsPeerEvent::Msg(h, ch, msg) => {
+                            log::info!("Peer event msg {msg:?}");
                             //Find out msg hdr with h + ch
                             //Send first msg hdr and then msg as below
+                            if let Some(ref mut cptx) = cptx {
+                                let first = chdb.get(&(h, ch));
+                                if let Some((first_msg, _)) = first {
+                                    //Sole sender to ptx so ordering is guaranteed
+                                    log::info!("Forward to peer as client");
+                                    let _ = cptx.send(WebMessage::Text(first_msg.to_str().unwrap().to_string())).await;
+                                    let _ = cptx.send(WebMessage::Binary(msg.clone().into_bytes())).await;
+                                }
+                            }
                             if let Some(ref ptx) = ptx {
                                 let first = chdb.get(&(h, ch));
                                 if let Some((first_msg, _)) = first {
                                     //Sole sender to ptx so ordering is guaranteed
-                                    log::info!("Forward to peer");
+                                    log::info!("Forward to peer as server");
                                     let _ = ptx.send(Some(Ok(first_msg.clone()))).await;
                                     let _ = ptx.send(Some(Ok(msg))).await;
                                 }
                             }
                         }
                         WsPeerEvent::PeerMsg(h, ch, msg) => {
+                            log::info!("Peer event peer msg {msg:?}");
                             //Find out msg hdr with h + ch
                             //Send first msg hdr and then msg as below
                             for ((_, dch),(_, ctx)) in chdb.iter() { // TODO Separate so that this can be done efficiently
                                 if ch == *dch {
+                                    log::info!("Found channel, sending");
                                     let _ = ctx.send(Some(Ok(msg.clone()))).await;
                                 }
                             }
@@ -115,6 +145,7 @@ pub fn init_peers(
                     }
                 },
                 msg = rx.recv() => {
+                    log::info!("RX recv {msg:?}");
                     if let Some((h, ch, msg)) = msg {
                         for ((_, dch),(_, ctx)) in chdb.iter() { // TODO Separate so that this can be done efficiently
                             if ch == *dch {
@@ -151,6 +182,7 @@ pub fn init_peers(
                 let (ws_stream, _) = client_async_tls(request, tcp_stream).await.unwrap();
 
                 let (mut peer_tx, mut peer_rx) = ws_stream.split();
+
                 let peerhdr = MlesPeerHeader {
                     peerid: format!("{nodeid:x}"),
                 };
@@ -166,9 +198,15 @@ pub fn init_peers(
                 //Receive first acknowledge from peer
                 if let Some(Ok(msg)) = peer_rx.next().await {
                     if msg.is_text() {
-                        let msg = msg.to_text().unwrap();
-                        if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msg) {
-                            log::info!("Got valid peer header {peerhdr:?}");
+                        let msgstr = msg.to_text().unwrap();
+                        if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
+                            log::info!("Got valid peer header {peerhdr:?}, initialize peer");
+                            let _ = peertx
+                            .send(WsPeerEvent::InitPeer(
+                                msg,
+                                peer_tx,
+                            ))
+                            .await;
                         }
                     }
                     else {
@@ -182,11 +220,11 @@ pub fn init_peers(
                 //With several peers send at most one in alphabetical order?
                 while let Some(Ok(msg)) = peer_rx.next().await {
 
-                    if msg.is_ping() {
-                            log::info!("Send pong 2!");
-                            let _ = peer_tx.send(WebMessage::Pong(Vec::new())).await;
-                            continue;
-                    }
+                    //if msg.is_ping() {
+                    //        log::info!("Send pong 2!");
+                    //        let _ = peer_tx.send(WebMessage::Pong(Vec::new())).await;
+                    //        continue;
+                    //}
                     // Handle the message
                     log::info!("Received peer 2 message: {:?}", msg);
                     let msgstr = msg.to_text().unwrap();
