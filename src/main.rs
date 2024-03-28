@@ -141,11 +141,11 @@ async fn main() -> io::Result<()> {
     let tcp_incoming = create_tcp_incoming(addr)?;
 
     /*let tls_incoming = AcmeConfig::new(args.domains.clone())
-            .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
-            .cache_option(args.cache.clone().map(DirCache::new))
-            .directory_lets_encrypt(!args.staging)
-            .tokio_incoming(tcp_incoming, Vec::new());*/
-    
+    .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
+    .cache_option(args.cache.clone().map(DirCache::new))
+    .directory_lets_encrypt(!args.staging)
+    .tokio_incoming(tcp_incoming, Vec::new());*/
+
     /* Generate node-id and key*/
     let nodeid = generate_id();
     let key = generate_id();
@@ -301,13 +301,9 @@ async fn main() -> io::Result<()> {
                                     let h = hasher.finish();
                                     let hasher = SipHasher::new();
                                     let ch = hasher.hash(msghdr.channel.as_bytes());
-                                    if let Some(Ok(next_msg))  = ws_rx.next().await {
+                                    if let Some(Ok(next_msg)) = ws_rx.next().await {
                                         let _val = peertx
-                                            .send(peers::WsPeerEvent::PeerMsg(
-                                                    h,
-                                                    ch,
-                                                    next_msg
-                                                    ))
+                                            .send(peers::WsPeerEvent::PeerMsg(h, ch, next_msg))
                                             .await;
                                     }
                                 }
@@ -341,7 +337,11 @@ async fn main() -> io::Result<()> {
                         let pong_cnt = pong_cntr_inner.load(Ordering::Relaxed);
                         let tx2 = tx2_clone.clone();
                         if pong_cnt + 2 < ping_cnt {
-                            log::info!("No pongs for {}:{}, close", h.load(Ordering::SeqCst), ch.load(Ordering::SeqCst));
+                            log::info!(
+                                "No pongs for {}:{}, close",
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst)
+                            );
                             let val = tx2.send(None).await;
                             if let Err(err) = val {
                                 log::warn!("Invalid close tx {:?}", err);

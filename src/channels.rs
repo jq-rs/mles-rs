@@ -10,8 +10,8 @@ use futures_util::{SinkExt, StreamExt};
 use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap};
 
-use tokio::sync::mpsc::Sender;
 use tokio::sync::broadcast;
+use tokio::sync::mpsc::Sender;
 
 use tokio_stream::wrappers::ReceiverStream;
 

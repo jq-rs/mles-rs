@@ -10,23 +10,23 @@ use futures_util::{SinkExt, StreamExt};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::protocol::Message as WebMessage;
 use tungstenite::handshake::client::Request;
-use tokio::sync::mpsc;
-use tokio::sync::broadcast;
 
 use crate::ConsolidatedError;
 use crate::Message;
 use crate::ReceiverStream;
 
-use std::collections::HashMap;
 use siphasher::sip::SipHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-use tokio_tungstenite::WebSocketStream;
 use futures_util::stream::SplitSink;
+use tokio_tungstenite::WebSocketStream;
 
 use crate::MlesHeader;
 
@@ -50,10 +50,14 @@ pub enum WsPeerEvent {
     ),
     InitPeer(
         WebMessage,
-        SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tungstenite::Message>,
+        SplitSink<
+            WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+            tungstenite::Message,
+        >,
     ),
     Msg(u64, u64, Message),
     PeerMsg(u64, u64, Message),
+    ClientPeerPong,
     Logoff(u64, u64),
 }
 
@@ -68,7 +72,12 @@ pub fn init_peers(
     let (tx, mut rx) = mpsc::channel::<(u64, u64, Message)>(16);
     tokio::spawn(async move {
         let mut ptx: Option<Sender<Option<Result<Message, ConsolidatedError>>>> = None;
-        let mut cptx: Option<SplitSink<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, tungstenite::Message>> = None;
+        let mut cptx: Option<
+            SplitSink<
+                WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+                tungstenite::Message,
+            >,
+        > = None;
         let mut chdb: HashMap<
             (u64, u64),
             (Message, Sender<Option<Result<Message, ConsolidatedError>>>),
@@ -139,6 +148,11 @@ pub fn init_peers(
                                 }
                             }
                         }
+                        WsPeerEvent::ClientPeerPong => {
+                            if let Some(ref mut cptx) = cptx {
+                                let _ = cptx.send(WebMessage::Pong(Vec::new())).await;
+                            }
+                        }
                         WsPeerEvent::Logoff(h, ch) => {
                             chdb.remove(&(h, ch));
                         }
@@ -201,15 +215,9 @@ pub fn init_peers(
                         let msgstr = msg.to_text().unwrap();
                         if let Ok(peerhdr) = serde_json::from_str::<MlesPeerHeader>(msgstr) {
                             log::info!("Got valid peer header {peerhdr:?}, initialize peer");
-                            let _ = peertx
-                            .send(WsPeerEvent::InitPeer(
-                                msg,
-                                peer_tx,
-                            ))
-                            .await;
+                            let _ = peertx.send(WsPeerEvent::InitPeer(msg, peer_tx)).await;
                         }
-                    }
-                    else {
+                    } else {
                         log::info!("NOT valid valid peer header {msg:?}");
                     }
                 }
@@ -219,12 +227,11 @@ pub fn init_peers(
                 //TODO in case of connection close, implement reconnect attempt
                 //With several peers send at most one in alphabetical order?
                 while let Some(Ok(msg)) = peer_rx.next().await {
-
-                    //if msg.is_ping() {
-                    //        log::info!("Send pong 2!");
-                    //        let _ = peer_tx.send(WebMessage::Pong(Vec::new())).await;
-                    //        continue;
-                    //}
+                    if msg.is_ping() {
+                        //log::info!("Send pong 2!");
+                        let _ = peertx.send(WsPeerEvent::ClientPeerPong).await;
+                        continue;
+                    }
                     // Handle the message
                     log::info!("Received peer 2 message: {:?}", msg);
                     let msgstr = msg.to_text().unwrap();
@@ -234,12 +241,11 @@ pub fn init_peers(
                         let h = hasher.finish();
                         let hasher = SipHasher::new();
                         let ch = hasher.hash(msghdr.channel.as_bytes());
-                        if let Some(Ok(next_msg))  = peer_rx.next().await {
+                        if let Some(Ok(next_msg)) = peer_rx.next().await {
                             let msg: Message;
                             if next_msg.is_text() {
                                 msg = Message::text(next_msg.into_text().unwrap());
-                            }
-                            else {
+                            } else {
                                 msg = Message::binary(next_msg.into_data());
                             }
                             log::info!("Got channel {ch:x}, sending to clients");
