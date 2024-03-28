@@ -271,6 +271,7 @@ async fn main() -> io::Result<()> {
                             let _ = peertx
                                 .send(peers::WsPeerEvent::Init(msghdr, err_tx, tx2_spawn.clone()))
                                 .await;
+                            let mut history_sent = false;
 
                             match err_rx.recv().await {
                                 Ok(_) => {}
@@ -294,6 +295,9 @@ async fn main() -> io::Result<()> {
                                 }
                                 // Handle the message
                                 log::info!("Received peer message: {:?}", msg);
+                                if !msg.is_text() {
+                                    continue;
+                                }
                                 let msgstr = msg.to_str().unwrap();
                                 if let Ok(msghdr) = serde_json::from_str::<MlesHeader>(msgstr) {
                                     let mut hasher = SipHasher::new();
@@ -301,6 +305,13 @@ async fn main() -> io::Result<()> {
                                     let h = hasher.finish();
                                     let hasher = SipHasher::new();
                                     let ch = hasher.hash(msghdr.channel.as_bytes());
+                                    if !history_sent {
+                                        let _val = peertx
+                                        .send(peers::WsPeerEvent::ClientPeerInit(ch))
+                                        .await;
+                                        history_sent = true;
+                                    }
+
                                     if let Some(Ok(next_msg)) = ws_rx.next().await {
                                         let _val = peertx
                                             .send(peers::WsPeerEvent::PeerMsg(h, ch, next_msg))

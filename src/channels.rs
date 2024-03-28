@@ -19,6 +19,7 @@ use warp::ws::Message;
 
 use crate::ConsolidatedError;
 
+
 #[derive(Debug)]
 pub enum WsEvent {
     Init(
@@ -30,6 +31,7 @@ pub enum WsEvent {
         bool,
     ),
     Msg(u64, u64, Message),
+    SendHistory(u64, Sender<Option<Result<Message, ConsolidatedError>>>),
     Logoff(u64, u64),
 }
 
@@ -107,6 +109,17 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
                         let queue = msg_db.get_mut(&ch);
                         if let Some(queue) = queue {
                             add_message(msg, limit, queue);
+                        }
+                    }
+                },
+                WsEvent::SendHistory(ch, tx) => {
+                    let queue = msg_db.get_mut(&ch);
+                    if let Some(queue) = queue {
+                        for qmsg in &*queue {
+                            let res = tx.send(Some(Ok(qmsg.clone()))).await;
+                            if let Err(err) = res {
+                                log::info!("Got tx snd qmsg err {err}");
+                            }
                         }
                     }
                 }

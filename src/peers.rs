@@ -29,6 +29,7 @@ use futures_util::stream::SplitSink;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::MlesHeader;
+use crate::channels::WsEvent;
 
 #[derive(Debug, Serialize, Deserialize, Hash)]
 pub struct MlesPeerHeader {
@@ -57,6 +58,7 @@ pub enum WsPeerEvent {
     ),
     Msg(u64, u64, Message),
     PeerMsg(u64, u64, Message),
+    ClientPeerInit(u64),
     ClientPeerPong,
     Logoff(u64, u64),
 }
@@ -135,6 +137,11 @@ pub fn init_peers(
                                     let _ = ptx.send(Some(Ok(first_msg.clone()))).await;
                                     let _ = ptx.send(Some(Ok(msg))).await;
                                 }
+                            }
+                        }
+                        WsPeerEvent::ClientPeerInit(ch) => {
+                            if let Some(ref ptx) = ptx {
+                                WsEvent::SendHistory(ch, ptx.clone());
                             }
                         }
                         WsPeerEvent::PeerMsg(h, ch, msg) => {
