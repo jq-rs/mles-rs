@@ -164,14 +164,12 @@ pub fn init_peers(
                             chdb.remove(&(h, ch));
                         }
                     }
-                },
-                msg = rx.recv() => {
+                }
+                Some((h, ch, msg)) = rx.recv() => {
                     log::info!("RX recv {msg:?}");
-                    if let Some((h, ch, msg)) = msg {
-                        for ((_, dch),(_, ctx)) in chdb.iter() { // TODO Separate so that this can be done efficiently
-                            if ch == *dch {
-                                let _ = ctx.send(Some(Ok(msg.clone()))).await;
-                            }
+                    for ((_, dch),(_, ctx)) in chdb.iter() { // TODO Separate so that this can be done efficiently
+                        if ch == *dch {
+                            let _ = ctx.send(Some(Ok(msg.clone()))).await;
                         }
                     }
                 }
