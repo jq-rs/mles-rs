@@ -239,6 +239,9 @@ pub fn init_peers(
                         let _ = peertx.send(WsPeerEvent::ClientPeerPong).await;
                         continue;
                     }
+                    if !msg.is_text() {
+                        continue;
+                    }
                     // Handle the message
                     log::info!("Received peer 2 message: {:?}", msg);
                     let msgstr = msg.to_text().unwrap();
