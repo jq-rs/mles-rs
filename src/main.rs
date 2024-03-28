@@ -228,10 +228,24 @@ async fn main() -> io::Result<()> {
                                 .send(peers::WsPeerEvent::InitChannel(
                                     h.load(Ordering::SeqCst),
                                     ch.load(Ordering::SeqCst),
-                                    msg,
+                                    msg.clone(),
                                     tx2_spawn.clone(),
                                 ))
                                 .await;
+                            let val = tx
+                            .send(channels::WsEvent::Msg(
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst),
+                                msg.clone(),
+                            ))
+                            .await;
+                            let _val = peertx
+                            .send(peers::WsPeerEvent::Msg(
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst),
+                                msg,
+                            ))
+                            .await;
                             match err_rx.recv().await {
                                 Ok(_) => {}
                                 Err(_) => {
@@ -275,7 +289,6 @@ async fn main() -> io::Result<()> {
                             let _ = peertx
                                 .send(peers::WsPeerEvent::Init(msghdr, err_tx, tx2_spawn.clone()))
                                 .await;
-                            let mut history_sent = false;
 
                             match err_rx.recv().await {
                                 Ok(_) => {}
@@ -309,13 +322,11 @@ async fn main() -> io::Result<()> {
                                     let h = hasher.finish();
                                     let hasher = SipHasher::new();
                                     let ch = hasher.hash(msghdr.channel.as_bytes());
-                                    if !history_sent {
-                                        log::info!("Sending history!");
-                                        let _val = peertx
-                                        .send(peers::WsPeerEvent::ClientPeerInit(ch))
-                                        .await;
-                                        history_sent = true;
-                                    }
+                                    log::info!("Sending history!");
+                                    let _val = peertx
+                                    .send(peers::WsPeerEvent::ClientPeerInit(ch))
+                                    .await;
+
 
                                     if let Some(Ok(next_msg)) = ws_rx.next().await {
                                         let _val = peertx
