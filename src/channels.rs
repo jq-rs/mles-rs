@@ -19,23 +19,25 @@ use warp::ws::Message;
 
 use crate::ConsolidatedError;
 
+use crate::Arc;
+use crate::Mutex;
 
 #[derive(Debug)]
 pub enum WsEvent {
     Init(
         u64,
         u64,
+        String,
         Sender<Option<Result<Message, ConsolidatedError>>>,
         broadcast::Sender<u64>,
         Message,
-        bool,
     ),
     Msg(u64, u64, Message),
-    SendHistory(u64, Sender<Option<Result<Message, ConsolidatedError>>>),
+    SendHistoryForPeer(u64, Sender<Option<Result<Message, ConsolidatedError>>>),
     Logoff(u64, u64),
 }
 
-fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
+fn add_message(h: u64, msg: Message, limit: u32, queue: &mut VecDeque<(u64, Message)>) {
     let limit = limit as usize;
     let len = queue.len();
     let cap = queue.capacity();
@@ -45,36 +47,35 @@ fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
     if len == limit {
         queue.pop_front();
     }
-    queue.push_back(msg);
+    queue.push_back((h, msg));
 }
 
-pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
+pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32, peermtx: Arc<Mutex<()>>) {
     tokio::spawn(async move {
-        let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
+        let mut msg_db: HashMap<u64, VecDeque<(u64, Message)>> = HashMap::new();
         let mut ch_db: HashMap<
             u64,
-            HashMap<u64, Sender<Option<Result<Message, ConsolidatedError>>>>,
+            HashMap<u64, (String, Sender<Option<Result<Message, ConsolidatedError>>>)>,
         > = HashMap::new();
         while let Some(event) = rx.next().await {
             match event {
-                WsEvent::Init(h, ch, tx2, err_tx, msg, is_peer) => {
+                WsEvent::Init(h, ch, msgstr, tx2, err_tx, msg) => {
                     if !ch_db.contains_key(&ch) {
                         ch_db.entry(ch).or_default();
                     }
                     if let Some(uid_db) = ch_db.get_mut(&ch) {
                         if let Entry::Vacant(e) = uid_db.entry(h) {
                             msg_db.entry(ch).or_default();
-                            e.insert(tx2.clone());
+                            e.insert((msgstr, tx2.clone()));
                             log::info!("Added {h:x} into {ch:x}.");
 
-                            if !is_peer {
-                                let val = err_tx.send(h);
-                                if let Err(err) = val {
-                                    log::info!("Got err tx msg err {err}");
-                                }
+                            let val = err_tx.send(h);
+                            if let Err(err) = val {
+                                log::info!("Got err tx msg err {err}");
                             }
 
-                            for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
+
+                            for (_, (_, tx)) in uid_db.iter().filter(|(&xh, _)| xh != h) {
                                 let res = tx.send(Some(Ok(msg.clone()))).await;
                                 if let Err(err) = res {
                                     log::info!("Got tx msg err {err}");
@@ -83,16 +84,15 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
 
                             let queue = msg_db.get_mut(&ch);
                             if let Some(queue) = queue {
-                                if !is_peer {
-                                    for qmsg in &*queue {
-                                        let res = tx2.send(Some(Ok(qmsg.clone()))).await;
-                                        if let Err(err) = res {
-                                            log::info!("Got tx snd qmsg err {err}");
-                                        }
+
+                                for (_, qmsg) in &*queue {
+                                    let res = tx2.send(Some(Ok(qmsg.clone()))).await;
+                                    if let Err(err) = res {
+                                        log::info!("Got tx snd qmsg err {err}");
                                     }
                                 }
                                 log::info!("Add {msg:?} ch {ch} to history!");
-                                add_message(msg, limit, queue);
+                                add_message(h, msg, limit, queue);
                             }
                         } else {
                             log::warn!("Init done to {h:x} into {ch:x}, closing!");
@@ -101,7 +101,7 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
                 }
                 WsEvent::Msg(h, ch, msg) => {
                     if let Some(uid_db) = ch_db.get(&ch) {
-                        for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
+                        for (_, (_,tx)) in uid_db.iter().filter(|(&xh, _)| xh != h) {
                             let res = tx.send(Some(Ok(msg.clone()))).await;
                             if let Err(err) = res {
                                 log::info!("Got tx snd msg err {err}");
@@ -110,19 +110,22 @@ pub fn init_channels(mut rx: ReceiverStream<WsEvent>, limit: u32) {
                         let queue = msg_db.get_mut(&ch);
                         if let Some(queue) = queue {
                             log::info!("Add {msg:?} ch {ch} to history!");
-                            add_message(msg, limit, queue);
+                            add_message(h, msg, limit, queue);
                         }
                     }
                 },
-                WsEvent::SendHistory(ch, tx) => {
+                WsEvent::SendHistoryForPeer(ch, tx) => {
                     let queue = msg_db.get(&ch);
                     if let Some(queue) = queue {
                         log::info!("Sending history msg for channel {ch}!");
-                        for qmsg in &*queue {
-                            log::info!("Sending history msg {qmsg:?}!");
-                            let res = tx.send(Some(Ok(qmsg.clone()))).await;
-                            if let Err(err) = res {
-                                log::info!("Got tx snd qmsg err {err}");
+                        if let Some(uid_db) = ch_db.get(&ch) {
+                            for (h, qmsg) in &*queue {
+                                if let Some((msgstr, _)) = uid_db.get(h) {
+                                    log::info!("Sending history msg {qmsg:?} for uid {h}!");
+                                    let _ = peermtx.lock().await;
+                                    let _res = tx.send(Some(Ok(Message::text(msgstr)))).await;
+                                    let _res = tx.send(Some(Ok(qmsg.clone()))).await;
+                                }
                             }
                         }
                     }

@@ -31,6 +31,9 @@ use tokio_tungstenite::WebSocketStream;
 use crate::MlesHeader;
 use crate::channels::WsEvent;
 
+use crate::Arc;
+use crate::Mutex;
+
 #[derive(Debug, Serialize, Deserialize, Hash)]
 pub struct MlesPeerHeader {
     peerid: String,
@@ -71,6 +74,7 @@ pub fn init_peers(
     port: u16,
     nodeid: u64,
     key: u64,
+    peermtx: Arc<Mutex<()>>,
 ) {
     let (tx, mut rx) = mpsc::channel::<(u64, u64, Message)>(16);
     tokio::spawn(async move {
@@ -99,6 +103,7 @@ pub fn init_peers(
                                     serde_json::to_string(&peerhdr).unwrap(),
                                 ))))
                                 .await;
+                            let _ = peermtx.lock().await;
                             if ptx.is_none() {
                                 ptx = Some(tx);
                             }
@@ -135,6 +140,7 @@ pub fn init_peers(
                                 if let Some((first_msg, _)) = first {
                                     //Sole sender to ptx so ordering is guaranteed
                                     log::info!("Forward to peer as server");
+                                    let _ = peermtx.lock().await;
                                     let _ = ptx.send(Some(Ok(first_msg.clone()))).await;
                                     let _ = ptx.send(Some(Ok(msg))).await;
                                 }
@@ -143,7 +149,7 @@ pub fn init_peers(
                         WsPeerEvent::ClientPeerInit(ch) => {
                             if let Some(ref ptx) = ptx {
                                 log::info!("Asking for history {ch}!");
-                                let _ = wstx.send(WsEvent::SendHistory(ch, ptx.clone())).await;
+                                let _ = wstx.send(WsEvent::SendHistoryForPeer(ch, ptx.clone())).await;
                             }
                         }
                         WsPeerEvent::PeerMsg(h, ch, msg) => {

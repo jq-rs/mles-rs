@@ -35,6 +35,8 @@ use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
 
+use tokio::sync::Mutex;
+
 mod channels;
 mod peers;
 
@@ -140,18 +142,21 @@ async fn main() -> io::Result<()> {
         .unwrap();
     let tcp_incoming = create_tcp_incoming(addr)?;
 
-    let tls_incoming = AcmeConfig::new(args.domains.clone())
+    /*let tls_incoming = AcmeConfig::new(args.domains.clone())
     .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
     .cache_option(args.cache.clone().map(DirCache::new))
     .directory_lets_encrypt(!args.staging)
     .tokio_incoming(tcp_incoming, Vec::new());
-
+*/
     /* Generate node-id and key*/
     let nodeid = generate_id();
     let key = generate_id();
     log::debug!("Node id: 0x{nodeid:x}, key: 0x{key:x}");
 
-    channels::init_channels(rx, limit);
+    /* Syncronize peer sending for dual-messages */
+    let peermtx = Arc::new(Mutex::new(()));
+
+    channels::init_channels(rx, limit, peermtx.clone());
 
     let peers = args.peers;
     let (peertx, peerrx) = mpsc::channel::<peers::WsPeerEvent>(TASK_BUF);
@@ -159,7 +164,7 @@ async fn main() -> io::Result<()> {
 
     //Peering support
     let port = args.port;
-    peers::init_peers(peers, peerrx, peertx.clone(), tx.clone(), port, nodeid, key);
+    peers::init_peers(peers, peerrx, peertx.clone(), tx.clone(), port, nodeid, key, peermtx);
 
     let tx_clone = tx.clone();
     let peertx_clone = peertx.clone();
@@ -173,7 +178,6 @@ async fn main() -> io::Result<()> {
             let tx_inner = tx_clone.clone();
             let peertx = peertx_clone.clone();
             ws.on_upgrade(move |websocket| {
-                log::info!("Got connection!");
                 let (tx2, rx2) =
                     mpsc::channel::<Option<Result<Message, ConsolidatedError>>>(WS_BUF);
                 let (err_tx, mut err_rx) = broadcast::channel(1);
@@ -214,10 +218,10 @@ async fn main() -> io::Result<()> {
                                 .send(channels::WsEvent::Init(
                                     h.load(Ordering::SeqCst),
                                     ch.load(Ordering::SeqCst),
+                                    msgstr.to_string(),
                                     tx2_spawn.clone(),
                                     err_tx,
                                     msg.clone(),
-                                    false,
                                 ))
                                 .await;
                             let _ = peertx
@@ -446,7 +450,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+    warp::serve(tlsroutes).run_incoming(tcp_incoming).await;
 
     unreachable!()
 }
