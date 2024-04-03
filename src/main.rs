@@ -5,7 +5,7 @@
  *  Copyright (C) 2023-2024  Mles developers
  */
 use async_compression::brotli;
-use async_compression::tokio::write::BrotliEncoder;
+use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use async_compression::Level::Fastest;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
@@ -39,6 +39,9 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
+
+const BR: &str = "br";
+const ZSTD: &str = "zstd";
 
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
@@ -431,19 +434,28 @@ async fn dyn_hreply(
     )))
 }
 
-async fn compress(in_data: &[u8]) -> std::io::Result<Vec<u8>> {
-    let params = brotli::EncoderParams::default().text_mode();
-    let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Fastest, params);
-    encoder.write_all(in_data).await?;
-    encoder.shutdown().await?;
-    Ok(encoder.into_inner())
+async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
+    if comptype == ZSTD {
+        let mut encoder = ZstdEncoder::with_quality(Vec::new(), Fastest);
+        encoder.write_all(in_data).await?;
+        encoder.shutdown().await?;
+        return Ok(encoder.into_inner());
+    } else {
+        let params = brotli::EncoderParams::default().text_mode();
+        let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Fastest, params);
+        encoder.write_all(in_data).await?;
+        encoder.shutdown().await?;
+        Ok(encoder.into_inner())
+    }
 }
 
 #[derive(Debug)]
 enum ReplyHeaders {
     NONE,
+    Zstd,
     Br,
     AllowOrigin,
+    ZstdWithAllowOrigin,
     BrWithAllowOrigin,
 }
 
@@ -525,12 +537,22 @@ async fn dyn_reply(
 
             let mut reply_headers = ReplyHeaders::NONE;
             let mut use_br = false;
+            let mut use_zstd = false;
             if let Some(encoding) = encoding {
-                if encoding.contains("br") && ctype.contains("text") {
-                    if let Ok(compressed_buffer) = compress(&buffer).await {
-                        buffer = compressed_buffer;
-                        reply_headers = ReplyHeaders::Br;
-                        use_br = true;
+                log::debug!("Encoding: {encoding}");
+                if ctype.contains("text") || ctype.contains("json") {
+                    if encoding.contains(ZSTD) {
+                        if let Ok(compressed_buffer) = compress(ZSTD, &buffer).await {
+                            buffer = compressed_buffer;
+                            reply_headers = ReplyHeaders::Zstd;
+                            use_zstd = true;
+                        }
+                    } else if encoding.contains(BR) {
+                        if let Ok(compressed_buffer) = compress(BR, &buffer).await {
+                            buffer = compressed_buffer;
+                            reply_headers = ReplyHeaders::Br;
+                            use_br = true;
+                        }
                     }
                 }
             }
@@ -539,7 +561,9 @@ async fn dyn_reply(
                 use_allow_origin = true;
                 reply_headers = ReplyHeaders::AllowOrigin;
             }
-            if use_br && use_allow_origin {
+            if use_zstd && use_allow_origin {
+                reply_headers = ReplyHeaders::ZstdWithAllowOrigin;
+            } else if use_br && use_allow_origin {
                 reply_headers = ReplyHeaders::BrWithAllowOrigin;
             }
             log::debug!("Reply headers: {reply_headers:?}");
@@ -559,7 +583,18 @@ async fn dyn_reply(
                             &ctype,
                         ),
                         "Content-Encoding",
-                        "br",
+                        BR,
+                    )));
+                }
+                ReplyHeaders::Zstd => {
+                    return Ok(Box::new(warp::reply::with_header(
+                        warp::reply::with_header(
+                            warp::reply::Response::new(buffer.into()),
+                            "Content-Type",
+                            &ctype,
+                        ),
+                        "Content-Encoding",
+                        ZSTD,
                     )));
                 }
                 ReplyHeaders::AllowOrigin => {
@@ -568,6 +603,21 @@ async fn dyn_reply(
                             warp::reply::Response::new(buffer.into()),
                             "Content-Type",
                             &ctype,
+                        ),
+                        "Access-Control-Allow-Origin",
+                        "*",
+                    )));
+                }
+                ReplyHeaders::ZstdWithAllowOrigin => {
+                    return Ok(Box::new(warp::reply::with_header(
+                        warp::reply::with_header(
+                            warp::reply::with_header(
+                                warp::reply::Response::new(buffer.into()),
+                                "Content-Type",
+                                &ctype,
+                            ),
+                            "Content-Encoding",
+                            ZSTD,
                         ),
                         "Access-Control-Allow-Origin",
                         "*",
@@ -582,7 +632,7 @@ async fn dyn_reply(
                                 &ctype,
                             ),
                             "Content-Encoding",
-                            "br",
+                            BR,
                         ),
                         "Access-Control-Allow-Origin",
                         "*",

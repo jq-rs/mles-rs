@@ -1,6 +1,6 @@
 [package]
 name = "mles"
-version = "2.2.4"
+version = "2.2.5"
 authors = ["jq-rs"]
 edition = "2021"
 
@@ -24,7 +24,7 @@ clap = { version = "4", features = ["derive"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
-async-compression = { version = "0.4.6", features = ["tokio", "brotli"] }
+async-compression = { version = "0.4.6", features = ["tokio", "brotli", "zstd"] }
 serde_json = "1.0"
 siphasher = "1.0.0"
 http-types = "2"
