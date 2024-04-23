@@ -283,6 +283,10 @@ async fn main() -> io::Result<()> {
                     }
                     let tx2_sign = tx2_inner.clone();
                     while let Some(Ok(msg)) = ws_rx.next().await {
+                        if 0 == h.load(Ordering::SeqCst) {
+                            //bail out
+                            break;
+                        }
                         let tx2 = tx2_sign.clone();
                         if msg.is_pong() {
                             pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
@@ -345,11 +349,13 @@ async fn main() -> io::Result<()> {
                         }
                     }
                     let tx = tx_clone.clone();
-                    let h = h.load(Ordering::SeqCst);
-                    let ch = ch.load(Ordering::SeqCst);
-                    if h != 0 && ch != 0 {
-                        let _ = tx.send(WsEvent::Logoff(h, ch)).await;
+                    let hval = h.load(Ordering::SeqCst);
+                    let chval = ch.load(Ordering::SeqCst);
+                    if hval != 0 && chval != 0 {
+                        let _ = tx.send(WsEvent::Logoff(hval, chval)).await;
                     }
+                    h.store(0, Ordering::SeqCst);
+                    ch.store(0, Ordering::SeqCst);
                 }
             })
         })
