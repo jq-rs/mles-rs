@@ -281,19 +281,16 @@ async fn main() -> io::Result<()> {
                             return;
                         }
                     }
-                    let tx2_sign = tx2_inner.clone();
                     while let Some(Ok(msg)) = ws_rx.next().await {
                         if 0 == h.load(Ordering::SeqCst) {
                             //bail out
                             break;
                         }
-                        let tx2 = tx2_sign.clone();
                         if msg.is_pong() {
                             pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
                             continue;
                         }
                         if msg.is_close() {
-                            let _ = tx2.send(None).await;
                             break;
                         }
                         let val = tx
@@ -308,6 +305,7 @@ async fn main() -> io::Result<()> {
                             break;
                         }
                     }
+                    let _ = tx2_inner.send(None).await;
                 });
 
                 let tx2_inner = tx2.clone();
