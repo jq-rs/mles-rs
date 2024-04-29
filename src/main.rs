@@ -90,7 +90,7 @@ const TASK_BUF: usize = 16;
 const WS_BUF: usize = 128;
 const HISTORY_LIMIT: &str = "200";
 const TLS_PORT: &str = "443";
-const PING_INTERVAL: u64 = 12000;
+const PING_INTERVAL: u64 = 24000;
 const BACKLOG: u32 = 1024;
 
 #[derive(Debug)]
@@ -236,18 +236,17 @@ async fn main() -> io::Result<()> {
                 let h = Arc::new(AtomicU64::new(0));
                 let ch = Arc::new(AtomicU64::new(0));
                 let ping_cntr = Arc::new(AtomicU64::new(0));
-                let pong_cntr = Arc::new(AtomicU64::new(0));
 
                 let tx = tx_inner.clone();
                 let tx2_inner = tx2.clone();
                 let h_clone = h.clone();
                 let ch_clone = ch.clone();
-                let pong_cntr_clone = pong_cntr.clone();
+                let ping_cntr_clone = ping_cntr.clone();
                 tokio::spawn(async move {
                     let h = h_clone;
                     let ch = ch_clone;
                     let tx2_spawn = tx2_inner.clone();
-                    let pong_cntr_inner = pong_cntr_clone.clone();
+                    let ping_cntr_inner = ping_cntr_clone.clone();
                     if let Some(Ok(msg)) = ws_rx.next().await {
                         if !msg.is_text() {
                             return;
@@ -287,7 +286,7 @@ async fn main() -> io::Result<()> {
                             break;
                         }
                         if msg.is_pong() {
-                            pong_cntr_inner.fetch_add(1, Ordering::Relaxed);
+                            ping_cntr_inner.store(0, Ordering::Relaxed);
                             continue;
                         }
                         if msg.is_close() {
@@ -310,22 +309,23 @@ async fn main() -> io::Result<()> {
 
                 let tx2_inner = tx2.clone();
                 let ping_cntr_inner = ping_cntr.clone();
-                let pong_cntr_inner = pong_cntr.clone();
+                let h_clone = h.clone();
+                let ch_clone = ch.clone();
                 tokio::spawn(async move {
+                    let h = h_clone;
+                    let ch = ch_clone;
                     let mut interval = time::interval(Duration::from_millis(PING_INTERVAL));
                     interval.tick().await;
 
                     let tx2_clone = tx2_inner.clone();
                     loop {
                         let ping_cnt = ping_cntr_inner.fetch_add(1, Ordering::Relaxed);
-                        let pong_cnt = pong_cntr_inner.load(Ordering::Relaxed);
                         let tx2 = tx2_clone.clone();
-                        if pong_cnt + 2 < ping_cnt {
-                            log::info!("No pongs, close");
-                            let val = tx2.send(None).await;
-                            if let Err(err) = val {
-                                log::warn!("Invalid close tx {:?}", err);
-                            }
+                        if ping_cnt > 1 {
+                            log::debug!("Missed pong for {:x} of {:x}", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
+                        }
+                        else if ping_cnt > 2 {
+                            log::debug!("No pongs for {:x} of {:x}, close", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
                             break;
                         }
                         interval.tick().await;
@@ -335,6 +335,7 @@ async fn main() -> io::Result<()> {
                             break;
                         }
                     }
+                    let _ = tx2_inner.send(None).await;
                 });
 
                 let tx_clone = tx_inner.clone();
