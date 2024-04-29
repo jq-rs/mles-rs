@@ -324,7 +324,7 @@ async fn main() -> io::Result<()> {
                         if ping_cnt > 1 {
                             log::debug!("Missed pong for {:x} of {:x}", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
                         }
-                        else if ping_cnt > 2 {
+                        if ping_cnt > 3 {
                             log::debug!("No pongs for {:x} of {:x}, close", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
                             break;
                         }

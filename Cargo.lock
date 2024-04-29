@@ -1476,7 +1476,7 @@ dependencies = [
 
 [[package]]
 name = "mles"
-version = "2.2.8"
+version = "2.2.9"
 dependencies = [
  "async-compression",
  "clap",
