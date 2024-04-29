@@ -322,10 +322,18 @@ async fn main() -> io::Result<()> {
                         let ping_cnt = ping_cntr_inner.fetch_add(1, Ordering::Relaxed);
                         let tx2 = tx2_clone.clone();
                         if ping_cnt > 1 {
-                            log::debug!("Missed pong for {:x} of {:x}", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
+                            log::debug!(
+                                "Missed pong for {:x} of {:x}",
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst)
+                            );
                         }
                         if ping_cnt > 2 {
-                            log::debug!("No pongs for {:x} of {:x}, close", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
+                            log::debug!(
+                                "No pongs for {:x} of {:x}, close",
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst)
+                            );
                             break;
                         }
                         interval.tick().await;
