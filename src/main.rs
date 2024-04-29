@@ -6,7 +6,7 @@
  */
 use async_compression::brotli;
 use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
-use async_compression::Level::Fastest;
+use async_compression::Level::Precise;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
@@ -285,12 +285,12 @@ async fn main() -> io::Result<()> {
                             //bail out
                             break;
                         }
-                        if msg.is_pong() {
-                            ping_cntr_inner.store(0, Ordering::Relaxed);
-                            continue;
-                        }
                         if msg.is_close() {
                             break;
+                        }
+                        ping_cntr_inner.store(0, Ordering::Relaxed);
+                        if msg.is_pong() {
+                            continue;
                         }
                         let val = tx
                             .send(WsEvent::Msg(
@@ -324,7 +324,7 @@ async fn main() -> io::Result<()> {
                         if ping_cnt > 1 {
                             log::debug!("Missed pong for {:x} of {:x}", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
                         }
-                        if ping_cnt > 3 {
+                        if ping_cnt > 2 {
                             log::debug!("No pongs for {:x} of {:x}, close", h.load(Ordering::SeqCst),ch.load(Ordering::SeqCst));
                             break;
                         }
@@ -441,13 +441,13 @@ async fn dyn_hreply(
 
 async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
     if comptype == ZSTD {
-        let mut encoder = ZstdEncoder::with_quality(Vec::new(), Fastest);
+        let mut encoder = ZstdEncoder::with_quality(Vec::new(), Precise(2));
         encoder.write_all(in_data).await?;
         encoder.shutdown().await?;
         return Ok(encoder.into_inner());
     } else {
         let params = brotli::EncoderParams::default().text_mode();
-        let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Fastest, params);
+        let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Precise(2), params);
         encoder.write_all(in_data).await?;
         encoder.shutdown().await?;
         Ok(encoder.into_inner())
