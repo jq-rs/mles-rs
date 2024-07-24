@@ -39,6 +39,7 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
+use tokio::sync::Semaphore;
 
 const BR: &str = "br";
 const ZSTD: &str = "zstd";
@@ -67,6 +68,10 @@ struct Args {
     #[arg(short, long, default_value = HISTORY_LIMIT, value_parser = clap::value_parser!(u32).range(1..1_000_000))]
     limit: u32,
 
+    /// Open files limit
+    #[arg(short, long, default_value = MAX_FILES_OPEN, value_parser = clap::value_parser!(u32).range(1..1_000_000))]
+    filelimit: u32,
+
     /// Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to
     /// static/example.io)
     #[arg(short, long, required = true)]
@@ -89,6 +94,7 @@ const ACCEPTED_PROTOCOL: &str = "mles-websocket";
 const TASK_BUF: usize = 16;
 const WS_BUF: usize = 128;
 const HISTORY_LIMIT: &str = "200";
+const MAX_FILES_OPEN: &str = "256";
 const TLS_PORT: &str = "443";
 const PING_INTERVAL: u64 = 24000;
 const BACKLOG: u32 = 1024;
@@ -134,7 +140,9 @@ async fn main() -> io::Result<()> {
     simple_logger::init_with_env().unwrap();
     let args = Args::parse();
     let limit = args.limit;
+    let filelimit = args.filelimit;
     let www_root_dir = args.wwwroot;
+    let semaphore = Arc::new(Semaphore::new(filelimit as usize));
 
     let (tx, rx) = mpsc::channel::<WsEvent>(TASK_BUF);
     let mut rx = ReceiverStream::new(rx);
@@ -149,6 +157,16 @@ async fn main() -> io::Result<()> {
         .cache_option(args.cache.clone().map(DirCache::new))
         .directory_lets_encrypt(!args.staging)
         .tokio_incoming(tcp_incoming, Vec::new());
+
+    // Wrap the incoming connections stream with a filter to enforce a connection limit
+    let sem_inner = semaphore.clone();
+    let tls_incoming = tls_incoming.filter_map(move |conn| {
+        let sem = sem_inner.clone();
+        async move {
+            let _permit = sem.acquire().await;
+            Some(conn)
+        }
+    });
 
     tokio::spawn(async move {
         let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
@@ -276,13 +294,16 @@ async fn main() -> io::Result<()> {
                     match err_rx.await {
                         Ok(_) => {}
                         Err(_) => {
-                            log::info!("Got error from oneshot!");
+                            log::info!("Duplicate entry, closing!");
+                            h.store(0, Ordering::SeqCst);
+                            ch.store(0, Ordering::SeqCst);
+                            let _val = tx2_inner.send(Some(Ok(Message::close()))).await;
                             return;
                         }
                     }
                     while let Some(Ok(msg)) = ws_rx.next().await {
                         if 0 == h.load(Ordering::SeqCst) {
-                            //bail out
+                            log::warn!("Invalid h, bailing");
                             break;
                         }
                         if msg.is_close() {
@@ -290,6 +311,11 @@ async fn main() -> io::Result<()> {
                         }
                         ping_cntr_inner.store(0, Ordering::Relaxed);
                         if msg.is_pong() {
+                            log::info!(
+                                "Got pong for {:x} of {:x}",
+                                h.load(Ordering::SeqCst),
+                                ch.load(Ordering::SeqCst)
+                            );
                             continue;
                         }
                         let val = tx
@@ -319,9 +345,16 @@ async fn main() -> io::Result<()> {
 
                     let tx2_clone = tx2_inner.clone();
                     loop {
+                        interval.tick().await;
+                        let val = tx2_clone.send(Some(Ok(Message::ping(Vec::new())))).await;
+                        if val.is_err() {
+                            break;
+                        }
+                        if 0 == h.load(Ordering::SeqCst) {
+                            break;
+                        }
                         let ping_cnt = ping_cntr_inner.fetch_add(1, Ordering::Relaxed);
-                        let tx2 = tx2_clone.clone();
-                        if ping_cnt > 1 {
+                        if ping_cnt == 1 || ping_cnt == 2 {
                             log::debug!(
                                 "Missed pong for {:x} of {:x}",
                                 h.load(Ordering::SeqCst),
@@ -336,33 +369,30 @@ async fn main() -> io::Result<()> {
                             );
                             break;
                         }
-                        interval.tick().await;
-                        let val = tx2.send(Some(Ok(Message::ping(Vec::new())))).await;
-                        if let Err(err) = val {
-                            log::info!("Invalid ping tx {:?}", err);
-                            break;
-                        }
                     }
                     let _ = tx2_inner.send(None).await;
                 });
 
-                let tx_clone = tx_inner.clone();
                 async move {
                     while let Some(Some(Ok(msg))) = rx2.next().await {
+                        if msg.is_close() {
+                            break;
+                        }
                         let val = ws_tx.send(msg).await;
                         if let Err(err) = val {
                             log::info!("Invalid ws tx {:?}", err);
                             break;
                         }
                     }
-                    let tx = tx_clone.clone();
+                    let _val = ws_tx.send(Message::close()).await;
+
                     let hval = h.load(Ordering::SeqCst);
                     let chval = ch.load(Ordering::SeqCst);
                     if hval != 0 && chval != 0 {
-                        let _ = tx.send(WsEvent::Logoff(hval, chval)).await;
+                        let _ = tx_inner.send(WsEvent::Logoff(hval, chval)).await;
+                        h.store(0, Ordering::SeqCst);
+                        ch.store(0, Ordering::SeqCst);
                     }
-                    h.store(0, Ordering::SeqCst);
-                    ch.store(0, Ordering::SeqCst);
                 }
             })
         })
@@ -400,6 +430,7 @@ async fn main() -> io::Result<()> {
 
     let mut vindex = Vec::new();
     for domain in args.domains {
+        let sem = semaphore.clone();
         let www_root = www_root_dir.clone();
         let index = warp::get()
             .and(warp::header::optional::<String>("accept-encoding"))
@@ -413,6 +444,7 @@ async fn main() -> io::Result<()> {
                         domain.clone(),
                         www_root.to_str().unwrap().to_string(),
                         path,
+                        sem.clone()
                     )
                 },
             )
@@ -452,7 +484,7 @@ async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
         let mut encoder = ZstdEncoder::with_quality(Vec::new(), Precise(2));
         encoder.write_all(in_data).await?;
         encoder.shutdown().await?;
-        return Ok(encoder.into_inner());
+        Ok(encoder.into_inner())
     } else {
         let params = brotli::EncoderParams::default().text_mode();
         let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Precise(2), params);
@@ -473,9 +505,9 @@ enum ReplyHeaders {
 }
 
 async fn dyn_reply(
-    tuple: (Option<String>, String, String, String, warp::path::Tail),
+    tuple: (Option<String>, String, String, String, warp::path::Tail, Arc<Semaphore>),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (encoding, uri, domain, www_root, tail) = tuple;
+    let (encoding, uri, domain, www_root, tail, semaphore) = tuple;
 
     if uri != domain {
         return Err(warp::reject::not_found());
@@ -485,56 +517,31 @@ async fn dyn_reply(
         path = "index.html";
     }
     let file_path = format!("{}/{}/{}", www_root, uri, path);
-    log::debug!("Tail {}", tail.as_str());
+
+    let _permit = semaphore.acquire().await.unwrap();
+
+    log::debug!("Avail file permits {}", semaphore.available_permits());
     log::debug!("Accessing {file_path}...");
 
     // Open the file
     match File::open(&file_path).await {
         Ok(mut file) => {
             let parts: Vec<&str> = file_path.split('.').collect();
-            if let Some(parts) = parts.last() {
-                log::debug!("Last part {}", parts);
-            }
-
             let ctype = match parts.last() {
                 Some(v) => {
                     let mime = mime::Mime::from_extension(*v);
                     match mime {
-                        Some(mime) => format!(
-                            "{}/{}",
-                            mime.basetype().to_string(),
-                            mime.subtype().to_string()
-                        ),
+                        Some(mime) => format!("{}/{}", mime.basetype(), mime.subtype()),
                         None => match *v {
-                            "png" => format!(
-                                "{}/{}",
-                                mime::PNG.basetype().to_string(),
-                                mime::PNG.subtype().to_string()
-                            ),
-                            "jpg" => format!(
-                                "{}/{}",
-                                mime::JPEG.basetype().to_string(),
-                                mime::JPEG.subtype().to_string()
-                            ),
-                            "ico" => format!(
-                                "{}/{}",
-                                mime::ICO.basetype().to_string(),
-                                mime::ICO.subtype().to_string()
-                            ),
+                            "png" => format!("{}/{}", mime::PNG.basetype(), mime::PNG.subtype()),
+                            "jpg" => format!("{}/{}", mime::JPEG.basetype(), mime::JPEG.subtype()),
+                            "ico" => format!("{}/{}", mime::ICO.basetype(), mime::ICO.subtype()),
                             "apk" => "application/vnd.android.package-archive".to_string(),
-                            _ => format!(
-                                "{}/{}",
-                                mime::ANY.basetype().to_string(),
-                                mime::ANY.subtype().to_string()
-                            ),
+                            _ => format!("{}/{}", mime::ANY.basetype(), mime::ANY.subtype()),
                         },
                     }
                 }
-                None => format!(
-                    "{}/{}",
-                    mime::ANY.basetype().to_string(),
-                    mime::ANY.subtype().to_string()
-                ),
+                None => format!("{}/{}", mime::ANY.basetype(), mime::ANY.subtype()),
             };
 
             // Read the file content into a Vec<u8>
@@ -581,26 +588,40 @@ async fn dyn_reply(
             }
             log::debug!("Reply headers: {reply_headers:?}");
             match reply_headers {
-                ReplyHeaders::NONE => {
-                    return Ok(Box::new(warp::reply::with_header(
+                ReplyHeaders::NONE => Ok(Box::new(warp::reply::with_header(
+                    warp::reply::Response::new(buffer.into()),
+                    "Content-Type",
+                    &ctype,
+                ))),
+                ReplyHeaders::Br => Ok(Box::new(warp::reply::with_header(
+                    warp::reply::with_header(
                         warp::reply::Response::new(buffer.into()),
                         "Content-Type",
                         &ctype,
-                    )));
-                }
-                ReplyHeaders::Br => {
-                    return Ok(Box::new(warp::reply::with_header(
-                        warp::reply::with_header(
-                            warp::reply::Response::new(buffer.into()),
-                            "Content-Type",
-                            &ctype,
-                        ),
-                        "Content-Encoding",
-                        BR,
-                    )));
-                }
-                ReplyHeaders::Zstd => {
-                    return Ok(Box::new(warp::reply::with_header(
+                    ),
+                    "Content-Encoding",
+                    BR,
+                ))),
+                ReplyHeaders::Zstd => Ok(Box::new(warp::reply::with_header(
+                    warp::reply::with_header(
+                        warp::reply::Response::new(buffer.into()),
+                        "Content-Type",
+                        &ctype,
+                    ),
+                    "Content-Encoding",
+                    ZSTD,
+                ))),
+                ReplyHeaders::AllowOrigin => Ok(Box::new(warp::reply::with_header(
+                    warp::reply::with_header(
+                        warp::reply::Response::new(buffer.into()),
+                        "Content-Type",
+                        &ctype,
+                    ),
+                    "Access-Control-Allow-Origin",
+                    "*",
+                ))),
+                ReplyHeaders::ZstdWithAllowOrigin => Ok(Box::new(warp::reply::with_header(
+                    warp::reply::with_header(
                         warp::reply::with_header(
                             warp::reply::Response::new(buffer.into()),
                             "Content-Type",
@@ -608,49 +629,23 @@ async fn dyn_reply(
                         ),
                         "Content-Encoding",
                         ZSTD,
-                    )));
-                }
-                ReplyHeaders::AllowOrigin => {
-                    return Ok(Box::new(warp::reply::with_header(
+                    ),
+                    "Access-Control-Allow-Origin",
+                    "*",
+                ))),
+                ReplyHeaders::BrWithAllowOrigin => Ok(Box::new(warp::reply::with_header(
+                    warp::reply::with_header(
                         warp::reply::with_header(
                             warp::reply::Response::new(buffer.into()),
                             "Content-Type",
                             &ctype,
                         ),
-                        "Access-Control-Allow-Origin",
-                        "*",
-                    )));
-                }
-                ReplyHeaders::ZstdWithAllowOrigin => {
-                    return Ok(Box::new(warp::reply::with_header(
-                        warp::reply::with_header(
-                            warp::reply::with_header(
-                                warp::reply::Response::new(buffer.into()),
-                                "Content-Type",
-                                &ctype,
-                            ),
-                            "Content-Encoding",
-                            ZSTD,
-                        ),
-                        "Access-Control-Allow-Origin",
-                        "*",
-                    )));
-                }
-                ReplyHeaders::BrWithAllowOrigin => {
-                    return Ok(Box::new(warp::reply::with_header(
-                        warp::reply::with_header(
-                            warp::reply::with_header(
-                                warp::reply::Response::new(buffer.into()),
-                                "Content-Type",
-                                &ctype,
-                            ),
-                            "Content-Encoding",
-                            BR,
-                        ),
-                        "Access-Control-Allow-Origin",
-                        "*",
-                    )));
-                }
+                        "Content-Encoding",
+                        BR,
+                    ),
+                    "Access-Control-Allow-Origin",
+                    "*",
+                ))),
             }
         }
         Err(_) => {

@@ -33,15 +33,16 @@ The protocol header first frame for Mles is as follows:
 Usage: mles [OPTIONS] --domains <DOMAINS> --wwwroot <WWWROOT>
 
 Options:
-  -d, --domains <DOMAINS>  Domain(s)
-  -e, --email <EMAIL>      Contact info
-  -c, --cache <CACHE>      Cache directory
-  -l, --limit <LIMIT>      History limit [default: 200]
-  -w, --wwwroot <WWWROOT>  Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to static/example.io)
-  -s, --staging            Use Let's Encrypt staging environment (see https://letsencrypt.org/docs/staging-environment/)
-  -p, --port <PORT>        [default: 443]
-  -r, --redirect           Use http redirect for port 80
-  -h, --help               Print help
+  -d, --domains <DOMAINS>      Domain(s)
+  -e, --email <EMAIL>          Contact info
+  -c, --cache <CACHE>          Cache directory
+  -l, --limit <LIMIT>          History limit [default: 200]
+  -f, --filelimit <FILELIMIT>  Open files limit [default: 256]
+  -w, --wwwroot <WWWROOT>      Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to static/example.io)
+  -s, --staging                Use Let's Encrypt staging environment (see https://letsencrypt.org/docs/staging-environment/)
+  -p, --port <PORT>            [default: 443]
+  -r, --redirect               Use http redirect for port 80
+  -h, --help                   Print help
 ```
 ## Example server
  * Acquire a public Internet server with a static IP + domain
