@@ -1,0 +1,16 @@
+[Unit]
+Description=Mles Web Service
+
+[Service]
+Environment=RUST_LOG=info
+WorkingDirectory = /home/ubuntu/www/mles-rs
+ExecStart = /home/ubuntu/www/mles-rs/mles-manage.sh start
+ExecStop = /home/ubuntu/www/mles-rs/mles-manage.sh stop
+Restart=always
+CPUQuota=0.3%
+CPUQuotaPeriodSec=1000ms
+#StandardOutput=null
+
+[Install]
+WantedBy=multi-user.target
+Alias=mles-webproxy.service

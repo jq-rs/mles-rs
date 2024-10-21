@@ -1,0 +1,273 @@
+@font-face {
+    font-family: "Ubuntu Mono", monospace;
+    src: url(font/UbuntuMono-Regular.ttf);
+}
+
+* {
+    font-family: "Ubuntu Mono", monospace;
+}
+
+body {
+    padding: 0;
+    margin: 0;
+}
+
+a {
+    color: #77407b;
+}
+
+.body_cont {
+    width: auto;
+    margin: 0 auto;
+    padding: 0;
+}
+
+.top_section {
+	height: 82vh;
+}
+
+.fuchsia {
+    color: #77407b;
+}
+
+.box_with_shadow {
+    background: #f3f4f6;
+    border: 1px solid #e4e4e4;
+    -moz-box-shadow: 0px 0px 2px 1px #e5e5e5;
+    -webkit-box-shadow: 0px 0px 2px 1px #e5e5e5;
+    box-shadow: 0px 0px 2px 1px #e5e5e5;
+}
+
+select {
+	appearance: none;
+    -moz-appearance: none;
+	-webkit-appearance: none;
+	border: 0px solid;
+}
+
+input.exit_button {
+	padding: 1px;
+	cursor: pointer;
+	font-size: 90%;
+	float: right;
+	background: transparent;
+	color: #77407b;
+	border: 0px solid #77407b;
+	border-radius: 0px;
+}	
+
+#name_channel_cont {
+    margin: 0 auto;
+    width: 350px;
+    height: 300px;
+    text-align: center;
+}
+
+#server_cont {
+    margin: 0 auto;
+    width: 350px;
+    height: 110px;
+    text-align: center;
+	display: block;
+}
+
+#name_channel_cont p {
+    font-family: "Ubuntu Mono", monospace;
+    font-size: 16px;
+    color: #77407b;
+}
+
+#name_channel_cont #input_name {
+    border: 1px solid #dddddd;
+    padding: 1px;
+    width: 250px;
+    display: block;
+    margin: 0 auto;
+    outline: none;
+    font-family: "Ubuntu Mono", monospace;
+}
+
+#name_channel_cont #input_channel {
+    border: 1px solid #dddddd;
+    padding: 1px;
+    width: 250px;
+    display: block;
+    margin: 0 auto;
+    outline: none;
+    font-family: "Ubuntu Mono", monospace;
+}
+
+#name_channel_cont #input_key {
+    border: 1px solid #dddddd;
+    padding: 1px;
+    width: 250px;
+    display: block;
+    margin: 0 auto;
+    outline: none;
+    font-family: "Ubuntu Mono", monospace;
+}
+
+#name_channel_cont #input_addr_port {
+    border: 1px solid #dddddd;
+    padding: 1px;
+    width: 250px;
+    display: block;
+    margin: 0 auto;
+    outline: none;
+    font-family: "Ubuntu Mono", monospace;
+}
+
+#name_channel_cont #the_join {
+    background-color: #77407b;
+    border: none;
+    color: white;
+    padding: 8px 8px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    float: rigth;
+    width: 100px;
+    font-size: 16px;
+}
+
+#message_cont {
+    display: none;
+    width: auto;
+    margin: 8px 8px auto;
+    background: #fff;
+    padding: 1px 0 0 0;
+}
+
+#presence_cont {
+    display: none;
+    width: auto;
+    margin: 8px 8px auto;
+    background: #fff;
+    padding: 1px 0 0 0;
+}
+
+#qrcode_cont {
+    display: none;
+    width: auto;
+    margin: 8px 8px auto;
+    background: #fff;
+    padding: 1px 0 0 0;
+}
+
+#presence_list {
+    margin: 10px;
+    padding: 0;
+	overflow: scroll;
+    overflow-x: hidden;
+}
+
+#presence_avail {
+    margin: 0px;
+    padding: 0;
+    height: 230px;
+}
+
+#presence_avail li {
+    list-style: none;
+    font-family: "Ubuntu Mono", monospace;
+    font-size: 16px;
+    padding: 1px 4px;
+}
+
+#presence_avail li.new,#presence_avail li.exit {
+    font-style: italic;
+    color: #bbbbcf;
+}
+
+#mpresence_avail li.own {
+    color: #bbbbce;
+}
+
+#presence_avail li span.name {
+    color: #77407b;
+}
+
+#messages_list {
+    margin: 10px;
+    padding: 0;
+	overflow: scroll;
+    overflow-x: hidden;
+}
+
+#messages {
+    margin: 0px;
+    padding: 0;
+    height: 230px;
+}
+
+#messages li {
+    list-style: none;
+    font-family: "Ubuntu Mono", monospace;
+    font-size: 16px;
+    padding: 1px 4px;
+}
+
+#messages li.new,#messages li.exit {
+    font-style: italic;
+    color: #bbbbcf;
+}
+
+#messages li.own {
+    color: #bbbbce;
+}
+
+#messages li span.name {
+    color: #77407b;
+}
+
+#input_message_cont {
+    margin: 10px 5px 0 5px;
+}
+
+#input_message {
+    background: #f0f0f0;
+    border: none;
+    font-size: 16px;
+    font-family: "Ubuntu Mono", monospace;
+    outline: none;
+    padding: 6px;
+    float: left;
+    margin: 1;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;    
+    box-sizing: border-box;
+    width: 100%;
+    height: 35px;
+}
+
+#the_send {
+    background-color: #77407b;
+    border: none;
+    color: white;
+    padding: 8px 8px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    float: right;
+    width: 100px;
+    font-size: 14px;
+    height: 35px;
+}
+
+.field > span {
+    display: block;
+    overflow: hidden;
+    padding: 0px;
+
+}
+.field input[type=text] {
+    width: 100%;
+}
+.field input[type=submit] {
+    float: right;
+}
+
+.field input[type=file] {
+    float: right;
+	display: none;
+}

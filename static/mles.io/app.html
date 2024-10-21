@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MlesTalk Application Information</title>
+<link href="css/style.css" rel="stylesheet"></link>
+<style>
+#bwidth {
+    margin: auto;
+    width: 85%;
+    padding: 10px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+<div id="bwidth">
+<div>
+<img src="images/mles_logo_final.png" alt="Mles logo" width="100" />
+</div>
+
+<h2>MlesTalk: character-by-character messenger</h2>
+
+<p>
+MlesTalk is an open-source character-by-character messenger between users on the same channel. See how everyone is writing their messages, character by character! Exchange thoughts faster! Avoid centralized services of big corporations, their data collection and the sale of your personal metadata. <b>Your metadata is your data</b> with MlesTalk.
+</p>
+
+<p>
+<b>How to get it?</b><br /><br />
+You can sideload it with <a href="https://mles.io/mlestalk/mlestalk_3017.apk">direct download</a>. You may need to uninstall your MlesTalk from Google Play first as it is in bundle format and the new release is apk. No worries still, you'll get notifications about new upgrades with the sideloaded apk as well. Happy talking!</p>
+</p>
+
+<p>
+<b>Key features:</b>
+<ul>
+	<li>See messages character-by-character!</li>
+	<li>Multichannel support</li>
+	<li>UTF8-support, emojis, images are supported</li>
+	<li>Voice messages with max length of 3 mins</li>
+	<li>Respects privacy fully, does not collect any user information</li>
+	<li>Message notifications while in the background</li>
+	<li>Channels' user presence with back-button</li>
+	<li>Uses TLS encrypted Websocket connection as transport layer</li>
+	<li>E2EE with shared key on the channel</li>
+	<li>Automated ephemeral key exchange with different font colour for group real-time messaging within the channel</li>
+	<li>Supports several languages for ease of use</li>
+	<li>Easy on battery</li>
+</ul>
+
+<p>
+Messaging supports both asynchronous and real-time communications. In addition to a unique username and shared channel, you will need to pick a shared key (i.e a shared password) with other channel users.
+</p>
+<p>Retro-feeling for those Unix-era users who remember the magnificent Talk program.</p>
+
+<p>Please join <a href="https://lemmy.world/c/mles">/c/mles</a> community to get info about new features of MlesTalk or Mles protocol in general.</p>
+
+<p>Connectivity is based on the Mles-WebSocket protocol. You can freely select the server to connect to in the channel creation. It is possible to set up your own server too! Please see more information below.</p>
+
+<h3>The source</h3>
+
+<p>MlesTalk is an open-source project. A sincere thank you to all open source library developers, without you this application would not exist!</p>
+
+<ul>
+<li>MlesTalk-UI: User interface <a href="https://github.com/jq-rs/mlestalk-ui">source code</a></li>
+<li>Zpinc WebWorker: Protocol implementation <a href="https://github.com/jq-rs/zpinc-webworker">source code</a></li> 
+<li>Mles WebSocket proxy: <a href="https://github.com/jq-rs/mles-webproxy">source code</a></li>
+<li>Installation instructions for your own Mles WebSocket proxy: <a href="https://github.com/jq-rs/mles-webproxy/blob/jq-rs/crates.io/README.md">README</a></li>
+</ul>
+
+<h2>About Mles.io server</h2>
+
+<p>Mles.io has a service server support implemented for the MlesTalk application and this server is suggested by default to be used by the MlesTalk application. Mles.io provides a limited history of messages for users during initial connection, if messages already exist on the channel. The Mles.io service is provided as-is as a best-effort service without any liability. The MlesTalk application user is free to select any server they wish to connect to, as long as it supports the Mles-WebSocket protocol.</p>
+
+<p>Mles.io will always run the latest released open source version of the Mles-WebSocket server service called <a href="https://github.com/jq-rs/mles-webproxy">mles-webproxy</a> and it does not collect any information of MlesTalk application users. The users are always welcome to review the source code of <i>mles-webproxy</i> and establish their own Mles-WebSocket server service. Please see <a href="https://mles.io/legal.html">https://mles.io/legal</a> for the full Privacy Notice and other legal information.</p>
+
+<h2>Frequently Asked Questions</h2>
+
+<h3>What kind of network connection does MlesTalk need?</h3>
+
+<p>MlesTalk uses Mles-WebSocket protocol over Transport Layer Security (TLS) protected Transmission Control Protocol (TCP). You should be able to use it with any internet connection. MlesTalk will do the reconnection attempts for you in usual network glitches and also resend unsent messages.</p>
+
+<h3>Are sent or received messages saved somewhere for later retrieval by the MlesTalk application?</h3>
+
+<p>Messages are not saved permanently by the MlesTalk application. The messages in device memory are lost when the MlesTalk application is closed from an application point of view. To support asynchronous communication, some of the messages on the channel can be restored from an Mles server during reconnection to the channel if the server supports a message history. Mles.io supports message history of 1000 messages per channel where every new character uses one message.</p>
+
+<h3>Are the messages secured somehow?</h3>
+
+<p>Messages are sent over TLS protected connection by default which should be secure.</p>
+
+<p>In addition to transport-level TLS encryption, it is secured by <a href="https://github.com/ZpincDev/zpinc-webworker/raw/master/zpinc_paper.pdf">Zpinc protocol</a> for message authentication, integrity and confidentiality. Even though Zpinc protocol should be safe, it is not audited. It is open-source so you can check the code yourself, please report any issues! Pro bono professional auditors welcome as well!
+
+<h3>I cannot log into a channel with the same user name twice, i.e from the web GUI. What can I do?</h3>
+
+<p>Please use a different user name for simultaneous logins on the same channel. It is a feature of the Mles protocol that the user name is restricted to one active at a time. You can identify this situation from the GUI where it constantly logs into a channel but never receives any messages.</p>
+
+<h3>Why iOS is not supported yet?</h3>
+
+<p>The good news is that MlesTalk is running on iOS simulation without an issue, so looks grand! However, the Apple app store yearly costs are expensive. To cover the expenses, it would take a much higher volume of application purchases compared to the current level to justify the costs. Nevertheless, iOS support is possible in the future if enough users are asking for it.</p>
+<br />
+</div>
+</div>
+</body>
+</html>
+
+

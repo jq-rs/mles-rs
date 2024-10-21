@@ -1,0 +1,49 @@
+@font-face {
+    font-family: "Ubuntu Mono", monospace;
+    src: url(font/UbuntuMono-Regular.ttf);
+}
+
+p {
+    font-size: 18px;
+}
+
+li {
+    font-size: 18px;
+}
+
+pre {
+    font-size: 18px;
+}
+
+body {
+    font-family: "Ubuntu Mono", monospace;
+    background: rgb(189,189,189);
+    background: linear-gradient(225deg, rgba(189,189,189,1) 1%, rgba(255,255,255,1) 15%, rgba(255,255,255,1) 70%);
+}
+
+h1 {
+   color: #77407b;
+}
+h2 {
+   color: #77407b;
+}
+h3 {
+   color: #77407b;
+}
+h4 {
+   color: #77407b;
+}
+h5 {
+   color: #77407b;
+}
+h6 {
+   color: #77407b;
+}
+a:link {color:black;}
+a:visited {color: grey;}
+a:hover {text-decoration: none; color: black;}
+img {
+    max-width: 100%;
+    height: auto;
+}
+	

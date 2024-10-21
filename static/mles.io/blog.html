@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mles.io Blog</title>
+<link rel="stylesheet" href="css/style.css" />
+<style>
+#bwidth {
+    margin: auto;
+    width: 85%;
+    padding: 10px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+<div id="bwidth">
+<img src="images/mles_logo_final.png" alt="Mles logo" width="100" />
+<h2>MlesTalk FOSS stable released!</h2>
+
+<p><b>jq-rs, 10.9.2024</b></p>
+
+<p>MlesTalk FOSS beta has been out for a while. After several months of testing it seems to work well and the latest beta is thus released as stable, deprecating all previous MlesTalk apps. You can sideload it via <a href="https://mles.io/mlestalk/mlestalk_3017.apk">direct download</a>. For more information please check <a href="https://mles.io/app.html">MlesTalk app page</a>. You may need to uninstall your MlesTalk from Google Play first as it is in bundle format and the stable is apk. You'll get notifications about new upgrades with the stable release via the app. Happy talking!</p>
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>MlesTalk FOSS beta released!</h2>
+
+<p><b>jq-rs, 21.5.2024</b></p>
+
+<p>Good news! MlesTalk FOSS beta has been released! It has many small improvements and <a href="https://github.com/ZpincDev/zpinc-webworker/raw/master/zpinc_paper.pdf">Zpinc protocol</a> for message authentication, integrity and confidentiality. You can try it out with <a href="https://mles.io/mlestalk/mlestalk_3017beta.apk">direct download</a>. You may need to uninstall your MlesTalk from Google Play first as it is in bundle format and the beta is apk. No worries still, you'll get notifications about new upgrades with the beta as well. Happy talking!</p>
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles v2 published!</h2>
+
+<p><b>jq-rs, 30.12.2023</b></p>
+
+<p>I am glad to announce Mles v2 has landed! More details on the Mles channel <a href="https://lemmy.world/c/mles/">/c/mles</a>.</p><p>Happy and safe messaging on Mles v2!</p>
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Path to Mles v2.0 - Message structure changes</h2>
+
+<p><b>jq-rs, 17.8.2023, cross-posted from <a href="https://lemmy.world/c/mles/">/c/mles</a></b></p>
+
+Mles originates from October 2016 and the Mles message structure has been the following since the v1.0 release<br />
+
+<pre>
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | ASCII 'M'(77) |            Encapsulated data length           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |            CID (lowest 4 bytes of initial SipHash)            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   +                          SipHash                              +
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |         CBOR encapsulated data (uid, channel, message)        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</pre>
+It had pretty modern aspects included such as
+
+<ul><li>Large data length support, up to 16 MB framing</li>
+	<li>SipHash authentication</li>
+	<li>CID handling with peer servers</li>
+	<li>CBOR</li>
+</ul>
+
+Even though it has served well for almost a decade now, there exist certain issues with it as an open Internet protocol header, such as a) Framing does not have a checksum b) The default SipHash authentication does not work really for connections behind NAT c) CBOR d) Header overhead<br />
+
+Let’s check the above cases in detail.</br>
+
+a) Why would we need a checksum over TCP you may ask? Well, you do not need it for data for sure, TCP has one already. Nevertheless, the server side has use for it to identify and drop false random-data bot-connections. And there are often a lot of them, which just happen to start with ASCII 77.<br />
+
+b) Yes, the SipHash did a good job authenticating the TCP endpoints. Unfortunately, behind a NAT the client cannot really know its IP, so shared key was in the end the only working solution for IPv4 servers.<br />
+
+c) CBOR as an (IETF) format sounds nice, but in practice is awkward to both implement and use. It does not really save that much space compared to e.g. JSON, it cannot be easily read on the captures and the most popular crate is now deprecated.<br />
+
+d) Header overhead is pretty extensive for very short messages. The specification says that the use of SipHash can be ignored, but still needs the header fields and CBOR structures for every frame. Do we really need them, every time?<br />
+
+<i>You may have encountered or noticed other issues too regarding the message structure. If so, please let me know, let’s fix it.</i><br />
+
+Regarding the above issues, what would be the concept for the next-generation message structure then? Perhaps not that different, to be honest, see below draft:<br />
+<pre>
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | ASCII 'N'(78) |                  Data length                  |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   +                          SipHash                              +
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |           JSON encapsulated id data (uid, channel)            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</pre>
+Even though the fields are quite the same, the way we use them will be different and hopefully will solve all of the above issues:<br />
+
+a) The SipHash field will include the header as well and therefore be the checksum for it. The weak dependency on CID will be removed, obviously, as there is no CID anymore, the SipHash is the CID.<br />
+
+b) The SipHash authentication for IP endpoints will be dropped. A shared key can still be part of SipHash authentication, by default the header + the channel are the authentication.<br />
+
+c) Let’s drop CBOR and use JSON. And especially, let’s not encapsulate the data into JSON. JSON is supported everywhere and is easy for client implementation.<br />
+
+d) After the first initial frame, the connection is authenticated and identified, we do not need the SipHash or JSON anymore. The next frames will use the following format:<br />
+<pre>
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                       Data (raw bytes) ...                    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</pre>
+The first frame cannot hold more data than the JSON identifiers, but after that avoid we all the overhead allowing the application to decide the framing.<br />
+
+That’s it for this time! This is all draft and you are free to comment, thanks in advance! The presented changes will certainly cause changes to other areas of the protocol. What they are, we check in detail next time. See you then!<br />
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>A new, alternative 2nd layer protocol implementation available</h2>
+
+<p><b>jq-rs, 6.11.2022</b></p>
+
+<p>Mles protocol allows to create a distributed transparent data forwarding service. MlesTalk is a prototype <a href="https://mles.io/app.html">mobile application</a> which allows to use this framework in modern communication. MlesTalk itself is split into two parts, the UI and communication parts. The communication part is implemented as a JavaScript webworker which is easily replacable with any other webworker that implements its API. I am happy to notice that Zpinc Developers have implemented an alternative prototype webworker as a drop-in replacement, found <a href="https://github.com/ZpincDev/zpinc-webworker">here</a>. In addition, they have also published an <a href="https://github.com/ZpincDev/zpinc-webworker/raw/master/zpinc_paper.pdf">article</a> which describes the overall messaging system on any pub-sub infrastructure, similar to Mles. Interesting! If you want to try it out, please check <a href="https://github.com/jq-rs/mlestalk-ui/#it-is-open-source-can-i-build-it-myself">instructions</a> how to compile your own instance. Happy messaging all!
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>MlesTalk multichannel support released in Google Play</h2>
+
+<p><b>jq-rs, 31.10.2021</b></p>
+
+<p>I am happy to announce that <a href="https://play.google.com/store/apps/details?id=io.mles.mlestalk">MlesTalk</a> has now full multichannel support included! Want to have just a simple messenger which allows you to send text and images without ads or giving a phone number or an email? And avoids the data collection of big corporations through services like Google Firebase? Here you have it, please check it out.</p>
+<p>MlesTalk uses Mles WebProxy over WebSocket for messaging sessions. For more detailed information, please see <a href="https://mles.io/app.html">app info</a>.</p>
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles WebProxy released in crates.io</h2>
+
+<p><b>jq-rs, 15.9.2020</b></p>
+
+<p>I am glad to announce that <a href="https://github.com/jq-rs/mles-webproxy/tree/jq-rs/crates.io">Mles WebProxy</a> 0.8 has been released in <a href="https://crates.io/crates/mles-webproxy">crates.io</a>! It is based on <a href="https://github.com/seanmonstar/warp">Warp</a> 0.1 and supports</p>
+<ul>
+	<li>Seamless WebSocket upgrade with default TLS port 443</li>
+	<li>TLS certificate autofetch and renewal from <a href="https://letsencrypt.org/">Let's Encrypt</a></li>
+	<li>Multichannel multiplexing functionality where a client WebSocket application can use only one session for several channels and the proxy will maintain the separated TCP sessions per channel towards Mles server</li>
+	<li>Application level keepalives which clean up non-responding connections automatically and keep the proxy session space tidy in all changing networking world</li>
+</ul>
+<p>If you have always wanted to have a simple static website which automatically renews TLS certificates from <a href="https://letsencrypt.org/">Let's Encrypt</a> and also provides an access point into a federated messaging, this your chance now! Please check <a href="https://crates.io/crates/mles-webproxy">crates.io</a> for step-by-step instructions. Thank you all!</p>
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles - v1.0.0 released!</h2>
+
+<p><b>jq-rs, 4.10.2017</b></p>
+
+<p>I am happy to announce that Mles v1.0.0 has been released! Hurray! The most significant changes are related to API handling, now every API functionality is accessed through a structure with get()/set(), encode()/decode() which makes it simpler and more logical to use. Please have a look at the API <a href="https://docs.rs/mles-utils/1.0.0/mles_utils/">here</a>. Peer reconnection handling also had some fixes in just before 1.0.0 release.</p>   
+
+<p>I am very excited to be able to release this quite different and performant pub/sub data protocol with a reference implementation in Rust! Please see all the details at <a href="https://github.com/jq-rs/mles-rs">https://github.com/jq-rs/mles-rs</a>, and please have a look to <a href="http://mles.io">http://mles.io</a> for more generic information.</p>
+
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles - beta3: peer connection stability fix and Resync support</h2>
+
+<p><b>jq-rs, 10.9.2017</b></p>
+
+<p>Hi all! An issue with peer connections was found during 1.0.0-beta2 testing, thanks to all for testing efforts! The problem was that whenever a peer initiated a connection to a root server, it sent only the header of the first message to line. This could cause occasional instability to the peer server connections. The problem was introduced during code refactoring and was not catched by tests because the peer server connection handling did not unfortunately have automated tests. Now the issue is fixed with newly release beta3! The unit tests are also enhanced so that this particular problem won't ever happen again, but there may well be other issues. To ease up testing, mles.io has now open 8077 port a limited time before 1.0.0 release with "mles-devel-frank" key for you to have a try of the protocol. So why not give beta3 a go? Please remember to send feedback!</p>
+
+<p>Another pretty exciting feature introduced in beta3 is the new resynchronization support between root and peer servers. Whenever a root server is restarted, it resyncs its state from peer servers' channel subscriptions, if they happen to have the history available for their channels (they could be configured to not to save any history). The resync is done with a newly introduced ResyncMsg-message. If you want to try it, you'll need to update your root and peer servers to beta3. This kind of distributed protection type of service is often very complex to introduce to any environment, however this resyncing feature was pretty swift (or should I say Rusty..) to implement. Moreover, it gives visibility to clients for the root server restart which was not seen earlier at all. I think it is a cool and quite unique feature to have in Mles - and now on board as part of forthcoming 1.0-release!</p>
+
+<p>And of course all the details are available at <a href="https://github.com/jq-rs/mles-rs">https://github.com/jq-rs/mles-rs</a>, please have a look if interested! PRs are welcome too for issues you may find!</p>
+
+<p>Happy beta3 testing!</p>
+
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles - beta2: license change to MPL-2.0 and a new reference test</h2>
+
+<p><b>jq-rs, 24.7.2017</b></p>
+
+<p>Thanks for the feedback during beta testing period! Some minor changes are now introduced to Mles protocol and server itself. The most significant is perhaps the ability to publish a message during connection initiation to Mles server. This allows to publish faster to subscribers. This is the only protocol change and server has been updated accordingly to support this functionality.</p>
+
+<p>Moreover, the server functionality has been moved inside the library which allows to spawn new servers easily within programs and provides better characteristics for end-to-end automated smoke tests. A new APIs for server connections for receiving and sending messages are added and are facilitated in new unit tests - and in the new reference test (see below). Please check <a href="https://github.com/jq-rs/mles-rs">https://github.com/jq-rs/mles-rs</a> and crate documentation for more information!</p>
+
+<p>In addition to API changes, the licensing has been updated to Mozilla Public License 2.0 (MPL-2.0). As Rust libraries are statically linked by default, the usage of libraries under GPL is difficult with other licensing schemes than the GPL itself. For me the most important thing about GPL was really to underline that useful improvements should be introduced back to upstream to benefit the development community. MPL-2.0 motivates to do this without forcing the library users' licensing to anything specific. Even though you as a developer may think that it does not really make sense to publish some minor change because of the trouble involved, it is really worth it, as the improvements of all developers pile up in the long run!</p>
+
+<p>I was also asked about differences between existing publish/subscribe networks and possible advantages of Mles. It is true that similar frameworks exist already, e.g. RabbitMQ provides ability to build a similar publish/subscribe service. In theory Mles server and clients should provide significantly better performance as it is simpler and focuses to this certain service type with minimal complexity. Real measurements are of course always a nice way to prove that the assumptions are correct. Thus, a new reference measurement has been added to utils library for RabbitMQ and Mles. It has one test for 100 threads receiving "Hello World!" and records the delay when all messages are correctly received by clients. With quick comparison, Mles is roughly over twice as fast compared to RabbitMQ with this use case: 300 samples with RabbitMQ gave <i>231.87 ms</i> mean performance (lower is better) with <i>18.3 ms</i> variance compared to <i>97.47 ms</i> mean with variance <i>2.3 ms</i> Mles performance on the same 6 core i7 VM system. More fine-grained tests that measure raw messaging performance may be added later for further reference. If you have an idea how to better compare the performance, please give feedback! And of course if you want to contribute to reference tests (or to any Mles development), feel free to send a PR!</p>  
+
+<p>Because of above mentioned changes are quite significant, a new beta2 is released! Feel free to try it and please give feedback!</p>
+
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles - 1.0.0-beta release published</h2>
+
+<p><b>jq-rs, 29.6.2017</b></p>
+
+<p>After four weeks of alpha testing, a couple of issues came up that needed some more detailed investigation. First one was loop handling, which was not that good in the alpha-release. Mles users can certainly control that they do not connect to peers at all which obviously prevents loops, so one might think that this is not really an issue. Nevertheless, if peer is configured, the user cannot really control where the peer might be connected to and would that connection path eventually create a loop back to user's original Mles server. To solve this problem, a new connection id (CID) field with random value was introduced to Mles protocol header. It can be used by the server to identify possible loops between the peer servers and block those connections.</p>
+
+<p>Other problem that was noticed was the limitation to login at most once with same UID from different equipment. In many cases, one would prefer to use the same UID from different devices at the same time. Now sequential connections with same UID on the same channel were blocked. We were lucky here as this UID problem can be fixed with the same just introduced CID field! After some test rounds with the new solution, it should be now in good enough shape for other to try. So, Mles reference implementation is now 1.0.0-beta released! Just grand! Feel free to try and please give feedback! You can find more info at <a href="http://mles.io">http://mles.io</a>.</p>
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles - alpha release published</h2>
+
+<p><b>jq-rs, 31.5.2017</b></p>
+
+<p>After two weeks of testing, Mles reference implementation is now alpha-released. Grand! Feel free to try and please give feedback! You can find more info at <a href="http://mles.io">http://mles.io</a>.</p>
+
+<p>If you wonder how can 1.0 be so close as underlying dependencies have not reached 1.0 yet, the short answer is that with crates.io, it should not matter. A longer answer is that it of course depends of the depencies: after some slightly philosophical discussion on relevant channels, e.g. Tokio should be ready for 1.0 release any time. The stable APIs are the key here and filling general expectations of 1.0 releases. Thus, I think we are close to 1.0.0, if everything goes well with testing the alpha.
+</div>
+</div>
+<div class="container">
+<div id="bwidth">
+<h2>Mles - a new protocol in Rust</h2>
+
+<p><b>jq-rs, 14.5.2017</b></p>
+
+<p>I have followed the path of Rust from early days with enthusiasm. As my own background is heavily C-language oriented, with emphasis on networking, I think I have some insight to all the problems C has, it indeed being "a quirky, flawed and enormous success" [1]. There is a tremendous effort of running additional tools to at least somewhat guarantee that large programs do what they are supposed to, if they are written in C. To me, selecting or even keeping C-languange as a primary language to implement almost anything nowadays does not make sense as we have other better options: Rust as a safe, concurrent and fast systems language is a very good such option, solving most of the C-problems at compile time. And with the zero-overhead combining C-programs and Rust-programs, even more so.</p>
+
+<p>Is Rust then ready for solving networking problems and implementing new protocols? Instead of just pondering, I decided try is it able to do a new lightweight and distributed publish/subscribe data service protocol which I named Mles (<i>Modern Lightweight channEl Service</i>). Without any worthy earlier Rust experience, it would be a challenge that would really tell something about Rust's networking support.</p>
+
+<p>The journey took more time than I anticipated initially, but it was certainly worth it. All implementation was done on my free time (usually when it was raining (which was often, to be honest)). I ended up writing first synchronous version of the Mles server reference implementation. Serde with Serde CBOR crate provided a great framework to build on the first versions of the Mles protocol implementation. The synchronous implementation was a good training for Rust in general, recommended to anyone familiarizing to Rust network programming. </p>
+
+<p>As my final target was fully non-blocking and lock-free server implementation, I quite quickly started to re-implement the synchronous version with Rust asynchronous networking crate Tokio. And there was some learning curve there, as Rust/Tokio has cool features like closures, futures and tasks which I had not encountered earlier. If you know e.g. Haskell, many Rust's modern features may be quite familiar to you.</p>
+
+<p>Today, I think I am close to 1.0 release of Mles reference implementation and Mles protocol at the same time. All relevant features are implemented and additional WebSocket proxy support was added in the recent days, which will make the implementation maybe more relevant to users who already have a WebSocket client available. After finalizing the WebSocket proxy, I'll prepare to publish 1.0.0 alpha-release. Probably in the near weeks, if nothing major comes up. Feel free to try and please give feedback! You can find more info at <a href="http://mles.io">http://mles.io</a>.</p>
+
+<p>I really enjoyed the journey and Rust will be my number one choice in the future. During the development, the absolutely great thing was the Rust community! I was not alone learning and solving the problems encountered. Thanks to all who helped, e.g. on the #rust IRC and Tokio Gitter channels. The Rust Book [2] is awesome! The answers to StackOverflow and Reddit are also just wonderful and complete for Rust, grand stuff. A special thanks to @pyfisch, @carllerche and @tanriol, you made a difference in this project, I appreciate it!</p>
+
+<h3>References</h3>
+<ol>
+ <li>The Development of the C Language, Dennis M. Ritchie, <a href="http://heim.ifi.uio.no/inf2270/programmer/historien-om-C.pdf">http://heim.ifi.uio.no/inf2270/programmer/historien-om-C.pdf</a></li>
+ <li>The Rust Programming Language, <a href="https://doc.rust-lang.org/book/">https://doc.rust-lang.org/book/</a></li>
+</ol>
+</div>
+</div>
+</body>
+</html>
