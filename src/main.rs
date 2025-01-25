@@ -42,6 +42,174 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
+use tokio::sync::Semaphore;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::fs;
+
+// Asynchronous handler for the status page
+async fn serve_status_page() -> Result<impl warp::Reply, warp::Rejection> {
+    let html = generate_status_page().await;
+    Ok(warp::reply::html(html))
+}
+
+// Asynchronous function to generate the status page
+async fn generate_status_page() -> String {
+    let files = vec![
+        ("Server 1", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server1.txt"),
+        ("Server 2", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server2.txt"),
+        ("Server 3", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server3.txt"),
+        ("Server 4", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server4.txt"),
+    ];
+
+    let mut html = String::from(
+        r#"
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>qstake mina status</title>
+            <meta http-equiv="refresh" content="5">
+            <style>
+                body {
+                    font-family: monospace;
+                }
+                .status {
+                    font-weight: bold;
+                    margin: 10px 0;
+                }
+                .green { color: green; }
+                .red { color: red; }
+                .grey { color: grey; }
+            </style>
+        </head>
+        <script>
+        async function fetchMinaPrice() {
+            const now = Date.now();
+            const cache = getCache();
+            
+            // If cached data is valid (within 1 minute), use it
+            if (cache && (now - cache.timestamp < 60 * 1000)) {
+                updatePriceDisplay(cache.price);
+                return;
+            }
+
+            // Otherwise, fetch the price from CoinGecko
+            try {
+                const response = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=mina-protocol&vs_currencies=eur");
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                const data = await response.json();
+                const price = data['mina-protocol']?.eur;
+
+                if (price) {
+                    saveCache(price, now);
+                    updatePriceDisplay(price);
+                } else {
+                    updatePriceDisplay(cache.price);
+                }
+            } catch (error) {
+                console.error("Error fetching Mina price:", error);
+                updatePriceDisplay(cache.price);
+            }
+        }
+
+        function getCache() {
+            try {
+                const cache = JSON.parse(localStorage.getItem('minaPriceCache'));
+                return cache && cache.price && cache.timestamp ? cache : null;
+            } catch {
+                return null;
+            }
+        }
+
+        function saveCache(price, timestamp) {
+            const cache = { price, timestamp };
+            localStorage.setItem('minaPriceCache', JSON.stringify(cache));
+        }
+
+        function updatePriceDisplay(price) {
+            const priceElement = document.getElementById('mina-price');
+            if (price) {
+                priceElement.innerHTML = `Mina Price: <span class="green">€${price}</span>`;
+            } else {
+                priceElement.innerHTML = `Mina Price: <span class="red">Unavailable</span>`;
+            }
+        }
+
+        // Fetch price when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchMinaPrice();
+        });
+        </script>
+        <body>
+            <h1>qstake mina status</h1>
+        "#,
+    );
+
+    for (name, path) in files {
+        let status = check_file_status(path).await;
+        html.push_str(&format!(
+            r#"
+            <div class="status">
+                {}: <span class="{}">{} ({})</span>
+            </div>
+            "#,
+            name,
+            if status.0 { "green" } else { "red" },
+            status.1,
+            status.2
+        ));
+    }
+
+    html.push_str(&format!(
+            r#"<div id="mina-price" class="status">Mina Price: <span class="grey">Loading...</span></div>"#
+    ));
+
+    html.push_str(
+        r#"
+        </body>
+        </html>
+        "#,
+    );
+
+    html
+}
+
+// Asynchronous function to check the status of a file
+async fn check_file_status(path: &str) -> (bool, String, String) {
+    match fs::metadata(path).await {
+        Ok(metadata) => {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                    let elapsed_secs = now.as_secs() - duration.as_secs();
+
+                    let content = match fs::read_to_string(path).await {
+                        Ok(file_content) => file_content,
+                        Err(_) => "Error reading file content".to_string(),
+                    };
+
+                    // If the file was modified within the last 60 seconds, it's green
+                    if elapsed_secs <= 60 {
+                        return (
+                            true,
+                            format!("OK, {} seconds ago", elapsed_secs),
+                            content
+                        );
+                    } else {
+                        return (
+                            false,
+                            format!("Failed, {} seconds ago", elapsed_secs),
+                            content
+                        );
+                    }
+                }
+            }
+            (false, "File exists but couldn't retrieve timestamp".to_string(), "".to_string())
+        }
+        Err(_) => (false, "File not found".to_string(), "".to_string()),
+    }
+}
 
 const BR: &str = "br";
 const ZSTD: &str = "zstd";
@@ -459,12 +627,18 @@ async fn main() -> io::Result<()> {
         vindex.push(index);
     }
 
+
     let mut index: BoxedFilter<_> = vindex.swap_remove(0).boxed();
     for val in vindex {
         index = val.or(index).unify().boxed();
     }
 
-    let tlsroutes = ws.or(index);
+    // Define the route that serves the file status page
+    let page_route = warp::path("mina_status")
+        .and(warp::get())
+        .and_then(serve_status_page);
+
+    let tlsroutes = page_route.or(ws).or(index);
     warp::serve(tlsroutes).run_incoming(tls_incoming).await;
 
     unreachable!()
