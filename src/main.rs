@@ -26,6 +26,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt as _;
@@ -42,9 +44,6 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
-use tokio::sync::Semaphore;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::fs;
 
 // Asynchronous handler for the status page
 async fn serve_status_page() -> Result<impl warp::Reply, warp::Rejection> {
@@ -55,10 +54,22 @@ async fn serve_status_page() -> Result<impl warp::Reply, warp::Rejection> {
 // Asynchronous function to generate the status page
 async fn generate_status_page() -> String {
     let files = vec![
-        ("Server 1", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server1.txt"),
-        ("Server 2", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server2.txt"),
-        ("Server 3", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server3.txt"),
-        ("Server 4", "/home/ubuntu/www/mles-rs/static/mles.io/mina/server4.txt"),
+        (
+            "Server 1",
+            "/home/ubuntu/www/mles-rs/static/mles.io/mina/server1.txt",
+        ),
+        (
+            "Server 2",
+            "/home/ubuntu/www/mles-rs/static/mles.io/mina/server2.txt",
+        ),
+        (
+            "Server 3",
+            "/home/ubuntu/www/mles-rs/static/mles.io/mina/server3.txt",
+        ),
+        (
+            "Server 4",
+            "/home/ubuntu/www/mles-rs/static/mles.io/mina/server4.txt",
+        ),
     ];
 
     let mut html = String::from(
@@ -79,6 +90,7 @@ async fn generate_status_page() -> String {
                 .green { color: green; }
                 .red { color: red; }
                 .grey { color: grey; }
+                .yellow { color: yellow; }
             </style>
         </head>
         <script>
@@ -86,8 +98,10 @@ async fn generate_status_page() -> String {
             const now = Date.now();
             const cache = getCache();
             
+            console.log("Cache.timestamp " + cache.timestamp + " now " + now);
             // If cached data is valid (within 1 minute), use it
             if (cache && (now - cache.timestamp < 60 * 1000)) {
+                console.log("Cached!");
                 updatePriceDisplay(cache.price);
                 return;
             }
@@ -102,6 +116,7 @@ async fn generate_status_page() -> String {
                 const price = data['mina-protocol']?.eur;
 
                 if (price) {
+                    console.log("Saving " + now);
                     saveCache(price, now);
                     updatePriceDisplay(price);
                 } else {
@@ -148,15 +163,63 @@ async fn generate_status_page() -> String {
 
     for (name, path) in files {
         let status = check_file_status(path).await;
+
+        // Find the "last proof time" value directly from the iterator
+        let mut last_proof_time: Option<u64> = None;
+        let mut words = status.2.split_whitespace();
+        let synced_status = words.next().map(|word| word.trim_end_matches(',')).unwrap_or("Unknown");
+        let mut color = "green";
+        
+        // Determine color for the synced status
+        let synced_color = match synced_status {
+            "Synced" => "green",
+            "Catchup" => "yellow",
+            _ => "unknown", // Red for anything else
+        };
+
+        while let Some(word) = words.next() {
+            if word == "time" {
+                if let Some(ms_value) = words.next() {
+                    if let Ok(parsed_time) = ms_value.parse::<u64>() {
+                        last_proof_time = Some(parsed_time);
+                        break; // No need to process further
+                    }
+                }
+            }
+        }
+
+        // Determine color based on the last proof time
+        let proof_color = if let Some(parsed_time) = last_proof_time {
+            if parsed_time < 100000 {
+                "green"
+            } else if parsed_time < 150000 {
+                "yellow"
+            } else {
+                "red"
+            }
+        } else {
+            "unknown" // Default if parsing fails or "last proof time" is not found
+        };
+
+
+        if synced_color == "yellow" || proof_color == "yellow" {
+            color = "yellow";
+        }
+
+        if synced_color == "red" || proof_color == "red" {
+            color = "red";
+        }
+
         html.push_str(&format!(
             r#"
-            <div class="status">
-                {}: <span class="{}">{} ({})</span>
-            </div>
-            "#,
+        <div class="status">
+            {}: <span class="{}">{} (<span class="{}">{}</span>)</span>
+        </div>
+        "#,
             name,
             if status.0 { "green" } else { "red" },
             status.1,
+            color, // Color for the parsed last proof time
             status.2
         ));
     }
@@ -191,21 +254,21 @@ async fn check_file_status(path: &str) -> (bool, String, String) {
 
                     // If the file was modified within the last 60 seconds, it's green
                     if elapsed_secs <= 60 {
-                        return (
-                            true,
-                            format!("OK, {} seconds ago", elapsed_secs),
-                            content
-                        );
+                        return (true, format!("OK, {} seconds ago", elapsed_secs), content);
                     } else {
                         return (
                             false,
                             format!("Failed, {} seconds ago", elapsed_secs),
-                            content
+                            content,
                         );
                     }
                 }
             }
-            (false, "File exists but couldn't retrieve timestamp".to_string(), "".to_string())
+            (
+                false,
+                "File exists but couldn't retrieve timestamp".to_string(),
+                "".to_string(),
+            )
         }
         Err(_) => (false, "File not found".to_string(), "".to_string()),
     }
@@ -626,7 +689,6 @@ async fn main() -> io::Result<()> {
 
         vindex.push(index);
     }
-
 
     let mut index: BoxedFilter<_> = vindex.swap_remove(0).boxed();
     for val in vindex {
