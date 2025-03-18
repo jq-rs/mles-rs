@@ -31,7 +31,6 @@ use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt as _;
-use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
@@ -44,6 +43,7 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
+use tokio::net::TcpSocket;
 
 // Asynchronous handler for the status page
 async fn serve_status_page() -> Result<impl warp::Reply, warp::Rejection> {
@@ -387,6 +387,7 @@ async fn main() -> io::Result<()> {
     let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, args.port)
         .parse()
         .unwrap();
+
     let tcp_incoming = create_tcp_incoming(addr)?;
 
     let tls_incoming = AcmeConfig::new(args.domains.clone())
@@ -701,7 +702,10 @@ async fn main() -> io::Result<()> {
         .and_then(serve_status_page);
 
     let tlsroutes = page_route.or(ws).or(index);
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+
+    warp::serve(tlsroutes)
+        .run_incoming(tls_incoming)
+        .await;
 
     unreachable!()
 }
