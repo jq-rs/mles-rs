@@ -10,9 +10,11 @@ use async_compression::Level::Precise;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
+use log::LevelFilter;
 use rustls_acme::caches::DirCache;
 use rustls_acme::AcmeConfig;
 use serde::{Deserialize, Serialize};
+use simple_logger::SimpleLogger;
 use siphasher::sip::SipHasher;
 use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap};
@@ -31,6 +33,7 @@ use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
+use tokio::sync::Semaphore;
 use tokio::time;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
@@ -39,7 +42,6 @@ use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
 use warp::Filter;
-use tokio::sync::Semaphore;
 
 const BR: &str = "br";
 const ZSTD: &str = "zstd";
@@ -137,7 +139,11 @@ fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
-    simple_logger::init_with_env().unwrap();
+    SimpleLogger::new()
+        .with_level(LevelFilter::Warn)
+        .env()
+        .init()
+        .unwrap();
     let args = Args::parse();
     let limit = args.limit;
     let filelimit = args.filelimit;
@@ -444,7 +450,7 @@ async fn main() -> io::Result<()> {
                         domain.clone(),
                         www_root.to_str().unwrap().to_string(),
                         path,
-                        sem.clone()
+                        sem.clone(),
                     )
                 },
             )
@@ -505,7 +511,14 @@ enum ReplyHeaders {
 }
 
 async fn dyn_reply(
-    tuple: (Option<String>, String, String, String, warp::path::Tail, Arc<Semaphore>),
+    tuple: (
+        Option<String>,
+        String,
+        String,
+        String,
+        warp::path::Tail,
+        Arc<Semaphore>,
+    ),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
     let (encoding, uri, domain, www_root, tail, semaphore) = tuple;
 
