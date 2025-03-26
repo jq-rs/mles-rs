@@ -447,7 +447,7 @@ async fn main() -> io::Result<()> {
                                     });
 
                                     e.insert(tx2.clone());
-                                    log::info!("Added {h:x} into {ch:x}.");
+                                    log::info!("Added {h:x} into {ch:x}");
 
                                     // Send confirmation through err_tx
                                     if let Err(err) = err_tx.send(h) {
@@ -490,7 +490,7 @@ async fn main() -> io::Result<()> {
                                 if uid_db.is_empty() {
                                     ch_db.remove(&ch);
                                 }
-                                log::info!("Removed {h:x} from {ch:x}.");
+                                log::info!("Removed {h:x} from {ch:x}");
                             }
                         }
                     }
@@ -853,7 +853,7 @@ async fn dyn_reply(
                     StatusCode::INTERNAL_SERVER_ERROR,
                 )));
             }
-            log::debug!("...OK, ctype {ctype}.");
+            log::debug!("...OK, ctype {ctype}");
 
             let mut reply_headers = ReplyHeaders::NONE;
             let mut use_br = false;
@@ -949,7 +949,7 @@ async fn dyn_reply(
             }
         }
         Err(_) => {
-            log::debug!("{file_path} does not exist.");
+            log::debug!("{file_path} does not exist");
             Ok(Box::new(warp::reply::with_status(
                 "Not Found",
                 StatusCode::NOT_FOUND,
