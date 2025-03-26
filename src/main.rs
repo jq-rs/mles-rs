@@ -410,93 +410,93 @@ async fn main() -> io::Result<()> {
         let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, warp::Error>>>>> =
             HashMap::new();
 
-            // Create cleanup interval
-    let mut cleanup_interval = time::interval(CLEANUP_INTERVAL);
+        // Create cleanup interval
+        let mut cleanup_interval = time::interval(CLEANUP_INTERVAL);
 
-    loop {
-        tokio::select! {
-            // Handle cleanup
-            _ = cleanup_interval.tick() => {
-                let now = SystemTime::now();
-                let threshold = Duration::from_secs(CHANNEL_CLEANUP_DAYS * 24 * 60 * 60);
+        loop {
+            tokio::select! {
+                // Handle cleanup
+                _ = cleanup_interval.tick() => {
+                    let now = SystemTime::now();
+                    let threshold = Duration::from_secs(CLEANUP_DAYS * CLEANUP_INTERVAL);
 
-                msg_db.retain(|&ch, info| {
-                    if let Ok(elapsed) = now.duration_since(info.last_activity) {
-                        if elapsed > threshold {
-                            log::info!("Cleaning up inactive channel {ch:x}");
-                            return false; // Remove channel
+                    msg_db.retain(|&ch, info| {
+                        if let Ok(elapsed) = now.duration_since(info.last_activity) {
+                            if elapsed > threshold {
+                                log::info!("Cleaning up inactive channel {ch:x}");
+                                return false; // Remove channel
+                            }
                         }
-                    }
-                    true // Keep channel
-                });
-            }
+                        true // Keep channel
+                    });
+                }
 
-            // Handle websocket events
-            Some(event) = rx.next() => {
-                match event {
-                    WsEvent::Init(h, ch, tx2, err_tx, msg) => {
-                        if !ch_db.contains_key(&ch) {
-                            ch_db.entry(ch).or_default();
-                        }
-                        if let Some(uid_db) = ch_db.get_mut(&ch) {
-                            if let Entry::Vacant(e) = uid_db.entry(h) {
-                                // Initialize or update channel info
-                                let channel_info = msg_db.entry(ch).or_insert(ChannelInfo {
-                                    messages: VecDeque::new(),
-                                    last_activity: SystemTime::now(),
-                                });
+                // Handle websocket events
+                Some(event) = rx.next() => {
+                    match event {
+                        WsEvent::Init(h, ch, tx2, err_tx, msg) => {
+                            if !ch_db.contains_key(&ch) {
+                                ch_db.entry(ch).or_default();
+                            }
+                            if let Some(uid_db) = ch_db.get_mut(&ch) {
+                                if let Entry::Vacant(e) = uid_db.entry(h) {
+                                    // Initialize or update channel info
+                                    let channel_info = msg_db.entry(ch).or_insert(ChannelInfo {
+                                        messages: VecDeque::new(),
+                                        last_activity: SystemTime::now(),
+                                    });
 
-                                e.insert(tx2.clone());
-                                log::info!("Added {h:x} into {ch:x}.");
+                                    e.insert(tx2.clone());
+                                    log::info!("Added {h:x} into {ch:x}.");
 
-                                // Send confirmation through err_tx
-                                if let Err(err) = err_tx.send(h) {
-                                    log::debug!("Failed to send init confirmation: {}", err);
+                                    // Send confirmation through err_tx
+                                    if let Err(err) = err_tx.send(h) {
+                                        log::debug!("Failed to send init confirmation: {}", err);
+                                    }
+
+                                    // Rest of init handling...
+                                    for qmsg in &channel_info.messages {
+                                        let res = tx2.send(Some(Ok(qmsg.clone()))).await;
+                                        if let Err(err) = res {
+                                            log::debug!("Failed to send queue message: {}", err);
+                                        }
+                                    }
+                                    add_message(msg, limit, &mut channel_info.messages);
+                                    channel_info.last_activity = SystemTime::now();
+                                } else {
+                                    log::warn!("Init done to {h:x} into {ch:x}, closing!");
+                                    // Notify about duplicate connection
+                                    let _ = err_tx.send(0);
                                 }
-
-                                // Rest of init handling...
-                                for qmsg in &channel_info.messages {
-                                    let res = tx2.send(Some(Ok(qmsg.clone()))).await;
+                            }
+                        }
+                        WsEvent::Msg(h, ch, msg) => {
+                            if let Some(uid_db) = ch_db.get(&ch) {
+                                for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
+                                    let res = tx.send(Some(Ok(msg.clone()))).await;
                                     if let Err(err) = res {
-                                        log::debug!("Failed to send queue message: {}", err);
+                                        log::debug!("Failed to send message: {}", err);
                                     }
                                 }
-                                add_message(msg, limit, &mut channel_info.messages);
-                                channel_info.last_activity = SystemTime::now();
-                            } else {
-                                log::warn!("Init done to {h:x} into {ch:x}, closing!");
-                                // Notify about duplicate connection
-                                let _ = err_tx.send(0);
-                            }
-                        }
-                    }
-                    WsEvent::Msg(h, ch, msg) => {
-                        if let Some(uid_db) = ch_db.get(&ch) {
-                            for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
-                                let res = tx.send(Some(Ok(msg.clone()))).await;
-                                if let Err(err) = res {
-                                    log::debug!("Failed to send message: {}", err);
+                                if let Some(channel_info) = msg_db.get_mut(&ch) {
+                                    add_message(msg, limit, &mut channel_info.messages);
+                                    channel_info.last_activity = SystemTime::now();
                                 }
                             }
-                            if let Some(channel_info) = msg_db.get_mut(&ch) {
-                                add_message(msg, limit, &mut channel_info.messages);
-                                channel_info.last_activity = SystemTime::now();
-                            }
                         }
-                    }
-                    WsEvent::Logoff(h, ch) => {
-                        if let Some(uid_db) = ch_db.get_mut(&ch) {
-                            uid_db.remove(&h);
-                            if uid_db.is_empty() {
-                                ch_db.remove(&ch);
+                        WsEvent::Logoff(h, ch) => {
+                            if let Some(uid_db) = ch_db.get_mut(&ch) {
+                                uid_db.remove(&h);
+                                if uid_db.is_empty() {
+                                    ch_db.remove(&ch);
+                                }
+                                log::info!("Removed {h:x} from {ch:x}.");
                             }
-                            log::info!("Removed {h:x} from {ch:x}.");
                         }
                     }
                 }
             }
         }
-    }
     });
 
     let tx_clone = tx.clone();
