@@ -456,7 +456,6 @@ async fn main() -> io::Result<()> {
                         uid_db.remove(&h);
                         if uid_db.is_empty() {
                             ch_db.remove(&ch);
-                            msg_db.remove(&ch);
                         }
                         log::info!("Removed {h:x} from {ch:x}.");
                     }
