@@ -418,7 +418,7 @@ async fn main() -> io::Result<()> {
                 // Handle cleanup
                 _ = cleanup_interval.tick() => {
                     let now = SystemTime::now();
-                    let threshold = Duration::from_secs(CHANNEL_CLEANUP_DAYS * CLEANUP_INTERVAL);
+                    let threshold = Duration::from_secs(CHANNEL_CLEANUP_DAYS * 24 * 60 * 60);
 
                     msg_db.retain(|&ch, info| {
                         if let Ok(elapsed) = now.duration_since(info.last_activity) {
