@@ -165,7 +165,7 @@ fn verify_auth(uid: &str, channel: &str, auth: Option<&str>) -> bool {
         if let Some(auth) = auth {
             let hash = hasher.finish();
             let auth_hash = u64::from_str_radix(auth, 16).unwrap_or(0);
-            return hash == auth_hash
+            return hash == auth_hash;
         }
         true
     }
