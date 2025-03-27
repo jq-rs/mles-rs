@@ -52,13 +52,13 @@ async fn generate_status_page() -> String {
             const now = Date.now();
             const cache = getCache();
 
-            console.log("Cache.timestamp " + cache.timestamp + " now " + now);
+            // If cached data is valid (within 1 minute), use it
             if (cache && (now - cache.timestamp < 60 * 1000)) {
-                console.log("Cached!");
                 updatePriceDisplay(cache.price);
                 return;
             }
 
+            // Otherwise, fetch new price
             try {
                 const response = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=mina-protocol&vs_currencies=eur");
                 if (!response.ok) {
@@ -68,22 +68,21 @@ async fn generate_status_page() -> String {
                 const price = data['mina-protocol']?.eur;
 
                 if (price) {
-                    console.log("Saving " + now);
                     saveCache(price, now);
                     updatePriceDisplay(price);
                 } else {
-                    updatePriceDisplay(cache.price);
+                    updatePriceDisplay(cache?.price); // Use optional chaining
                 }
             } catch (error) {
                 console.error("Error fetching Mina price:", error);
-                updatePriceDisplay(cache.price);
+                updatePriceDisplay(cache?.price); // Use optional chaining
             }
         }
 
         function getCache() {
             try {
                 const cache = JSON.parse(localStorage.getItem('minaPriceCache'));
-                return cache && cache.price && cache.timestamp ? cache : null;
+                return cache?.price && cache?.timestamp ? cache : null;
             } catch {
                 return null;
             }
@@ -103,8 +102,11 @@ async fn generate_status_page() -> String {
             }
         }
 
+        // Call fetchMinaPrice immediately and set up periodic refresh
         document.addEventListener('DOMContentLoaded', () => {
             fetchMinaPrice();
+            // Optionally refresh price every minute
+            setInterval(fetchMinaPrice, 60000);
         });
         </script>
         <body>
