@@ -1,9 +1,9 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
- *  Copyright (C) 2023-2024  Mles developers
- */
+* License, v. 2.0. If a copy of the MPL was not distributed with this
+* file, You can obtain one at http://mozilla.org/MPL/2.0/.
+*
+*  Copyright (C) 2023-2025  Mles developers
+*/
 use async_compression::brotli;
 use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use async_compression::Level::Precise;
@@ -24,8 +24,9 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt as _;
@@ -45,11 +46,29 @@ use warp::Filter;
 
 const BR: &str = "br";
 const ZSTD: &str = "zstd";
+const ACCEPTED_PROTOCOL: &str = "mles-websocket";
+const TASK_BUF: usize = 16;
+const WS_BUF: usize = 128;
+const HISTORY_LIMIT: &str = "200";
+const MAX_FILES_OPEN: &str = "256";
+const TLS_PORT: &str = "443";
+const PING_INTERVAL: u64 = 24000;
+const BACKLOG: u32 = 1024;
+
+const CHANNEL_CLEANUP_DAYS: u64 = 30;
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60); // Run once per day
 
 #[derive(Serialize, Deserialize, Hash)]
 struct MlesHeader {
     uid: String,
     channel: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth: Option<String>,
+}
+
+struct ChannelInfo {
+    messages: VecDeque<Message>,
+    last_activity: SystemTime,
 }
 
 #[derive(Parser, Debug)]
@@ -74,13 +93,11 @@ struct Args {
     #[arg(short, long, default_value = MAX_FILES_OPEN, value_parser = clap::value_parser!(u32).range(1..1_000_000))]
     filelimit: u32,
 
-    /// Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to
-    /// static/example.io)
+    /// Www-root directory for domain(s)
     #[arg(short, long, required = true)]
     wwwroot: PathBuf,
 
     /// Use Let's Encrypt staging environment
-    /// (see https://letsencrypt.org/docs/staging-environment/)
     #[arg(short, long)]
     staging: bool,
 
@@ -91,15 +108,6 @@ struct Args {
     #[arg(short, long)]
     redirect: bool,
 }
-
-const ACCEPTED_PROTOCOL: &str = "mles-websocket";
-const TASK_BUF: usize = 16;
-const WS_BUF: usize = 128;
-const HISTORY_LIMIT: &str = "200";
-const MAX_FILES_OPEN: &str = "256";
-const TLS_PORT: &str = "443";
-const PING_INTERVAL: u64 = 24000;
-const BACKLOG: u32 = 1024;
 
 #[derive(Debug)]
 enum WsEvent {
@@ -137,6 +145,30 @@ fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
     Ok(TcpListenerStream::new(tcp_listener))
 }
 
+fn verify_auth(uid: &str, channel: &str, auth: Option<&str>) -> bool {
+    let mut hasher = SipHasher::new();
+    hasher.write(uid.as_bytes());
+    hasher.write(channel.as_bytes());
+
+    if let Ok(key) = std::env::var("MLES_KEY") {
+        if let Some(auth) = auth {
+            hasher.write(key.as_bytes());
+            let hash = hasher.finish();
+            let auth_hash = u64::from_str_radix(auth, 16).unwrap_or(0);
+            hash == auth_hash
+        } else {
+            false
+        }
+    } else {
+        if let Some(auth) = auth {
+            let hash = hasher.finish();
+            let auth_hash = u64::from_str_radix(auth, 16).unwrap_or(0);
+            return hash == auth_hash;
+        }
+        true
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
     SimpleLogger::new()
@@ -156,6 +188,7 @@ async fn main() -> io::Result<()> {
     let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, args.port)
         .parse()
         .unwrap();
+
     let tcp_incoming = create_tcp_incoming(addr)?;
 
     let tls_incoming = AcmeConfig::new(args.domains.clone())
@@ -175,69 +208,93 @@ async fn main() -> io::Result<()> {
     });
 
     tokio::spawn(async move {
-        let mut msg_db: HashMap<u64, VecDeque<Message>> = HashMap::new();
+        let mut msg_db: HashMap<u64, ChannelInfo> = HashMap::new();
         let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, warp::Error>>>>> =
             HashMap::new();
-        while let Some(event) = rx.next().await {
-            match event {
-                WsEvent::Init(h, ch, tx2, err_tx, msg) => {
-                    if !ch_db.contains_key(&ch) {
-                        ch_db.entry(ch).or_default();
-                    }
-                    if let Some(uid_db) = ch_db.get_mut(&ch) {
-                        if let Entry::Vacant(e) = uid_db.entry(h) {
-                            msg_db.entry(ch).or_default();
-                            e.insert(tx2.clone());
-                            log::info!("Added {h:x} into {ch:x}.");
 
-                            let val = err_tx.send(h);
-                            if let Err(err) = val {
-                                log::info!("Got err tx msg err {err}");
+        // Create cleanup interval
+        let mut cleanup_interval = time::interval(CLEANUP_INTERVAL);
+
+        loop {
+            tokio::select! {
+                // Handle cleanup
+                _ = cleanup_interval.tick() => {
+                    let now = SystemTime::now();
+                    let threshold = Duration::from_secs(CHANNEL_CLEANUP_DAYS * 24 * 60 * 60);
+
+                    msg_db.retain(|&ch, info| {
+                        if let Ok(elapsed) = now.duration_since(info.last_activity) {
+                            if elapsed > threshold {
+                                log::info!("Cleaning up inactive channel {ch:x}");
+                                return false; // Remove channel
                             }
+                        }
+                        true // Keep channel
+                    });
+                }
 
-                            for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
-                                let res = tx.send(Some(Ok(msg.clone()))).await;
-                                if let Err(err) = res {
-                                    log::info!("Got tx msg err {err}");
+                // Handle websocket events
+                Some(event) = rx.next() => {
+                    match event {
+                        WsEvent::Init(h, ch, tx2, err_tx, msg) => {
+                            if !ch_db.contains_key(&ch) {
+                                ch_db.entry(ch).or_default();
+                            }
+                            if let Some(uid_db) = ch_db.get_mut(&ch) {
+                                if let Entry::Vacant(e) = uid_db.entry(h) {
+                                    // Initialize or update channel info
+                                    let channel_info = msg_db.entry(ch).or_insert(ChannelInfo {
+                                        messages: VecDeque::new(),
+                                        last_activity: SystemTime::now(),
+                                    });
+
+                                    e.insert(tx2.clone());
+                                    log::info!("Added {h:x} into {ch:x}");
+
+                                    // Send confirmation through err_tx
+                                    if let Err(err) = err_tx.send(h) {
+                                        log::debug!("Failed to send init confirmation: {}", err);
+                                    }
+
+                                    // Rest of init handling...
+                                    for qmsg in &channel_info.messages {
+                                        let res = tx2.send(Some(Ok(qmsg.clone()))).await;
+                                        if let Err(err) = res {
+                                            log::debug!("Failed to send queue message: {}", err);
+                                        }
+                                    }
+                                    add_message(msg, limit, &mut channel_info.messages);
+                                    channel_info.last_activity = SystemTime::now();
+                                } else {
+                                    log::warn!("Init done to {h:x} into {ch:x}, closing!");
+                                    // Notify about duplicate connection
+                                    let _ = err_tx.send(0);
                                 }
                             }
-
-                            let queue = msg_db.get_mut(&ch);
-                            if let Some(queue) = queue {
-                                for qmsg in &*queue {
-                                    let res = tx2.send(Some(Ok(qmsg.clone()))).await;
+                        }
+                        WsEvent::Msg(h, ch, msg) => {
+                            if let Some(uid_db) = ch_db.get(&ch) {
+                                for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
+                                    let res = tx.send(Some(Ok(msg.clone()))).await;
                                     if let Err(err) = res {
-                                        log::info!("Got tx snd qmsg err {err}");
+                                        log::debug!("Failed to send message: {}", err);
                                     }
                                 }
-                                add_message(msg, limit, queue);
-                            }
-                        } else {
-                            log::warn!("Init done to {h:x} into {ch:x}, closing!");
-                        }
-                    }
-                }
-                WsEvent::Msg(h, ch, msg) => {
-                    if let Some(uid_db) = ch_db.get(&ch) {
-                        for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
-                            let res = tx.send(Some(Ok(msg.clone()))).await;
-                            if let Err(err) = res {
-                                log::info!("Got tx snd msg err {err}");
+                                if let Some(channel_info) = msg_db.get_mut(&ch) {
+                                    add_message(msg, limit, &mut channel_info.messages);
+                                    channel_info.last_activity = SystemTime::now();
+                                }
                             }
                         }
-                        let queue = msg_db.get_mut(&ch);
-                        if let Some(queue) = queue {
-                            add_message(msg, limit, queue);
+                        WsEvent::Logoff(h, ch) => {
+                            if let Some(uid_db) = ch_db.get_mut(&ch) {
+                                uid_db.remove(&h);
+                                if uid_db.is_empty() {
+                                    ch_db.remove(&ch);
+                                }
+                                log::info!("Removed {h:x} from {ch:x}");
+                            }
                         }
-                    }
-                }
-                WsEvent::Logoff(h, ch) => {
-                    if let Some(uid_db) = ch_db.get_mut(&ch) {
-                        uid_db.remove(&h);
-                        if uid_db.is_empty() {
-                            ch_db.remove(&ch);
-                        }
-                        log::info!("Removed {h:x} from {ch:x}.");
                     }
                 }
             }
@@ -260,138 +317,198 @@ async fn main() -> io::Result<()> {
                 let h = Arc::new(AtomicU64::new(0));
                 let ch = Arc::new(AtomicU64::new(0));
                 let ping_cntr = Arc::new(AtomicU64::new(0));
-
+                let is_closed = Arc::new(AtomicBool::new(false));
+                // Message receiver task
                 let tx = tx_inner.clone();
                 let tx2_inner = tx2.clone();
                 let h_clone = h.clone();
                 let ch_clone = ch.clone();
                 let ping_cntr_clone = ping_cntr.clone();
+                let is_closed_rx = is_closed.clone();
+
                 tokio::spawn(async move {
                     let h = h_clone;
                     let ch = ch_clone;
                     let tx2_spawn = tx2_inner.clone();
-                    let ping_cntr_inner = ping_cntr_clone.clone();
+                    let ping_cntr_inner = ping_cntr_clone;
+
                     if let Some(Ok(msg)) = ws_rx.next().await {
                         if !msg.is_text() {
+                            is_closed_rx.store(true, Ordering::SeqCst);
                             return;
                         }
                         let msghdr: Result<MlesHeader, serde_json::Error> =
                             serde_json::from_str(msg.to_str().unwrap());
                         match msghdr {
                             Ok(msghdr) => {
+                                // Validate UTF-8 and emptiness
+                                if !msghdr.uid.is_ascii() || !msghdr.channel.is_ascii() {
+                                    log::warn!("Invalid UTF-8 in uid or channel");
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
+                                if msghdr.uid.is_empty() || msghdr.channel.is_empty() {
+                                    log::warn!("Empty uid or channel");
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
+
+                                if !verify_auth(
+                                    &msghdr.uid,
+                                    &msghdr.channel,
+                                    msghdr.auth.as_deref(),
+                                ) {
+                                    log::warn!(
+                                        "Authentication failed for user {} on channel {}",
+                                        msghdr.uid,
+                                        msghdr.channel
+                                    );
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
+                                if msghdr.auth.is_some() {
+                                    log::info!(
+                                        "Authentication successful for user {} on channel {}",
+                                        msghdr.uid,
+                                        msghdr.channel
+                                    );
+                                }
+
                                 let mut hasher = SipHasher::new();
                                 msghdr.hash(&mut hasher);
                                 h.store(hasher.finish(), Ordering::SeqCst);
                                 let hasher = SipHasher::new();
                                 ch.store(hasher.hash(msghdr.channel.as_bytes()), Ordering::SeqCst);
-                                let _ = tx
+                                if let Err(err) = tx
                                     .send(WsEvent::Init(
                                         h.load(Ordering::SeqCst),
                                         ch.load(Ordering::SeqCst),
-                                        tx2_spawn,
+                                        tx2_spawn.clone(),
                                         err_tx,
                                         msg,
                                     ))
-                                    .await;
+                                    .await
+                                {
+                                    log::debug!("Failed to send init event: {}", err);
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
                             }
-                            Err(_) => return,
+                            Err(err) => {
+                                log::debug!("Invalid header format: {}", err);
+                                is_closed_rx.store(true, Ordering::SeqCst);
+                                return;
+                            }
                         }
                     }
                     match err_rx.await {
                         Ok(_) => {}
                         Err(_) => {
-                            log::info!("Duplicate entry, closing!");
+                            log::debug!("Duplicate entry or init error, closing");
+                            is_closed_rx.store(true, Ordering::SeqCst);
                             h.store(0, Ordering::SeqCst);
                             ch.store(0, Ordering::SeqCst);
-                            let _val = tx2_inner.send(Some(Ok(Message::close()))).await;
+                            let _ = tx2_spawn.send(Some(Ok(Message::close()))).await;
                             return;
                         }
                     }
+
                     while let Some(Ok(msg)) = ws_rx.next().await {
+                        if is_closed_rx.load(Ordering::SeqCst) {
+                            break;
+                        }
+
                         if 0 == h.load(Ordering::SeqCst) {
-                            log::warn!("Invalid h, bailing");
+                            log::debug!("Invalid connection state, closing");
                             break;
                         }
+
                         if msg.is_close() {
+                            log::debug!("Received close frame");
+                            is_closed_rx.store(true, Ordering::SeqCst);
                             break;
                         }
+
                         ping_cntr_inner.store(0, Ordering::Relaxed);
                         if msg.is_pong() {
-                            log::info!(
+                            log::debug!(
                                 "Got pong for {:x} of {:x}",
                                 h.load(Ordering::SeqCst),
                                 ch.load(Ordering::SeqCst)
                             );
                             continue;
                         }
-                        let val = tx
+
+                        if let Err(err) = tx
                             .send(WsEvent::Msg(
                                 h.load(Ordering::SeqCst),
                                 ch.load(Ordering::SeqCst),
                                 msg,
                             ))
-                            .await;
-                        if let Err(err) = val {
-                            log::warn!("Invalid tx {:?}", err);
+                            .await
+                        {
+                            log::debug!("Failed to send message: {}", err);
                             break;
                         }
                     }
-                    let _ = tx2_inner.send(None).await;
+                    is_closed_rx.store(true, Ordering::SeqCst);
+                    let _ = tx2_spawn.send(None).await;
                 });
 
+                // Ping handler task
                 let tx2_inner = tx2.clone();
                 let ping_cntr_inner = ping_cntr.clone();
-                let h_clone = h.clone();
-                let ch_clone = ch.clone();
+                let is_closed_ping = is_closed.clone();
                 tokio::spawn(async move {
-                    let h = h_clone;
-                    let ch = ch_clone;
                     let mut interval = time::interval(Duration::from_millis(PING_INTERVAL));
                     interval.tick().await;
 
-                    let tx2_clone = tx2_inner.clone();
-                    loop {
+                    while !is_closed_ping.load(Ordering::SeqCst) {
                         interval.tick().await;
-                        let val = tx2_clone.send(Some(Ok(Message::ping(Vec::new())))).await;
-                        if val.is_err() {
+
+                        if let Err(_) = tx2_inner.send(Some(Ok(Message::ping(Vec::new())))).await {
                             break;
                         }
-                        if 0 == h.load(Ordering::SeqCst) {
-                            break;
-                        }
+
                         let ping_cnt = ping_cntr_inner.fetch_add(1, Ordering::Relaxed);
-                        if ping_cnt == 1 || ping_cnt == 2 {
-                            log::debug!(
-                                "Missed pong for {:x} of {:x}",
-                                h.load(Ordering::SeqCst),
-                                ch.load(Ordering::SeqCst)
-                            );
-                        }
                         if ping_cnt > 2 {
-                            log::debug!(
-                                "No pongs for {:x} of {:x}, close",
-                                h.load(Ordering::SeqCst),
-                                ch.load(Ordering::SeqCst)
-                            );
+                            log::debug!("No pongs received, closing connection");
+                            is_closed_ping.store(true, Ordering::SeqCst);
+                            let _ = tx2_inner.send(None).await;
                             break;
                         }
                     }
-                    let _ = tx2_inner.send(None).await;
                 });
 
+                // Message sender task
+                let is_closed_tx = is_closed.clone();
                 async move {
                     while let Some(Some(Ok(msg))) = rx2.next().await {
-                        if msg.is_close() {
+                        if is_closed_tx.load(Ordering::SeqCst) {
                             break;
                         }
-                        let val = ws_tx.send(msg).await;
-                        if let Err(err) = val {
-                            log::info!("Invalid ws tx {:?}", err);
-                            break;
+
+                        match ws_tx.send(msg).await {
+                            Ok(_) => {}
+                            Err(err) => {
+                                // Handle specific error cases
+                                if err.to_string().contains("broken pipe")
+                                    || err.to_string().contains("connection reset")
+                                    || err.to_string().contains("protocol error")
+                                    || err.to_string().contains("sending after closing")
+                                {
+                                    log::debug!("Connection closed: {}", err);
+                                } else {
+                                    log::warn!("Unexpected websocket error: {}", err);
+                                }
+                                is_closed_tx.store(true, Ordering::SeqCst);
+                                break;
+                            }
                         }
                     }
-                    let _val = ws_tx.send(Message::close()).await;
 
+                    // Final cleanup
+                    let _ = ws_tx.send(Message::close()).await;
                     let hval = h.load(Ordering::SeqCst);
                     let chval = ch.load(Ordering::SeqCst);
                     if hval != 0 && chval != 0 {
@@ -465,6 +582,7 @@ async fn main() -> io::Result<()> {
     }
 
     let tlsroutes = ws.or(index);
+
     warp::serve(tlsroutes).run_incoming(tls_incoming).await;
 
     unreachable!()
@@ -536,7 +654,6 @@ async fn dyn_reply(
     log::debug!("Avail file permits {}", semaphore.available_permits());
     log::debug!("Accessing {file_path}...");
 
-    // Open the file
     match File::open(&file_path).await {
         Ok(mut file) => {
             let parts: Vec<&str> = file_path.split('.').collect();
@@ -557,7 +674,6 @@ async fn dyn_reply(
                 None => format!("{}/{}", mime::ANY.basetype(), mime::ANY.subtype()),
             };
 
-            // Read the file content into a Vec<u8>
             let mut buffer = Vec::new();
             if (file.read_to_end(&mut buffer).await).is_err() {
                 log::debug!("...FAILED!");
@@ -566,7 +682,7 @@ async fn dyn_reply(
                     StatusCode::INTERNAL_SERVER_ERROR,
                 )));
             }
-            log::debug!("...OK, ctype {ctype}.");
+            log::debug!("...OK, ctype {ctype}");
 
             let mut reply_headers = ReplyHeaders::NONE;
             let mut use_br = false;
@@ -662,8 +778,7 @@ async fn dyn_reply(
             }
         }
         Err(_) => {
-            // Handle the case where the file doesn't exist or other errors
-            log::debug!("{file_path} does not exist.");
+            log::debug!("{file_path} does not exist");
             Ok(Box::new(warp::reply::with_status(
                 "Not Found",
                 StatusCode::NOT_FOUND,
