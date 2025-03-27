@@ -63,6 +63,8 @@ const CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60); // Run onc
 struct MlesHeader {
     uid: String,
     channel: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth: Option<String>,
 }
 
 struct ChannelInfo {
@@ -367,6 +369,30 @@ async fn check_file_status(path: &str) -> (bool, String, String) {
     }
 }
 
+fn verify_auth(uid: &str, channel: &str, auth: Option<&str>) -> bool {
+    let mut hasher = SipHasher::new();
+    hasher.write(uid.as_bytes());
+    hasher.write(channel.as_bytes());
+
+    if let Ok(key) = std::env::var("MLES_KEY") {
+        if let Some(auth) = auth {
+            hasher.write(key.as_bytes());
+            let hash = hasher.finish();
+            let auth_hash = u64::from_str_radix(auth, 16).unwrap_or(0);
+            hash == auth_hash
+        } else {
+            false
+        }
+    } else {
+        if let Some(auth) = auth {
+            let hash = hasher.finish();
+            let auth_hash = u64::from_str_radix(auth, 16).unwrap_or(0);
+            return hash == auth_hash
+        }
+        true
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> io::Result<()> {
     SimpleLogger::new()
@@ -539,6 +565,39 @@ async fn main() -> io::Result<()> {
                             serde_json::from_str(msg.to_str().unwrap());
                         match msghdr {
                             Ok(msghdr) => {
+                                // Validate UTF-8 and emptiness
+                                if !msghdr.uid.is_ascii() || !msghdr.channel.is_ascii() {
+                                    log::warn!("Invalid UTF-8 in uid or channel");
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
+                                if msghdr.uid.is_empty() || msghdr.channel.is_empty() {
+                                    log::warn!("Empty uid or channel");
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
+
+                                if !verify_auth(
+                                    &msghdr.uid,
+                                    &msghdr.channel,
+                                    msghdr.auth.as_deref(),
+                                ) {
+                                    log::warn!(
+                                        "Authentication failed for user {} on channel {}",
+                                        msghdr.uid,
+                                        msghdr.channel
+                                    );
+                                    is_closed_rx.store(true, Ordering::SeqCst);
+                                    return;
+                                }
+                                if msghdr.auth.is_some() {
+                                    log::info!(
+                                        "Authentication successful for user {} on channel {}",
+                                        msghdr.uid,
+                                        msghdr.channel
+                                    );
+                                }
+
                                 let mut hasher = SipHasher::new();
                                 msghdr.hash(&mut hasher);
                                 h.store(hasher.finish(), Ordering::SeqCst);
@@ -566,7 +625,6 @@ async fn main() -> io::Result<()> {
                             }
                         }
                     }
-
                     match err_rx.await {
                         Ok(_) => {}
                         Err(_) => {
