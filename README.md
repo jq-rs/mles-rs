@@ -11,8 +11,6 @@ Mles clients connect to a Mles server using Mles protocol header first frame (ui
 
 The Mles server verifies Mles protocol header first frame and then joins the Mles client to the selected channel. Every channel uses its own context and is independent of other channels: therefore a TLS session per (uid, channel) pair is always used. After joining, the Mles server distributes the value triplet between all clients on the same channel. If a Mles client wants to depart from a channel, it just closes the Websocket TLS session. If a Mles client does not want to receive any message, it just closes WebSocket TLS session receive side.
 
-A Mles server MAY contact a Mles peer server. The Mles peer server sees this session as another Mles client session. This allows Mles servers to share and distribute value triplet data in an organized and powerful, yet simple manner between other Mles servers.
-
 A Mles server MAY save the history of received data, which can be then distributed to new clients when they connect to the Mles server. In case Mles server is restarted, Mles peer server, or even a Mles client, MAY provide history data for the Mles server as a resynchronization for those channels that it has the history available. This allows distributed data protection for the channel information.  
 
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. A Mles server MAY be configured to use IP anycast.
@@ -54,7 +52,7 @@ Options:
 
 You can have several domains listed e.g. `--domains your.domain --domains www.your.domain`.
 
-## Example client
+## Example clients
 
 An example client session with `websocat` looks like this:
 
@@ -63,11 +61,13 @@ An example client session with `websocat` looks like this:
 { "uid":"alice", "channel":"example" }
 Hello Bob!
 ```
+[mles-client](https://github.com/jq-rs/mles-client) is another example. It also includes a proxy implementation which can be used to connect channels of several servers together in a distributed manner.
 
 ## Existing client implementations over Mles (WebSocket) protocol
 
  * [MlesTalk](https://mles.io/app.html) in JavaScript
- * <please add your client here!>
+ * [mles-client](https://github.com/jq-rs/mles-client)
+ * \<please ask to add your client here\>
 
 ## References:
 
