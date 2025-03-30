@@ -270,7 +270,7 @@ async fn main() -> io::Result<()> {
                                 } else {
                                     log::warn!("Init done to {h:x} into {ch:x}, closing!");
                                     // Notify about duplicate connection
-                                    let _ = err_tx.send(0);
+                                    drop(err_tx);
                                 }
                             }
                         }
@@ -355,6 +355,12 @@ async fn main() -> io::Result<()> {
                                     return;
                                 }
 
+                                let mut hasher = SipHasher::new();
+                                msghdr.hash(&mut hasher);
+                                h.store(hasher.finish(), Ordering::SeqCst);
+                                let hasher = SipHasher::new();
+                                ch.store(hasher.hash(msghdr.channel.as_bytes()), Ordering::SeqCst);
+
                                 if !verify_auth(
                                     &msghdr.uid,
                                     &msghdr.channel,
@@ -362,25 +368,13 @@ async fn main() -> io::Result<()> {
                                 ) {
                                     log::warn!(
                                         "Authentication failed for user {} on channel {}",
-                                        msghdr.uid,
-                                        msghdr.channel
+                                        h.load(Ordering::SeqCst),
+                                        ch.load(Ordering::SeqCst)
                                     );
                                     is_closed_rx.store(true, Ordering::SeqCst);
                                     return;
                                 }
-                                if msghdr.auth.is_some() {
-                                    log::info!(
-                                        "Authentication successful for user {} on channel {}",
-                                        msghdr.uid,
-                                        msghdr.channel
-                                    );
-                                }
 
-                                let mut hasher = SipHasher::new();
-                                msghdr.hash(&mut hasher);
-                                h.store(hasher.finish(), Ordering::SeqCst);
-                                let hasher = SipHasher::new();
-                                ch.store(hasher.hash(msghdr.channel.as_bytes()), Ordering::SeqCst);
                                 if let Err(err) = tx
                                     .send(WsEvent::Init(
                                         h.load(Ordering::SeqCst),
