@@ -79,14 +79,6 @@
         <h3>Server Connectivity with Proxy-Clients</h3>
         <p>In Mles v2, there has been a significant architectural advancement in how servers connect. Instead of the previous model where servers connected directly as peers and shared all channels, the new approach implements a proxy-client model that enables channel-specific connections between servers.</p>
 
-        <p>This proxy-client architecture offers several benefits:</p>
-        <ul>
-            <li>Granular control: Only specific channels are shared between servers</li>
-            <li>Reduced network traffic: Messages are only forwarded for channels that need to be shared</li>
-            <li>Enhanced privacy: Channels can remain isolated to specific servers</li>
-            <li>Flexible topology: Custom network configurations can be created at the channel level</li>
-        </ul>
-
         <p>The proxy-client functions as a standard client from the perspective of both servers, but its role is to bridge a specific channel between them. Multiple proxy-clients can connect different channel combinations across various servers, creating a highly customizable distribution network.</p>
 
         <h3>Message History</h3>
