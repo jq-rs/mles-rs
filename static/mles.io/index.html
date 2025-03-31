@@ -35,7 +35,7 @@
 
         <p>Key advantages include:</p>
         <ul>
-            <li>Exceptional scalability through advanced connection handling built on Tokio futures</li>
+            <li>Scalability through advanced connection handling built on Tokio futures</li>
             <li>Format-agnostic message passing that preserves client data structure integrity</li>
             <li>Modern, high-performance authentication mechanisms effective even with minimal inputs</li>
             <li>Lightweight Rust-based architecture delivering superior performance compared to alternatives</li>
@@ -77,7 +77,7 @@
         <h2>Advanced Features</h2>
 
         <h3>Server Connectivity with Proxy-Clients</h3>
-        <p>In Mles v2, there has been a significant architectural advancement in how servers connect. Instead of the previous model where servers connected directly as peers and shared all channels, the new approach implements a proxy-client model that enables channel-specific connections between servers.</p>
+        <p>In Mles v2, there has been a architectural change in how servers connect. Instead of the previous model where servers connected directly as peers and shared all channels, the new approach implements a proxy-client model that enables channel-specific connections between servers.</p>
 
         <p>The proxy-client functions as a standard client from the perspective of both servers, but its role is to bridge a specific channel between them. Multiple proxy-clients can connect different channel combinations across various servers, creating a highly customizable distribution network.</p>
 
