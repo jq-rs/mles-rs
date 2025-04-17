@@ -13,6 +13,8 @@ The Mles server verifies Mles protocol header first frame and then joins the Mle
 
 A Mles server MAY save the history of received data, which can be then distributed to new clients when they connect to the Mles server. In case Mles server is restarted, Mles peer server, or even a Mles client, MAY provide history data for the Mles server as a resynchronization for those channels that it has the history available. This allows distributed data protection for the channel information.  
 
+An Mles proxy-client MAY proxy a selected channel data between several Mles servers. Mles servers see the proxy sessions as any other Mles client session. This allows Mles proxy-client to share and distribute value triplet data in an organized and powerful, yet simple manner between several Mles servers.
+
 Mles clients and servers are independent of IP version and do not use IP broadcast or multicast. A Mles server MAY be configured to use IP anycast.
 
 ## Mles protocol details
