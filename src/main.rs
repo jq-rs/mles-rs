@@ -9,6 +9,9 @@ use async_compression::Level::Precise;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
+use hyper_util::service::TowerToHyperService;
 use log::LevelFilter;
 use rustls_acme::caches::DirCache;
 use rustls_acme::AcmeConfig;
@@ -539,7 +542,23 @@ async fn main() -> io::Result<()> {
                 .parse()
                 .unwrap();
             if let Ok(tcp_incoming) = create_tcp_incoming(addr) {
-                warp::serve(hindex).run_incoming(tcp_incoming).await;
+                // Manual HTTP server loop for redirect
+                let service = warp::service(hindex);
+
+                tokio::pin!(tcp_incoming);
+                while let Some(Ok(stream)) = tcp_incoming.next().await {
+                    let io = TokioIo::new(stream);
+                    let service_clone = TowerToHyperService::new(service.clone());
+
+                    tokio::spawn(async move {
+                        if let Err(err) = Builder::new(TokioExecutor::new())
+                            .serve_connection(io, service_clone)
+                            .await
+                        {
+                            log::debug!("Error serving connection: {:?}", err);
+                        }
+                    });
+                }
             }
         });
     }
@@ -576,7 +595,23 @@ async fn main() -> io::Result<()> {
 
     let tlsroutes = ws.or(index);
 
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+    // Manual HTTPS/TLS server loop
+    let service = warp::service(tlsroutes);
+
+    tokio::pin!(tls_incoming);
+    while let Some(Ok(stream)) = tls_incoming.next().await {
+        let io = TokioIo::new(stream);
+        let service_clone = TowerToHyperService::new(service.clone());
+
+        tokio::spawn(async move {
+            if let Err(err) = Builder::new(TokioExecutor::new())
+                .serve_connection(io, service_clone)
+                .await
+            {
+                log::debug!("Error serving TLS connection: {:?}", err);
+            }
+        });
+    }
 
     unreachable!()
 }
