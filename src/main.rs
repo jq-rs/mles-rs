@@ -4,8 +4,8 @@
 *
 *  Copyright (C) 2023-2025  Mles developers
 */
-use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use async_compression::Level::Precise;
+use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
@@ -13,38 +13,38 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
 use hyper_util::service::TowerToHyperService;
 use log::LevelFilter;
-use rustls_acme::caches::DirCache;
 use rustls_acme::AcmeConfig;
+use rustls_acme::caches::DirCache;
 use serde::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
 use siphasher::sip::SipHasher;
 use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::SystemTime;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::TcpSocket;
+use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::sync::Semaphore;
 use tokio::time;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::wrappers::TcpListenerStream;
+use warp::Filter;
 use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
-use warp::Filter;
 
 mod mina;
 
@@ -595,7 +595,11 @@ async fn main() -> io::Result<()> {
         index = val.or(index).unify().boxed();
     }
 
-    let tlsroutes = ws.or(index);
+    // Define the route that serves the file status page
+    let page_route = warp::path("mina_status")
+        .and(warp::get())
+        .and_then(mina::serve_status_page);
+    let tlsroutes = page_route.or(ws).or(index);
 
     // Manual HTTPS/TLS server loop
     let service = warp::service(tlsroutes);

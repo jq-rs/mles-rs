@@ -1,9 +1,8 @@
 [package]
 name = "mles"
-version = "2.5.1"
+version = "2.7.0"
 authors = ["jq-rs"]
-edition = "2021"
-
+edition = "2024"
 description = "Mles, a distributed publish-subscribe data server"
 license = "MPL-2.0"
 repository = "https://github.com/jq-rs/mles-rs"
@@ -13,13 +12,15 @@ categories = ["network-programming"]
 keywords = ["protocol", "publish-subscribe", "websocket", "mles"]
 
 [dependencies]
-tokio = { version="1.36", features = ["full"] }
-tokio-stream = { version="0.1.14", features = ["net"] }
-tokio-util = { version="0.7.10", features = ["compat"] }
+tokio = { version="1.48", features = ["full"] }
+tokio-stream = { version="0.1.17", features = ["net"] }
+tokio-util = { version="0.7.16", features = ["compat"] }
 tokio-rustls = "0.26"
-rustls-acme = { version="0.13", default-features = false, features = ["tokio", "aws-lc-rs"] }
-warp = "0.3.7"
-simple_logger = "4.3.3"
+rustls-acme = { version="0.14", default-features = false, features = ["tokio", "aws-lc-rs", "webpki-roots"] }
+warp = { version = "0.4", features = ["websocket"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["server", "server-auto", "tokio"] }
+simple_logger = "5"
 clap = { version = "4", features = ["derive"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 log = "0.4.20"
@@ -31,3 +32,4 @@ http-types = "2"
 
 [profile.release]
 lto = true
+strip = true
