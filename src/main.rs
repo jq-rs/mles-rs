@@ -4,8 +4,8 @@
 *
 *  Copyright (C) 2023-2025  Mles developers
 */
-use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use async_compression::Level::Precise;
+use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
@@ -13,38 +13,38 @@ use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
 use log::LevelFilter;
-use rustls_acme::caches::DirCache;
 use rustls_acme::AcmeConfig;
+use rustls_acme::caches::DirCache;
 use serde::{Deserialize, Serialize};
 use simple_logger::SimpleLogger;
 use siphasher::sip::SipHasher;
 use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::SystemTime;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::TcpSocket;
+use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::sync::Semaphore;
 use tokio::time;
 use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::wrappers::TcpListenerStream;
+use warp::Filter;
 use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 use warp::ws::Message;
-use warp::Filter;
 
 const BR: &str = "br";
 const ZSTD: &str = "zstd";
@@ -197,7 +197,7 @@ async fn main() -> io::Result<()> {
         .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
         .cache_option(args.cache.clone().map(DirCache::new))
         .directory_lets_encrypt(!args.staging)
-        .tokio_incoming(tcp_incoming, Vec::new());
+        .tokio_incoming(tcp_incoming, vec![b"http/1.1".to_vec()]);
 
     // Wrap the incoming connections stream with a filter to enforce a connection limit
     let sem_inner = semaphore.clone();
