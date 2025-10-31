@@ -555,6 +555,7 @@ async fn main() -> io::Result<()> {
                     tokio::spawn(async move {
                         if let Err(err) = Builder::new(TokioExecutor::new())
                             .serve_connection(io, service_clone)
+                            .with_upgrades()
                             .await
                         {
                             log::debug!("Error serving connection: {:?}", err);
@@ -612,6 +613,7 @@ async fn main() -> io::Result<()> {
         tokio::spawn(async move {
             if let Err(err) = Builder::new(TokioExecutor::new())
                 .serve_connection(io, service_clone)
+                .with_upgrades()
                 .await
             {
                 log::debug!("Error serving TLS connection: {:?}", err);
