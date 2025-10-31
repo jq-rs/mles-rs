@@ -612,6 +612,7 @@ async fn main() -> io::Result<()> {
         tokio::spawn(async move {
             if let Err(err) = http1::Builder::new()
                 .serve_connection(io, service_clone)
+                .with_upgrades()
                 .await
             {
                 log::debug!("Error serving TLS connection: {:?}", err);
