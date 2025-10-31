@@ -4,7 +4,6 @@
 *
 *  Copyright (C) 2023-2025  Mles developers
 */
-use async_compression::brotli;
 use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use async_compression::Level::Precise;
 use clap::Parser;
@@ -274,7 +273,7 @@ async fn main() -> io::Result<()> {
                         }
                         WsEvent::Msg(h, ch, msg) => {
                             if let Some(uid_db) = ch_db.get(&ch) {
-                                for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
+                                for (_, tx) in uid_db.iter().filter(|(xh, _)| **xh != h) {
                                     let res = tx.send(Some(Ok(msg.clone()))).await;
                                     if let Err(err) = res {
                                         log::debug!("Failed to send message: {}", err);
@@ -604,8 +603,7 @@ async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
         encoder.shutdown().await?;
         Ok(encoder.into_inner())
     } else {
-        let params = brotli::EncoderParams::default().text_mode();
-        let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Precise(2), params);
+        let mut encoder = BrotliEncoder::with_quality(Vec::new(), Precise(2));
         encoder.write_all(in_data).await?;
         encoder.shutdown().await?;
         Ok(encoder.into_inner())
