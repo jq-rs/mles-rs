@@ -199,7 +199,7 @@ async fn main() -> io::Result<()> {
         .contact(args.email.iter().map(|e| format!("mailto:{}", e)))
         .cache_option(args.cache.clone().map(DirCache::new))
         .directory_lets_encrypt(!args.staging)
-        .tokio_incoming(tcp_incoming, Vec::new());
+        .tokio_incoming(tcp_incoming, vec![b"http/1.1".to_vec()]);
 
     // Wrap the incoming connections stream with a filter to enforce a connection limit
     let sem_inner = semaphore.clone();
