@@ -4,12 +4,14 @@
 *
 *  Copyright (C) 2023-2025  Mles developers
 */
-use async_compression::brotli;
 use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use async_compression::Level::Precise;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
+use hyper_util::service::TowerToHyperService;
 use log::LevelFilter;
 use rustls_acme::caches::DirCache;
 use rustls_acme::AcmeConfig;
@@ -276,7 +278,7 @@ async fn main() -> io::Result<()> {
                         }
                         WsEvent::Msg(h, ch, msg) => {
                             if let Some(uid_db) = ch_db.get(&ch) {
-                                for (_, tx) in uid_db.iter().filter(|(&xh, _)| xh != h) {
+                                for (_, tx) in uid_db.iter().filter(|(xh, _)| **xh != h) {
                                     let res = tx.send(Some(Ok(msg.clone()))).await;
                                     if let Err(err) = res {
                                         log::debug!("Failed to send message: {}", err);
@@ -542,7 +544,23 @@ async fn main() -> io::Result<()> {
                 .parse()
                 .unwrap();
             if let Ok(tcp_incoming) = create_tcp_incoming(addr) {
-                warp::serve(hindex).run_incoming(tcp_incoming).await;
+                // Manual HTTP server loop for redirect
+                let service = warp::service(hindex);
+
+                tokio::pin!(tcp_incoming);
+                while let Some(Ok(stream)) = tcp_incoming.next().await {
+                    let io = TokioIo::new(stream);
+                    let service_clone = TowerToHyperService::new(service.clone());
+
+                    tokio::spawn(async move {
+                        if let Err(err) = Builder::new(TokioExecutor::new())
+                            .serve_connection(io, service_clone)
+                            .await
+                        {
+                            log::debug!("Error serving connection: {:?}", err);
+                        }
+                    });
+                }
             }
         });
     }
@@ -577,14 +595,25 @@ async fn main() -> io::Result<()> {
         index = val.or(index).unify().boxed();
     }
 
-    // Define the route that serves the file status page
-    let page_route = warp::path("mina_status")
-        .and(warp::get())
-        .and_then(mina::serve_status_page);
+    let tlsroutes = ws.or(index);
 
-    let tlsroutes = page_route.or(ws).or(index);
+    // Manual HTTPS/TLS server loop
+    let service = warp::service(tlsroutes);
 
-    warp::serve(tlsroutes).run_incoming(tls_incoming).await;
+    tokio::pin!(tls_incoming);
+    while let Some(Ok(stream)) = tls_incoming.next().await {
+        let io = TokioIo::new(stream);
+        let service_clone = TowerToHyperService::new(service.clone());
+
+        tokio::spawn(async move {
+            if let Err(err) = Builder::new(TokioExecutor::new())
+                .serve_connection(io, service_clone)
+                .await
+            {
+                log::debug!("Error serving TLS connection: {:?}", err);
+            }
+        });
+    }
 
     unreachable!()
 }
@@ -611,8 +640,7 @@ async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
         encoder.shutdown().await?;
         Ok(encoder.into_inner())
     } else {
-        let params = brotli::EncoderParams::default().text_mode();
-        let mut encoder = BrotliEncoder::with_quality_and_params(Vec::new(), Precise(2), params);
+        let mut encoder = BrotliEncoder::with_quality(Vec::new(), Precise(2));
         encoder.write_all(in_data).await?;
         encoder.shutdown().await?;
         Ok(encoder.into_inner())
