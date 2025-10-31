@@ -9,8 +9,8 @@ use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use http_types::mime;
-use hyper_util::rt::{TokioExecutor, TokioIo};
-use hyper_util::server::conn::auto::Builder;
+use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
 use log::LevelFilter;
 use rustls_acme::AcmeConfig;
@@ -553,9 +553,8 @@ async fn main() -> io::Result<()> {
                     let service_clone = TowerToHyperService::new(service.clone());
 
                     tokio::spawn(async move {
-                        if let Err(err) = Builder::new(TokioExecutor::new())
+                        if let Err(err) = http1::Builder::new()
                             .serve_connection(io, service_clone)
-                            .with_upgrades()
                             .await
                         {
                             log::debug!("Error serving connection: {:?}", err);
@@ -611,9 +610,8 @@ async fn main() -> io::Result<()> {
         let service_clone = TowerToHyperService::new(service.clone());
 
         tokio::spawn(async move {
-            if let Err(err) = Builder::new(TokioExecutor::new())
+            if let Err(err) = http1::Builder::new()
                 .serve_connection(io, service_clone)
-                .with_upgrades()
                 .await
             {
                 log::debug!("Error serving TLS connection: {:?}", err);
