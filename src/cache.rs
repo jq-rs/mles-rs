@@ -43,7 +43,7 @@ impl CacheEntry {
 }
 
 #[derive(Debug)]
-pub struct CompressionCache {
+pub(crate) struct CompressionCache {
     entries: IndexMap<CacheKey, CacheEntry>,
     current_size: usize,
     max_size: usize,
@@ -126,8 +126,8 @@ impl CompressionCache {
 }
 
 // Thread-safe wrapper
-pub type SharedCache = Arc<Mutex<CompressionCache>>;
+pub(crate) type SharedCache = Arc<Mutex<CompressionCache>>;
 
-pub fn create_cache(max_size_mb: usize) -> SharedCache {
+pub(crate) fn create_cache(max_size_mb: usize) -> SharedCache {
     Arc::new(Mutex::new(CompressionCache::new(max_size_mb)))
 }
