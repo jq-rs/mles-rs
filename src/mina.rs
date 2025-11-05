@@ -1,12 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs;
 
-pub async fn serve_status_page() -> Result<impl warp::Reply, warp::Rejection> {
+pub(crate) async fn serve_status_page() -> Result<impl warp::Reply, warp::Rejection> {
     let html = generate_status_page().await;
     Ok(warp::reply::html(html))
 }
 
-async fn generate_status_page() -> String {
+pub(crate) async fn generate_status_page() -> String {
     let files = vec![
         (
             "Server 1",
@@ -193,7 +193,7 @@ async fn generate_status_page() -> String {
     html
 }
 
-async fn check_file_status(path: &str) -> (bool, String, String) {
+pub(crate) async fn check_file_status(path: &str) -> (bool, String, String) {
     match fs::metadata(path).await {
         Ok(metadata) => {
             if let Ok(modified) = metadata.modified() {

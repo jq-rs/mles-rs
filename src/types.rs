@@ -12,20 +12,20 @@ use tokio::sync::oneshot;
 use warp::ws::Message;
 
 #[derive(Serialize, Deserialize, Hash)]
-pub struct MlesHeader {
-    pub uid: String,
-    pub channel: String,
+pub(crate) struct MlesHeader {
+    pub(crate) uid: String,
+    pub(crate) channel: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth: Option<String>,
+    pub(crate) auth: Option<String>,
 }
 
-pub struct ChannelInfo {
-    pub messages: VecDeque<Message>,
-    pub last_activity: SystemTime,
+pub(crate) struct ChannelInfo {
+    pub(crate) messages: VecDeque<Message>,
+    pub(crate) last_activity: SystemTime,
 }
 
 #[derive(Debug)]
-pub enum WsEvent {
+pub(crate) enum WsEvent {
     Init(
         u64,
         u64,
@@ -38,7 +38,7 @@ pub enum WsEvent {
 }
 
 #[derive(Debug)]
-pub enum ReplyHeaders {
+pub(crate) enum ReplyHeaders {
     NONE,
     Zstd,
     Br,

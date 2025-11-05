@@ -37,7 +37,6 @@ Options:
   -e, --email <EMAIL>          Contact info
   -c, --cache <CACHE>          Cache directory
   -l, --limit <LIMIT>          History limit [default: 200]
-  -f, --filelimit <FILELIMIT>  Open files limit [default: 256]
   -w, --wwwroot <WWWROOT>      Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to static/example.io)
   -s, --staging                Use Let's Encrypt staging environment (see https://letsencrypt.org/docs/staging-environment/)
   -p, --port <PORT>            [default: 443]

@@ -8,10 +8,10 @@ use async_compression::Level::Precise;
 use async_compression::tokio::write::{BrotliEncoder, ZstdEncoder};
 use tokio::io::AsyncWriteExt as _;
 
-pub const BR: &str = "br";
-pub const ZSTD: &str = "zstd";
+pub(crate) const BR: &str = "br";
+pub(crate) const ZSTD: &str = "zstd";
 
-pub async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
+pub(crate) async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<Vec<u8>> {
     if comptype == ZSTD {
         let mut encoder = ZstdEncoder::with_quality(Vec::new(), Precise(2));
         encoder.write_all(in_data).await?;

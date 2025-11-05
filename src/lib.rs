@@ -5,24 +5,26 @@
  *  Copyright (C) 2023-2025  Mles developers
  */
 
-pub mod auth;
-pub mod compression;
-pub mod http;
-pub mod server;
-pub mod types;
-pub mod websocket;
-pub mod mina;
+pub(crate) mod auth;
+pub(crate) mod cache;
+pub(crate) mod compression;
+pub(crate) mod http;
+pub(crate) mod mina;
+pub(crate) mod server;
+pub(crate) mod types;
+pub(crate) mod websocket;
 
 use std::io;
 use std::net::Ipv6Addr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::sync::Semaphore;
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use warp::Filter;
 
 const TASK_BUF: usize = 16;
+const FILE_LIMIT: u32 = 1024; // Maximum number of open files
 
 /// Configuration for the Mles server
 #[derive(Debug, Clone)]
@@ -35,24 +37,21 @@ pub struct ServerConfig {
     pub cache: Option<PathBuf>,
     /// History limit for message queue
     pub limit: u32,
-    /// Maximum number of open files
-    pub filelimit: u32,
     /// Web root directory
     pub wwwroot: PathBuf,
     /// Use Let's Encrypt staging environment
     pub staging: bool,
-    /// Port to listen on
+    /// Server port
     pub port: u16,
-    /// Enable HTTP to HTTPS redirect on port 80
+    /// Use http redirect for port 80
     pub redirect: bool,
 }
 
 /// Run the Mles server with the given configuration
 pub async fn run(config: ServerConfig) -> io::Result<()> {
     let limit = config.limit;
-    let filelimit = config.filelimit;
     let www_root_dir = config.wwwroot;
-    let semaphore = Arc::new(Semaphore::new(filelimit as usize));
+    let semaphore = Arc::new(Semaphore::new(FILE_LIMIT as usize));
 
     // Create WebSocket event channel
     let (tx, rx) = mpsc::channel::<types::WsEvent>(TASK_BUF);
@@ -85,12 +84,8 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     // Create WebSocket handler
     let ws = websocket::create_ws_handler(tx.clone());
 
-    // Create HTTP file serving routes
-    let index = http::create_http_file_routes(
-        config.domains,
-        www_root_dir,
-        semaphore.clone(),
-    );
+    // Create HTTP file serving routes with configured cache size
+    let index = http::create_http_file_routes(config.domains, www_root_dir, semaphore.clone());
 
     // Define the mina status page route
     let page_route = warp::path("mina_status")

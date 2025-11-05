@@ -20,7 +20,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 
 const BACKLOG: u32 = 1024;
 
-pub fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
+pub(crate) fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
     let socket = TcpSocket::new_v6()?;
     socket.set_keepalive(true)?;
     socket.set_nodelay(true)?;
@@ -30,7 +30,7 @@ pub fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
     Ok(TcpListenerStream::new(tcp_listener))
 }
 
-pub fn create_tls_incoming(
+pub(crate) fn create_tls_incoming(
     domains: Vec<String>,
     email: Vec<String>,
     cache: Option<PathBuf>,
@@ -56,7 +56,7 @@ pub fn create_tls_incoming(
     })
 }
 
-pub async fn serve_http<F>(tcp_incoming: TcpListenerStream, routes: F)
+pub(crate) async fn serve_http<F>(tcp_incoming: TcpListenerStream, routes: F)
 where
     F: warp::Filter + Clone + Send + Sync + 'static,
     F::Extract: warp::Reply,
@@ -79,7 +79,7 @@ where
     }
 }
 
-pub async fn serve_tls<S, T, E, F>(tls_incoming: S, routes: F)
+pub(crate) async fn serve_tls<S, T, E, F>(tls_incoming: S, routes: F)
 where
     S: futures_util::Stream<Item = Result<T, E>>,
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,

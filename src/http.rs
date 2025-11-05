@@ -4,7 +4,8 @@
  *
  *  Copyright (C) 2023-2025  Mles developers
  */
-use crate::compression::{compress, BR, ZSTD};
+use crate::cache;
+use crate::compression::{BR, ZSTD, compress};
 use crate::types::ReplyHeaders;
 use http_types::mime;
 use std::net::Ipv6Addr;
@@ -14,11 +15,18 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
+use warp::Filter;
 use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
-use warp::Filter;
 
-pub async fn dyn_hreply(
+const DEFAULT_CACHE_SIZE_MB: usize = 100;
+
+// Global compression cache
+lazy_static::lazy_static! {
+    static ref COMPRESSION_CACHE: cache::SharedCache = cache::create_cache(DEFAULT_CACHE_SIZE_MB);
+}
+
+pub(crate) async fn dyn_hreply(
     tuple: (String, String, warp::path::Tail),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
     let (uri, domain, tail) = tuple;
@@ -33,7 +41,7 @@ pub async fn dyn_hreply(
     )))
 }
 
-pub async fn dyn_reply(
+pub(crate) async fn dyn_reply(
     tuple: (
         Option<String>,
         String,
@@ -96,14 +104,32 @@ pub async fn dyn_reply(
                 log::debug!("Encoding: {encoding}");
                 if ctype.contains("text") || ctype.contains("json") {
                     if encoding.contains(ZSTD) {
-                        if let Ok(compressed_buffer) = compress(ZSTD, &buffer).await {
-                            buffer = compressed_buffer;
+                        // Try cache first
+                        let mut cache_guard = COMPRESSION_CACHE.lock().await;
+                        if let Some(cached) = cache_guard.get(&file_path, ZSTD) {
+                            log::debug!("Cache hit: {file_path} (zstd)");
+                            buffer = cached;
+                            reply_headers = ReplyHeaders::Zstd;
+                            use_zstd = true;
+                        } else if let Ok(compressed_buffer) = compress(ZSTD, &buffer).await {
+                            log::debug!("Cache miss: {file_path} (zstd)");
+                            buffer = compressed_buffer.clone();
+                            cache_guard.insert(&file_path, ZSTD, compressed_buffer);
                             reply_headers = ReplyHeaders::Zstd;
                             use_zstd = true;
                         }
                     } else if encoding.contains(BR) {
-                        if let Ok(compressed_buffer) = compress(BR, &buffer).await {
-                            buffer = compressed_buffer;
+                        // Try cache first
+                        let mut cache_guard = COMPRESSION_CACHE.lock().await;
+                        if let Some(cached) = cache_guard.get(&file_path, BR) {
+                            log::debug!("Cache hit: {file_path} (br)");
+                            buffer = cached;
+                            reply_headers = ReplyHeaders::Br;
+                            use_br = true;
+                        } else if let Ok(compressed_buffer) = compress(BR, &buffer).await {
+                            log::debug!("Cache miss: {file_path} (br)");
+                            buffer = compressed_buffer.clone();
+                            cache_guard.insert(&file_path, BR, compressed_buffer);
                             reply_headers = ReplyHeaders::Br;
                             use_br = true;
                         }
@@ -192,7 +218,7 @@ pub async fn dyn_reply(
     }
 }
 
-pub fn create_http_redirect_routes(
+pub(crate) fn create_http_redirect_routes(
     domains: Vec<String>,
 ) -> BoxedFilter<(impl warp::Reply,)> {
     let mut http_index = Vec::new();
@@ -212,7 +238,7 @@ pub fn create_http_redirect_routes(
     hindex
 }
 
-pub fn create_http_file_routes(
+pub(crate) fn create_http_file_routes(
     domains: Vec<String>,
     www_root_dir: PathBuf,
     semaphore: Arc<Semaphore>,
@@ -249,7 +275,7 @@ pub fn create_http_file_routes(
     index
 }
 
-pub fn spawn_http_redirect_server(domains: Vec<String>) {
+pub(crate) fn spawn_http_redirect_server(domains: Vec<String>) {
     tokio::spawn(async move {
         let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, 80)
             .parse()

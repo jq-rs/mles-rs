@@ -23,13 +23,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use warp::Filter;
 use warp::ws::Message;
 
-pub const ACCEPTED_PROTOCOL: &str = "mles-websocket";
+pub(crate) const ACCEPTED_PROTOCOL: &str = "mles-websocket";
 const WS_BUF: usize = 128;
 const PING_INTERVAL: u64 = 24000;
 const CHANNEL_CLEANUP_DAYS: u64 = 30;
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60); // Run once per day
 
-pub fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
+pub(crate) fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
     let limit = limit as usize;
     let len = queue.len();
     let cap = queue.capacity();
@@ -42,7 +42,7 @@ pub fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message>) {
     queue.push_back(msg);
 }
 
-pub fn spawn_event_loop(mut rx: ReceiverStream<WsEvent>, limit: u32) {
+pub(crate) fn spawn_event_loop(mut rx: ReceiverStream<WsEvent>, limit: u32) {
     tokio::spawn(async move {
         let mut msg_db: HashMap<u64, ChannelInfo> = HashMap::new();
         let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, warp::Error>>>>> =
@@ -138,7 +138,7 @@ pub fn spawn_event_loop(mut rx: ReceiverStream<WsEvent>, limit: u32) {
     });
 }
 
-pub fn create_ws_handler(
+pub(crate) fn create_ws_handler(
     tx_clone: Sender<WsEvent>,
 ) -> impl warp::Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     warp::ws()

@@ -7,7 +7,7 @@
 use siphasher::sip::SipHasher;
 use std::hash::Hasher;
 
-pub fn verify_auth(uid: &str, channel: &str, auth: Option<&str>) -> bool {
+pub(crate) fn verify_auth(uid: &str, channel: &str, auth: Option<&str>) -> bool {
     let mut hasher = SipHasher::new();
     hasher.write(uid.as_bytes());
     hasher.write(channel.as_bytes());
