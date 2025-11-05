@@ -24,7 +24,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use warp::Filter;
 
 const TASK_BUF: usize = 16;
-const FILE_LIMIT: u32 = 1024; // Maximum number of open files
+const FILE_LIMIT: u32 = 256; // Maximum number of open files
 
 /// Configuration for the Mles server
 #[derive(Debug, Clone)]
