@@ -23,7 +23,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use warp::Filter;
 
 const TASK_BUF: usize = 16;
-const FILE_LIMIT: u32 = 256; // Maximum number of open files
 const DEFAULT_CACHE_SIZE_MB: usize = 10;
 
 /// Configuration for the Mles server
@@ -37,6 +36,8 @@ pub struct ServerConfig {
     pub cache: Option<PathBuf>,
     /// History limit for message queue
     pub limit: u32,
+    /// Open files limit
+    pub filelimit: usize,
     /// Web root directory
     pub wwwroot: PathBuf,
     /// Use Let's Encrypt staging environment
@@ -53,11 +54,12 @@ pub struct ServerConfig {
 pub async fn run(config: ServerConfig) -> io::Result<()> {
     let limit = config.limit;
     let www_root_dir = config.wwwroot;
+    let filelimit = config.filelimit;
     let max_cache_size_mb = match config.max_cache_size_mb {
         Some(size) => size,
         None => DEFAULT_CACHE_SIZE_MB,
     };
-    let semaphore = Arc::new(Semaphore::new(FILE_LIMIT as usize));
+    let semaphore = Arc::new(Semaphore::new(filelimit));
 
     // Create WebSocket event channel
     let (tx, rx) = mpsc::channel::<types::WsEvent>(TASK_BUF);

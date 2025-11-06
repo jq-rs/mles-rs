@@ -46,7 +46,7 @@ impl CompressionCache {
     pub fn new(max_size_mb: usize) -> Self {
         if max_size_mb == 0 {
             return Self {
-                cache: LruCache::unbounded(),
+                cache: LruCache::new(NonZeroUsize::new(1).unwrap()), // Minimal cache
                 current_size: 0,
                 max_size: 0,
             };
@@ -80,6 +80,10 @@ impl CompressionCache {
     }
 
     pub fn get(&mut self, path: &str, compression: &str) -> Option<Arc<Vec<u8>>> {
+        if self.max_size == 0 {
+            return None; // Cache disabled
+        }
+
         let key = CacheKey {
             path: path.to_string(),
             compression: compression.to_string(),
@@ -90,6 +94,10 @@ impl CompressionCache {
     }
 
     pub fn insert(&mut self, path: &str, compression: &str, data: Vec<u8>) {
+        if self.max_size == 0 {
+            return; // Cache disabled
+        }
+
         let size = data.len();
 
         if size > MAX_FILE_SIZE {
@@ -175,7 +183,7 @@ mod tests {
         // Add another - should evict file2 (least recently used)
         cache.insert("file3", "br", large_data);
         assert!(cache.get("file1", "br").is_some()); // Still present (recently used)
-        assert!(cache.get("file2", "br").is_none());  // Evicted (least recently used)
+        assert!(cache.get("file2", "br").is_none()); // Evicted (least recently used)
         assert!(cache.get("file3", "br").is_some());
     }
 
@@ -221,5 +229,18 @@ mod tests {
         assert!(cache.get("a", "br").is_some());
         assert!(cache.get("b", "br").is_none()); // Evicted
         assert!(cache.get("c", "br").is_some());
+    }
+
+    #[test]
+    fn test_cache_disabled() {
+        let mut cache = CompressionCache::new(0);
+
+        // Try to insert data
+        cache.insert("file1.js", "br", vec![1, 2, 3]);
+
+        // Should not be cached
+        assert!(cache.get("file1.js", "br").is_none());
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.current_size(), 0);
     }
 }

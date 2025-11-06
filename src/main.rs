@@ -12,6 +12,7 @@ use std::io;
 use std::path::PathBuf;
 
 const HISTORY_LIMIT: &str = "200";
+const MAX_FILES_OPEN: &str = "256";
 const TLS_PORT: &str = "443";
 
 #[derive(Parser, Debug)]
@@ -31,6 +32,10 @@ struct Args {
     /// History limit
     #[arg(short, long, default_value = HISTORY_LIMIT, value_parser = clap::value_parser!(u32).range(1..1_000_000))]
     limit: u32,
+
+    /// Open files limit
+    #[arg(short, long, default_value = MAX_FILES_OPEN, value_parser = clap::value_parser!(u32).range(1..1_000_000))]
+    filelimit: u32,
 
     /// Www-root directory for domain(s)
     #[arg(short, long, required = true)]
@@ -67,6 +72,7 @@ async fn main() -> io::Result<()> {
         email: args.email,
         cache: args.cache,
         limit: args.limit,
+        filelimit: args.filelimit as usize,
         wwwroot: args.wwwroot,
         staging: args.staging,
         port: args.port,
