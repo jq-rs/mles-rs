@@ -25,6 +25,7 @@ use warp::Filter;
 
 const TASK_BUF: usize = 16;
 const FILE_LIMIT: u32 = 256; // Maximum number of open files
+const DEFAULT_CACHE_SIZE_MB: usize = 10;
 
 /// Configuration for the Mles server
 #[derive(Debug, Clone)]
@@ -45,12 +46,18 @@ pub struct ServerConfig {
     pub port: u16,
     /// Use http redirect for port 80
     pub redirect: bool,
+    /// Cache size for compressed files in MB
+    pub max_cache_size_mb: Option<usize>,
 }
 
 /// Run the Mles server with the given configuration
 pub async fn run(config: ServerConfig) -> io::Result<()> {
     let limit = config.limit;
     let www_root_dir = config.wwwroot;
+    let max_cache_size_mb = match config.max_cache_size_mb {
+        Some(size) => size,
+        None => DEFAULT_CACHE_SIZE_MB,
+    };
     let semaphore = Arc::new(Semaphore::new(FILE_LIMIT as usize));
 
     // Create WebSocket event channel
@@ -84,8 +91,14 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     // Create WebSocket handler
     let ws = websocket::create_ws_handler(tx.clone());
 
+    let compression_cache = cache::create_cache(max_cache_size_mb);
     // Create HTTP file serving routes with configured cache size
-    let index = http::create_http_file_routes(config.domains, www_root_dir, semaphore.clone());
+    let index = http::create_http_file_routes(
+        config.domains,
+        www_root_dir,
+        semaphore.clone(),
+        compression_cache,
+    );
 
     // Define the mina status page route
     let page_route = warp::path("mina_status")

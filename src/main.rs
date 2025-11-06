@@ -46,6 +46,10 @@ struct Args {
     /// Use http redirect for port 80
     #[arg(short, long)]
     redirect: bool,
+
+    /// Compression cache size in MB
+    #[arg(short = 'C', long)]
+    compression_cache: Option<usize>,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -67,6 +71,7 @@ async fn main() -> io::Result<()> {
         staging: args.staging,
         port: args.port,
         redirect: args.redirect,
+        max_cache_size_mb: args.compression_cache,
     };
 
     mles::run(config).await

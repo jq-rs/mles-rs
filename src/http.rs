@@ -19,13 +19,6 @@ use warp::Filter;
 use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
 
-const DEFAULT_CACHE_SIZE_MB: usize = 100;
-
-// Global compression cache
-lazy_static::lazy_static! {
-    static ref COMPRESSION_CACHE: cache::SharedCache = cache::create_cache(DEFAULT_CACHE_SIZE_MB);
-}
-
 pub(crate) async fn dyn_hreply(
     tuple: (String, String, warp::path::Tail),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
@@ -49,9 +42,10 @@ pub(crate) async fn dyn_reply(
         String,
         warp::path::Tail,
         Arc<Semaphore>,
+        cache::SharedCache,
     ),
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (encoding, uri, domain, www_root, tail, semaphore) = tuple;
+    let (encoding, uri, domain, www_root, tail, semaphore, cache) = tuple;
 
     if uri != domain {
         return Err(warp::reject::not_found());
@@ -105,10 +99,10 @@ pub(crate) async fn dyn_reply(
                 if ctype.contains("text") || ctype.contains("json") {
                     if encoding.contains(ZSTD) {
                         // Try cache first
-                        let mut cache_guard = COMPRESSION_CACHE.lock().await;
+                        let mut cache_guard = cache.write().await;
                         if let Some(cached) = cache_guard.get(&file_path, ZSTD) {
                             log::debug!("Cache hit: {file_path} (zstd)");
-                            buffer = cached;
+                            buffer = (*cached).clone();
                             reply_headers = ReplyHeaders::Zstd;
                             use_zstd = true;
                         } else if let Ok(compressed_buffer) = compress(ZSTD, &buffer).await {
@@ -120,10 +114,10 @@ pub(crate) async fn dyn_reply(
                         }
                     } else if encoding.contains(BR) {
                         // Try cache first
-                        let mut cache_guard = COMPRESSION_CACHE.lock().await;
+                        let mut cache_guard = cache.write().await;
                         if let Some(cached) = cache_guard.get(&file_path, BR) {
                             log::debug!("Cache hit: {file_path} (br)");
-                            buffer = cached;
+                            buffer = (*cached).clone();
                             reply_headers = ReplyHeaders::Br;
                             use_br = true;
                         } else if let Ok(compressed_buffer) = compress(BR, &buffer).await {
@@ -242,11 +236,13 @@ pub(crate) fn create_http_file_routes(
     domains: Vec<String>,
     www_root_dir: PathBuf,
     semaphore: Arc<Semaphore>,
+    compression_cache: cache::SharedCache,
 ) -> BoxedFilter<(impl warp::Reply,)> {
     let mut vindex = Vec::new();
     for domain in domains {
         let sem = semaphore.clone();
         let www_root = www_root_dir.clone();
+        let cache = compression_cache.clone();
         let index = warp::get()
             .and(warp::header::optional::<String>("accept-encoding"))
             .and(warp::header::<String>("host"))
@@ -260,6 +256,7 @@ pub(crate) fn create_http_file_routes(
                         www_root.to_str().unwrap().to_string(),
                         path,
                         sem.clone(),
+                        cache.clone(),
                     )
                 },
             )

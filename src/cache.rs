@@ -4,130 +4,222 @@
  *
  *  Copyright (C) 2023-2025  Mles developers
  */
-use indexmap::IndexMap;
-use siphasher::sip::SipHasher24;
-use std::hash::{Hash, Hasher};
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 const MB: usize = 1024 * 1024;
-const DEFAULT_FILE_SIZE_MB: usize = 10;
-const MAX_FILE_SIZE: usize = DEFAULT_FILE_SIZE_MB * MB; // 10MB max single file size
+const DEFAULT_FILE_SIZE_MB: usize = 1;
+const MAX_FILE_SIZE: usize = DEFAULT_FILE_SIZE_MB * MB;
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 struct CacheKey {
     path: String,
     compression: String,
 }
 
-// Custom Hash implementation to optimize key hashing
-impl Hash for CacheKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // Pre-compute hash using SipHasher24 for better performance
-        let mut hasher = SipHasher24::new();
-        self.path.hash(&mut hasher);
-        self.compression.hash(&mut hasher);
-        state.write_u64(hasher.finish());
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct CacheEntry {
-    data: Vec<u8>,
+    data: Arc<Vec<u8>>,
+    size: usize,
 }
 
 impl CacheEntry {
     fn new(data: Vec<u8>) -> Self {
-        Self { data }
+        let size = data.len();
+        Self {
+            data: Arc::new(data),
+            size,
+        }
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct CompressionCache {
-    entries: IndexMap<CacheKey, CacheEntry>,
+    cache: LruCache<CacheKey, CacheEntry>,
     current_size: usize,
     max_size: usize,
 }
 
 impl CompressionCache {
     pub fn new(max_size_mb: usize) -> Self {
-        // No pre-allocation if caching is disabled
         if max_size_mb == 0 {
             return Self {
-                entries: IndexMap::new(),
+                cache: LruCache::unbounded(),
                 current_size: 0,
                 max_size: 0,
             };
         }
 
-        // Pre-allocate space for better insertion performance
-        // Assuming average compression ratio of 4:1 and 10MB files
-        let estimated_entries = max_size_mb / DEFAULT_FILE_SIZE_MB * 4;
+        // Estimate maximum number of entries based on average compressed file size
+        // Assuming 4:1 compression ratio on 1MB files = ~250KB per entry
+        let estimated_entries = (max_size_mb * 4).max(100);
+        let capacity = NonZeroUsize::new(estimated_entries).unwrap();
+
         Self {
-            entries: IndexMap::with_capacity(estimated_entries),
+            cache: LruCache::new(capacity),
             current_size: 0,
             max_size: max_size_mb * MB,
         }
     }
 
     fn make_space(&mut self, required_size: usize) {
-        // Skip if cache is disabled or file is too large
         if self.max_size == 0 || required_size > MAX_FILE_SIZE {
             return;
         }
 
-        // Remove oldest entries until we have enough space
-        while self.current_size + required_size > self.max_size && !self.entries.is_empty() {
-            // Use swap_remove_index since we don't care about order when removing from the end
-            if let Some((_, entry)) = self.entries.swap_remove_index(self.entries.len() - 1) {
-                self.current_size -= entry.data.len();
+        // Remove least recently used entries until we have space
+        while self.current_size + required_size > self.max_size {
+            if let Some((_, entry)) = self.cache.pop_lru() {
+                self.current_size -= entry.size;
+            } else {
+                break;
             }
         }
     }
 
-    pub fn get(&mut self, path: &str, compression: &str) -> Option<Vec<u8>> {
+    pub fn get(&mut self, path: &str, compression: &str) -> Option<Arc<Vec<u8>>> {
         let key = CacheKey {
             path: path.to_string(),
             compression: compression.to_string(),
         };
 
-        if let Some(i) = self.entries.get_index_of(&key) {
-            let entry = self.entries.get_index_mut(i).unwrap().1;
-            let data = entry.data.clone();
-            // Move to front (most recently used) using shift operations
-            let (k, v) = self.entries.shift_remove_index(i).unwrap();
-            self.entries.shift_insert(0, k, v);
-            Some(data)
-        } else {
-            None
-        }
+        // O(1) lookup and automatic LRU update!
+        self.cache.get(&key).map(|entry| Arc::clone(&entry.data))
     }
 
     pub fn insert(&mut self, path: &str, compression: &str, data: Vec<u8>) {
         let size = data.len();
 
-        // Skip if file is too large
         if size > MAX_FILE_SIZE {
             return;
         }
 
+        let key = CacheKey {
+            path: path.to_string(),
+            compression: compression.to_string(),
+        };
+
+        // Remove existing entry if present (to update size tracking)
+        if let Some(old_entry) = self.cache.pop(&key) {
+            self.current_size -= old_entry.size;
+        }
+
         self.make_space(size);
 
-        // Only insert if cache is enabled and we have enough space
         if self.max_size > 0 && self.current_size + size <= self.max_size {
-            let key = CacheKey {
-                path: path.to_string(),
-                compression: compression.to_string(),
-            };
             self.current_size += size;
-            self.entries.shift_insert(0, key, CacheEntry::new(data));
+            self.cache.put(key, CacheEntry::new(data));
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
+
+    #[allow(dead_code)]
+    pub fn current_size(&self) -> usize {
+        self.current_size
+    }
+
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {
+        self.cache.clear();
+        self.current_size = 0;
     }
 }
 
 // Thread-safe wrapper
-pub(crate) type SharedCache = Arc<Mutex<CompressionCache>>;
+pub(crate) type SharedCache = Arc<RwLock<CompressionCache>>;
 
 pub(crate) fn create_cache(max_size_mb: usize) -> SharedCache {
-    Arc::new(Mutex::new(CompressionCache::new(max_size_mb)))
+    Arc::new(RwLock::new(CompressionCache::new(max_size_mb)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_operations() {
+        let mut cache = CompressionCache::new(10);
+
+        cache.insert("file1.js", "br", vec![1, 2, 3]);
+
+        // Get returns Arc - O(1) and updates LRU automatically!
+        let data = cache.get("file1.js", "br").unwrap();
+        assert_eq!(*data, vec![1, 2, 3]);
+
+        // Can share the Arc
+        let data2 = Arc::clone(&data);
+        assert_eq!(*data2, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_lru_eviction() {
+        let mut cache = CompressionCache::new(1); // 1MB
+
+        let large_data = vec![0u8; 500_000]; // 500KB
+        cache.insert("file1", "br", large_data.clone());
+        cache.insert("file2", "br", large_data.clone());
+
+        // Both should be present
+        assert!(cache.get("file1", "br").is_some());
+        assert!(cache.get("file2", "br").is_some());
+
+        // Access file1 to make it most recently used
+        cache.get("file1", "br");
+
+        // Add another - should evict file2 (least recently used)
+        cache.insert("file3", "br", large_data);
+        assert!(cache.get("file1", "br").is_some()); // Still present (recently used)
+        assert!(cache.get("file2", "br").is_none());  // Evicted (least recently used)
+        assert!(cache.get("file3", "br").is_some());
+    }
+
+    #[test]
+    fn test_update_existing() {
+        let mut cache = CompressionCache::new(10);
+
+        cache.insert("a", "br", vec![1, 2, 3]);
+        cache.insert("a", "br", vec![4, 5, 6, 7]); // Update
+
+        let data = cache.get("a", "br").unwrap();
+        assert_eq!(*data, vec![4, 5, 6, 7]);
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn test_max_file_size() {
+        let mut cache = CompressionCache::new(10);
+
+        // Try to insert file larger than MAX_FILE_SIZE (1MB)
+        let huge_data = vec![0u8; 2_000_000]; // 2MB
+        cache.insert("huge", "br", huge_data);
+
+        // Should not be cached
+        assert!(cache.get("huge", "br").is_none());
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_access_updates_lru() {
+        let mut cache = CompressionCache::new(1); // 1MB
+
+        let data = vec![0u8; 400_000]; // 400KB each
+        cache.insert("a", "br", data.clone());
+        cache.insert("b", "br", data.clone());
+
+        // Access 'a' to make it recently used
+        cache.get("a", "br");
+
+        // Insert 'c' - should evict 'b' (least recently used), not 'a'
+        cache.insert("c", "br", data);
+
+        assert!(cache.get("a", "br").is_some());
+        assert!(cache.get("b", "br").is_none()); // Evicted
+        assert!(cache.get("c", "br").is_some());
+    }
 }
