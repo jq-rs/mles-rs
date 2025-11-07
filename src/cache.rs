@@ -37,7 +37,7 @@ impl CacheEntry {
 
 #[derive(Debug)]
 pub(crate) struct CompressionCache {
-    cache: LruCache<CacheKey, CacheEntry>,
+    cache: Option<LruCache<CacheKey, CacheEntry>>,
     current_size: usize,
     max_size: usize,
 }
@@ -46,7 +46,7 @@ impl CompressionCache {
     pub fn new(max_size_mb: usize) -> Self {
         if max_size_mb == 0 {
             return Self {
-                cache: LruCache::new(NonZeroUsize::new(1).unwrap()), // Minimal cache
+                cache: None, // No cache
                 current_size: 0,
                 max_size: 0,
             };
@@ -58,20 +58,25 @@ impl CompressionCache {
         let capacity = NonZeroUsize::new(estimated_entries).unwrap();
 
         Self {
-            cache: LruCache::new(capacity),
+            cache: Some(LruCache::new(capacity)),
             current_size: 0,
             max_size: max_size_mb * MB,
         }
     }
 
     fn make_space(&mut self, required_size: usize) {
+        let cache = match self.cache.as_mut() {
+            Some(c) => c,
+            None => return,
+        };
+
         if self.max_size == 0 || required_size > MAX_FILE_SIZE {
             return;
         }
 
         // Remove least recently used entries until we have space
         while self.current_size + required_size > self.max_size {
-            if let Some((_, entry)) = self.cache.pop_lru() {
+            if let Some((_, entry)) = cache.pop_lru() {
                 self.current_size -= entry.size;
             } else {
                 break;
@@ -80,9 +85,7 @@ impl CompressionCache {
     }
 
     pub fn get(&mut self, path: &str, compression: &str) -> Option<Arc<Vec<u8>>> {
-        if self.max_size == 0 {
-            return None; // Cache disabled
-        }
+        let cache = self.cache.as_mut()?;
 
         let key = CacheKey {
             path: path.to_string(),
@@ -90,12 +93,12 @@ impl CompressionCache {
         };
 
         // O(1) lookup and automatic LRU update!
-        self.cache.get(&key).map(|entry| Arc::clone(&entry.data))
+        cache.get(&key).map(|entry| Arc::clone(&entry.data))
     }
 
     pub fn insert(&mut self, path: &str, compression: &str, data: Vec<u8>) {
-        if self.max_size == 0 {
-            return; // Cache disabled
+        if self.cache.is_none() {
+            return;
         }
 
         let size = data.len();
@@ -110,21 +113,25 @@ impl CompressionCache {
         };
 
         // Remove existing entry if present (to update size tracking)
-        if let Some(old_entry) = self.cache.pop(&key) {
-            self.current_size -= old_entry.size;
+        if let Some(cache) = self.cache.as_mut() {
+            if let Some(old_entry) = cache.pop(&key) {
+                self.current_size -= old_entry.size;
+            }
         }
 
         self.make_space(size);
 
         if self.max_size > 0 && self.current_size + size <= self.max_size {
-            self.current_size += size;
-            self.cache.put(key, CacheEntry::new(data));
+            if let Some(cache) = self.cache.as_mut() {
+                self.current_size += size;
+                cache.put(key, CacheEntry::new(data));
+            }
         }
     }
 
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
-        self.cache.len()
+        self.cache.as_ref().map_or(0, |c| c.len())
     }
 
     #[allow(dead_code)]
@@ -134,8 +141,10 @@ impl CompressionCache {
 
     #[allow(dead_code)]
     pub fn clear(&mut self) {
-        self.cache.clear();
-        self.current_size = 0;
+        if let Some(cache) = self.cache.as_mut() {
+            cache.clear();
+            self.current_size = 0;
+        }
     }
 }
 

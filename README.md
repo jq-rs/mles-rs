@@ -20,7 +20,7 @@ Mles clients and servers are independent of IP version and do not use IP broadca
 ## Mles protocol details
 
 The protocol header first frame for Mles is as follows:
-```
+```json
 {
 	"uid":"<user identification>",
 	"channel":"<selected channel>",
@@ -33,36 +33,107 @@ The protocol header first frame for Mles is as follows:
 Usage: mles [OPTIONS] --domains <DOMAINS> --wwwroot <WWWROOT>
 
 Options:
-  -d, --domains <DOMAINS>      Domain(s)
-  -e, --email <EMAIL>          Contact info
-  -c, --cache <CACHE>          Cache directory
-  -l, --limit <LIMIT>          History limit [default: 200]
-  -f, --filelimit <FILELIMIT>  Open files limit [default: 256]
-  -w, --wwwroot <WWWROOT>      Www-root directory for domain(s) (e.g. /path/static where domain example.io goes to static/example.io)
-  -s, --staging                Use Let's Encrypt staging environment (see https://letsencrypt.org/docs/staging-environment/)
-  -p, --port <PORT>            [default: 443]
-  -r, --redirect               Use http redirect for port 80
-  -h, --help                   Print help
+  -d, --domains <DOMAINS>
+          Domain(s) - can be specified multiple times for multiple domains
+
+  -e, --email <EMAIL>
+          Contact info for Let's Encrypt certificate registration
+
+  -c, --cache <CACHE>
+          Cache directory for Let's Encrypt certificates
+
+  -l, --limit <LIMIT>
+          History limit - maximum number of messages to store per channel
+          [default: 200]
+
+  -f, --filelimit <FILELIMIT>
+          Open files limit - maximum number of concurrent file handles
+          [default: 256]
+
+  -w, --wwwroot <WWWROOT>
+          Www-root directory for domain(s)
+          Structure: /path/static where domain example.io goes to static/example.io
+
+  -s, --staging
+          Use Let's Encrypt staging environment
+          (see https://letsencrypt.org/docs/staging-environment/)
+
+  -p, --port <PORT>
+          TLS port for WebSocket connections
+          [default: 443]
+
+  -r, --redirect
+          Enable HTTP to HTTPS redirect on port 80
+
+  -C, --compression-cache <COMPRESSION_CACHE>
+          Compression cache size in MB for static file serving
+          Set to 0 to disable caching
+
+  -h, --help
+          Print help
 ```
+
 ## Example server
  * Acquire a public Internet server with a static IP + domain
- * Open TLS port 443 of firewall
- * Ensure that your wwwroot-directory has the static web pages under it e.g. static/your.domain
+ * Open TLS port 443 in your firewall
+ * Ensure that your wwwroot-directory has the static web pages under it e.g. `static/your.domain`
  * Run Mles server as root (due to port 443) with Let's Encrypt caching and debug logging enabled as shown below
 
-`RUST_LOG=debug mles --domains your.domain --cache . --wwwroot static` 
+```bash
+RUST_LOG=debug mles --domains your.domain --cache . --wwwroot static
+```
 
-You can have several domains listed e.g. `--domains your.domain --domains www.your.domain`.
+### Multiple domains example
+
+You can serve multiple domains by specifying the `--domains` flag multiple times:
+
+```bash
+RUST_LOG=debug mles \
+  --domains your.domain \
+  --domains www.your.domain \
+  --cache . \
+  --wwwroot static
+```
+
+### With HTTP redirect and compression cache
+
+Enable HTTP to HTTPS redirect and use a 100MB compression cache for better performance:
+
+```bash
+RUST_LOG=debug mles \
+  --domains your.domain \
+  --cache . \
+  --wwwroot static \
+  --redirect \
+  --compression-cache 100
+```
+
+### Production example with email contact
+
+For production use, specify contact email for Let's Encrypt:
+
+```bash
+mles \
+  --domains your.domain \
+  --email admin@your.domain \
+  --cache /var/cache/mles \
+  --wwwroot /var/www \
+  --redirect \
+  --compression-cache 100 \
+  --limit 500 \
+  --filelimit 1024
+```
 
 ## Example clients
 
 An example client session with `websocat` looks like this:
 
-```
+```bash
 % websocat wss://mles.io --header "Sec-WebSocket-Protocol: mles-websocket"
 { "uid":"alice", "channel":"example" }
 Hello Bob!
 ```
+
 [mles-client](https://github.com/jq-rs/mles-client) is another example. It also includes a proxy implementation which can be used to connect channels of several servers together in a distributed manner.
 
 ## Existing client implementations over Mles (WebSocket) protocol
@@ -71,7 +142,7 @@ Hello Bob!
  * [mles-client](https://github.com/jq-rs/mles-client)
  * \<please ask to add your client here\>
 
-## References:
+## References
 
  1. The Transport Layer Security (TLS) Protocol Version 1.3, https://tools.ietf.org/html/rfc8446
  2. The WebSocket Protocol, https://tools.ietf.org/html/rfc6455
