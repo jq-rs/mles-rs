@@ -4,6 +4,10 @@ All notable changes to Mles project will be documented in this file after 1.0-re
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.8.0]
+
+Library support. LRU cache support for compressed items.
+
 ## [2.5.0]
 
 Authentication support. Automated removal of 30 days inactive channels.
@@ -85,7 +89,7 @@ Update to bytes 0.5, siphasher 0.3 and serde_bytes 0.11.
 ## [1.1.2]
 
 Specification:
- - Include TLS support as an option for session transport 
+ - Include TLS support as an option for session transport
 
 Client:
  - Change WebSocket proxy to use a task instead of thread for every connection
@@ -148,7 +152,7 @@ Client 1.0.5:
 
 Utils 1.0.4:
  - Header read len mask fix. Allows to use larger than 4k frames.
- - Fix stream write to use write_all(). 
+ - Fix stream write to use write_all().
 
 ## [1.0.3]
 
@@ -181,13 +185,13 @@ Client 1.0.2:
  - README ResyncMsg clarification
  - README Mles WebSocket proxy protocol specification
  - Systemd-scripts moved to sysutils-directory
- 
+
  Utils 1.0.1:
  - Documentation typo fixes
- 
+
  Client 1.0.1:
    - Proxy Websocket library version update
-   - Support for proper handling of Sec-WebSocket-Protocol 
+   - Support for proper handling of Sec-WebSocket-Protocol
 
 ## [1.0.0]
 
@@ -197,5 +201,5 @@ Basic Mles-protocol support on Mles utils-library with server and client.
  * All relevant Mles-protocol functionalities implemented which include
    - Authentication with key and/or address
    - Connection id handling for loop freedom
-   - Resynchronization support where Mles peers are able to offer resiliency 
+   - Resynchronization support where Mles peers are able to offer resiliency
      functionality to Mles root server
