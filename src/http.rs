@@ -63,6 +63,29 @@ pub(crate) async fn dyn_reply(
 
     match File::open(&file_path).await {
         Ok(mut file) => {
+            // Get file metadata for modification time
+            let metadata = match tokio::fs::metadata(&file_path).await {
+                Ok(m) => m,
+                Err(_) => {
+                    log::debug!("Failed to get metadata for {file_path}");
+                    return Ok(Box::new(warp::reply::with_status(
+                        "Internal Server Error",
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )));
+                }
+            };
+
+            let modified = match metadata.modified() {
+                Ok(m) => m,
+                Err(_) => {
+                    log::debug!("Failed to get modification time for {file_path}");
+                    return Ok(Box::new(warp::reply::with_status(
+                        "Internal Server Error",
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )));
+                }
+            };
+
             let parts: Vec<&str> = file_path.split('.').collect();
             let ctype = match parts.last() {
                 Some(v) => {
@@ -98,9 +121,9 @@ pub(crate) async fn dyn_reply(
                 log::debug!("Encoding: {encoding}");
                 if ctype.contains("text") || ctype.contains("json") {
                     if encoding.contains(ZSTD) {
-                        // Try cache first
+                        // Try cache first with modification time
                         let mut cache_guard = cache.write().await;
-                        if let Some(cached) = cache_guard.get(&file_path, ZSTD) {
+                        if let Some(cached) = cache_guard.get(&file_path, ZSTD, modified) {
                             log::debug!("Cache hit: {file_path} (zstd)");
                             buffer = (*cached).clone();
                             reply_headers = ReplyHeaders::Zstd;
@@ -108,14 +131,14 @@ pub(crate) async fn dyn_reply(
                         } else if let Ok(compressed_buffer) = compress(ZSTD, &buffer).await {
                             log::debug!("Cache miss: {file_path} (zstd)");
                             buffer = compressed_buffer.clone();
-                            cache_guard.insert(&file_path, ZSTD, compressed_buffer);
+                            cache_guard.insert(&file_path, ZSTD, modified, compressed_buffer);
                             reply_headers = ReplyHeaders::Zstd;
                             use_zstd = true;
                         }
                     } else if encoding.contains(BR) {
-                        // Try cache first
+                        // Try cache first with modification time
                         let mut cache_guard = cache.write().await;
-                        if let Some(cached) = cache_guard.get(&file_path, BR) {
+                        if let Some(cached) = cache_guard.get(&file_path, BR, modified) {
                             log::debug!("Cache hit: {file_path} (br)");
                             buffer = (*cached).clone();
                             reply_headers = ReplyHeaders::Br;
@@ -123,7 +146,7 @@ pub(crate) async fn dyn_reply(
                         } else if let Ok(compressed_buffer) = compress(BR, &buffer).await {
                             log::debug!("Cache miss: {file_path} (br)");
                             buffer = compressed_buffer.clone();
-                            cache_guard.insert(&file_path, BR, compressed_buffer);
+                            cache_guard.insert(&file_path, BR, modified, compressed_buffer);
                             reply_headers = ReplyHeaders::Br;
                             use_br = true;
                         }
