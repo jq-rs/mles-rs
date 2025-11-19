@@ -67,6 +67,7 @@ Options:
 
   -C, --compression-cache <COMPRESSION_CACHE>
           Compression cache size in MB for static file serving
+          [default: 10]
           Set to 0 to disable caching
 
       --per-ip-limit <PER_IP_LIMIT>
