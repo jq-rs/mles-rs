@@ -20,14 +20,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
-use tokio::time::{self, Duration};
+use tokio::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use warp::Filter;
 
 const TASK_BUF: usize = 16;
 const DEFAULT_CACHE_SIZE_MB: usize = 10;
-const METRICS_LOG_INTERVAL_SECS: u64 = 60;
 
 // Re-export metrics and WebSocket types for public API
 pub use metrics::{Metrics, MetricsSnapshot};
@@ -84,32 +83,8 @@ impl ServerConfig {
 
             websocket_config: WebSocketConfig::default(),
             enable_metrics_logging: true,
-            per_ip_limit: None,
-            per_ip_window_secs: None,
-        }
-    }
-
-    /// Convert from a legacy (v1) configuration: copy the original fields and
-    /// set defaults for the newly merged fields.
-    pub fn from_v1(v1: ServerConfig) -> Self {
-        // If the supplied config is from a codepath that predates the merged
-        // runtime fields, ensure sensible defaults are applied.
-        Self {
-            domains: v1.domains,
-            email: v1.email,
-            cache: v1.cache,
-            limit: v1.limit,
-            filelimit: v1.filelimit,
-            wwwroot: v1.wwwroot,
-            staging: v1.staging,
-            port: v1.port,
-            redirect: v1.redirect,
-            max_cache_size_mb: v1.max_cache_size_mb,
-
-            websocket_config: WebSocketConfig::default(),
-            enable_metrics_logging: true,
-            per_ip_limit: None,
-            per_ip_window_secs: None,
+            per_ip_limit: Some(60),
+            per_ip_window_secs: Some(60),
         }
     }
 
@@ -321,36 +296,6 @@ pub async fn run_with_shutdown_token(
     // Spawn WebSocket event loop with shutdown support
     websocket::spawn_event_loop(rx, limit, metrics.clone(), shutdown_token.clone());
 
-    // Spawn metrics logging task if enabled
-    if config.enable_metrics_logging {
-        let metrics_clone = metrics.clone();
-        let shutdown_metrics = shutdown_token.clone();
-        tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_secs(METRICS_LOG_INTERVAL_SECS));
-            interval.tick().await; // Skip first immediate tick
-
-            loop {
-                tokio::select! {
-                    _ = shutdown_metrics.cancelled() => {
-                        log::info!("Metrics logging task shutting down");
-                        break;
-                    }
-                    _ = interval.tick() => {
-                        let stats = metrics_clone.get_stats();
-                        log::info!(
-                            "Server Metrics - Connections: {}, Channels: {}, Messages Sent: {}, Messages Received: {}, Errors: {}",
-                            stats.active_connections,
-                            stats.total_channels,
-                            stats.total_messages_sent,
-                            stats.total_messages_received,
-                            stats.total_errors
-                        );
-                    }
-                }
-            }
-        });
-    }
-
     // Create TCP listener
     let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, config.port)
         .parse()
@@ -460,33 +405,6 @@ mod tests {
         assert_eq!(ws_config.ping_interval_ms, 24000);
         assert_eq!(ws_config.max_missed_pongs, 3);
         assert_eq!(ws_config.rate_limit_messages_per_sec, 100);
-    }
-
-    #[test]
-    fn test_from_v1_conversion() {
-        // Simulate an older-style ServerConfig (fields present but we treat it as v1)
-        let v1_config = ServerConfig {
-            domains: vec!["example.com".to_string()],
-            email: vec!["admin@example.com".to_string()],
-            cache: None,
-            limit: 100,
-            filelimit: 1024,
-            wwwroot: PathBuf::from("/var/www"),
-            staging: false,
-            port: 443,
-            redirect: false,
-            max_cache_size_mb: None,
-            // These are the newer fields — but when converting from v1 we apply defaults
-            websocket_config: WebSocketConfig::default(),
-            enable_metrics_logging: true,
-            per_ip_limit: None,
-            per_ip_window_secs: None,
-        };
-
-        let new_config = ServerConfig::from_v1(v1_config);
-        assert_eq!(new_config.limit, 100);
-        assert_eq!(new_config.port, 443);
-        assert_eq!(new_config.enable_metrics_logging, true);
     }
 
     #[test]

@@ -24,3 +24,18 @@ pub(crate) async fn compress(comptype: &str, in_data: &[u8]) -> std::io::Result<
         Ok(encoder.into_inner())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Smoke test to ensure both compressors produce output for small input.
+    #[tokio::test]
+    async fn test_compress_br_and_zstd_smoke() {
+        let data = b"Hello compression test".to_vec();
+        let b = compress(BR, &data).await.expect("br compress");
+        let z = compress(ZSTD, &data).await.expect("zstd compress");
+        assert!(!b.is_empty(), "brotli output should not be empty");
+        assert!(!z.is_empty(), "zstd output should not be empty");
+    }
+}

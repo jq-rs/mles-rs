@@ -10,6 +10,7 @@ use mles::{ServerConfig, WebSocketConfig};
 use simple_logger::SimpleLogger;
 use std::io;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 const HISTORY_LIMIT: &str = "200";
 const MAX_FILES_OPEN: &str = "256";
@@ -17,6 +18,8 @@ const TLS_PORT: &str = "443";
 const DEFAULT_PING_INTERVAL: &str = "24000";
 const DEFAULT_MAX_MISSED_PONGS: &str = "3";
 const DEFAULT_RATE_LIMIT: &str = "100";
+const DEFAULT_PER_IP_LIMIT: &str = "60";
+const DEFAULT_PER_IP_WINDOW: &str = "60";
 const DEFAULT_COMPRESSION_CACHE_MB: &str = "10";
 
 fn compression_cache_parser(s: &str) -> Result<usize, String> {
@@ -34,7 +37,7 @@ fn compression_cache_parser(s: &str) -> Result<usize, String> {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Mles - Minimal Live Event Server", long_about = None)]
+#[command(author, version, about = "Mles - Modern Lightweight channEl Service", long_about = None)]
 struct Args {
     /// Domain(s)
     #[arg(short, long, required = true)]
@@ -88,6 +91,14 @@ struct Args {
     #[arg(long, default_value = DEFAULT_RATE_LIMIT, value_parser = clap::value_parser!(u32).range(1..10000))]
     rate_limit: u32,
 
+    /// Per-IP allowed connections per window (set 0 to disable)
+    #[arg(long, default_value = DEFAULT_PER_IP_LIMIT, value_parser = clap::value_parser!(u32).range(0..100000))]
+    per_ip_limit: u32,
+
+    /// Per-IP window size in seconds
+    #[arg(long, default_value = DEFAULT_PER_IP_WINDOW, value_parser = clap::value_parser!(u64).range(1..86400))]
+    per_ip_window: u64,
+
     /// Disable periodic metrics logging
     #[arg(long)]
     no_metrics_logging: bool,
@@ -123,6 +134,12 @@ async fn main() -> io::Result<()> {
     .with_redirect(args.redirect)
     .with_staging(args.staging)
     .with_websocket_config(ws_config)
+    .with_per_ip_limit(if args.per_ip_limit == 0 {
+        None
+    } else {
+        Some(args.per_ip_limit)
+    })
+    .with_per_ip_window_secs(Some(args.per_ip_window))
     .with_metrics_logging(!args.no_metrics_logging);
 
     // Set cache if provided
@@ -153,8 +170,19 @@ async fn main() -> io::Result<()> {
         args.rate_limit
     );
 
+    // Log per-IP rate limit settings
+    if args.per_ip_limit == 0 {
+        log::info!("Per-IP rate limiting: disabled (0)");
+    } else {
+        log::info!(
+            "Per-IP rate limiting: {} connections per {}s (default/cli)",
+            args.per_ip_limit,
+            args.per_ip_window
+        );
+    }
+
     // Start server
-    let handle = mles::run_with_shutdown(config).await?;
+    let handle = Arc::new(mles::run_with_shutdown(config).await?);
 
     // Setup graceful shutdown on CTRL+C
     let shutdown_handle = handle.shutdown_token();
@@ -167,6 +195,63 @@ async fn main() -> io::Result<()> {
             Err(err) => {
                 log::error!("Failed to listen for CTRL+C: {}", err);
             }
+        }
+    });
+
+    // SIGUSR1 handler: on Unix, log a metrics snapshot when the signal is received.
+    // We clone the server handle (Arc) and read a snapshot via the handle.metrics() method.
+    let metrics_handle = handle.clone();
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{SignalKind, signal};
+
+            match signal(SignalKind::user_defined1()) {
+                Ok(mut sigusr1) => {
+                    loop {
+                        // Wait for the next SIGUSR1
+                        if sigusr1.recv().await.is_some() {
+                            let stats = metrics_handle.metrics();
+                            log::info!(
+                                "SIGUSR1 Metrics Snapshot - Connections: {}, Channels: {}, Messages Sent: {}, Messages Received: {}, Errors: {}, Dropped Connections: {}",
+                                stats.active_connections,
+                                stats.total_channels,
+                                stats.total_messages_sent,
+                                stats.total_messages_received,
+                                stats.total_errors,
+                                stats.total_dropped_connections
+                            );
+
+                            if !stats.dropped_by_ip.is_empty() {
+                                // Log only the top ten IPs by dropped count to avoid huge output.
+                                // `stats.dropped_by_ip` is an owned HashMap<String,u64> (snapshot).
+                                let mut v: Vec<(String, u64)> =
+                                    stats.dropped_by_ip.into_iter().collect();
+                                // Sort descending by dropped count.
+                                v.sort_by(|a, b| b.1.cmp(&a.1));
+                                let top_n = 10usize;
+                                let top: Vec<_> = v.into_iter().take(top_n).collect();
+                                log::info!(
+                                    "Top {} per-IP dropped connections: {:?}",
+                                    top.len(),
+                                    top
+                                );
+                            }
+                        } else {
+                            // Signal stream ended
+                            break;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to install SIGUSR1 handler: {}", e);
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            // SIGUSR1 not available on non-Unix platforms; no-op.
         }
     });
 

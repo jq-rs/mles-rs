@@ -46,3 +46,80 @@ pub(crate) enum ReplyHeaders {
     ZstdWithAllowOrigin,
     BrWithAllowOrigin,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+    use std::time::SystemTime;
+
+    #[test]
+    fn mlesheader_serde_roundtrip_with_auth() {
+        let hdr = MlesHeader {
+            uid: "user_a".to_string(),
+            channel: "chan_x".to_string(),
+            auth: Some("token123".to_string()),
+        };
+
+        let s = serde_json::to_string(&hdr).expect("serialize");
+        let parsed: MlesHeader = serde_json::from_str(&s).expect("deserialize");
+
+        assert_eq!(parsed.uid, "user_a");
+        assert_eq!(parsed.channel, "chan_x");
+        assert_eq!(parsed.auth.as_deref(), Some("token123"));
+    }
+
+    #[test]
+    fn mlesheader_serde_roundtrip_without_auth() {
+        let hdr = MlesHeader {
+            uid: "user_b".to_string(),
+            channel: "chan_y".to_string(),
+            auth: None,
+        };
+
+        let s = serde_json::to_string(&hdr).expect("serialize");
+        let parsed: MlesHeader = serde_json::from_str(&s).expect("deserialize");
+
+        assert_eq!(parsed.uid, "user_b");
+        assert_eq!(parsed.channel, "chan_y");
+        assert!(parsed.auth.is_none());
+    }
+
+    #[test]
+    fn channelinfo_message_push_pop() {
+        let mut ch = ChannelInfo {
+            messages: VecDeque::new(),
+            last_activity: SystemTime::now(),
+        };
+
+        let m = Message::text("hello");
+        ch.messages.push_back(m.clone());
+        assert_eq!(ch.messages.len(), 1);
+
+        let popped = ch.messages.pop_front().unwrap();
+        assert_eq!(popped.as_bytes(), m.as_bytes());
+    }
+
+    #[test]
+    fn wsevent_variant_creation_and_matching() {
+        // Create a Msg variant and ensure pattern matching works
+        let msg = Message::text("hi");
+        let evt = WsEvent::Msg(0x1, 0x2, msg.clone());
+
+        match evt {
+            WsEvent::Msg(uid, ch, m) => {
+                assert_eq!(uid, 0x1);
+                assert_eq!(ch, 0x2);
+                assert_eq!(m.as_bytes(), msg.as_bytes());
+            }
+            _ => panic!("expected Msg variant"),
+        }
+    }
+
+    #[test]
+    fn replyheaders_debug_contains_variant_name() {
+        let v = ReplyHeaders::Zstd;
+        let s = format!("{:?}", v);
+        assert!(s.contains("Zstd"));
+    }
+}

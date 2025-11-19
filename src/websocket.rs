@@ -307,6 +307,7 @@ pub(crate) fn create_ws_handler(
             let tx_inner = tx_clone.clone();
             let config = config.clone();
             let metrics = metrics.clone();
+            let mles_key = std::env::var("MLES_KEY").ok();
 
             ws.on_upgrade(move |websocket| {
                 metrics.increment_connections();
@@ -387,6 +388,7 @@ pub(crate) fn create_ws_handler(
                                         &msghdr.uid,
                                         &msghdr.channel,
                                         msghdr.auth.as_deref(),
+                                        mles_key.as_deref(),
                                     ) {
                                         log::warn!(
                                             "Authentication failed for user {:x} on channel {:x}",
@@ -633,4 +635,52 @@ pub(crate) fn create_ws_handler(
             "Sec-WebSocket-Protocol",
             ACCEPTED_PROTOCOL,
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::time::Duration;
+
+    #[test]
+    fn rate_limiter_allows_then_blocks_then_allows_after_window() {
+        // allow 2 messages per 1 second window
+        let mut rl = RateLimiter::new(2, 1);
+
+        // first two should be allowed
+        assert!(rl.check_and_add());
+        assert!(rl.check_and_add());
+
+        // third should be blocked (exceeds limit)
+        assert!(!rl.check_and_add());
+
+        // wait for the window to expire
+        std::thread::sleep(Duration::from_millis(1100));
+
+        // now should be allowed again
+        assert!(rl.check_and_add());
+    }
+
+    #[test]
+    fn add_message_basic_and_eviction() {
+        let mut queue: VecDeque<Message> = VecDeque::new();
+        let mut bytes = 0usize;
+        let msg1 = Message::text("hello");
+        let msg2 = Message::text("world!!!");
+
+        // Add first message with limit 1
+        assert!(add_message(msg1.clone(), 1, &mut queue, &mut bytes));
+        assert_eq!(queue.len(), 1);
+        assert_eq!(bytes, msg1.as_bytes().len());
+
+        // Add second message; with limit == 1 the first should be evicted
+        assert!(add_message(msg2.clone(), 1, &mut queue, &mut bytes));
+        assert_eq!(queue.len(), 1);
+        assert_eq!(bytes, msg2.as_bytes().len());
+
+        // Ensure the remaining message is the second one
+        let front = queue.pop_front().unwrap();
+        assert_eq!(front.as_bytes(), msg2.as_bytes());
+    }
 }

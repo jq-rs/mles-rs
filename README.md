@@ -69,6 +69,15 @@ Options:
           Compression cache size in MB for static file serving
           Set to 0 to disable caching
 
+      --per-ip-limit <PER_IP_LIMIT>
+          Per-IP allowed connections per window (set 0 to disable). Default: 60
+          This limits the number of concurrent accepted connections from a single source IP
+          during the configured per-ip window. A value of 0 disables per-IP limiting.
+
+      --per-ip-window <PER_IP_WINDOW>
+          Per-IP window size in seconds. Default: 60
+          The time window used to count connections for the per-ip limit.
+
   -h, --help
           Print help
 ```
@@ -156,6 +165,16 @@ Key metrics provided:
  - dropped_by_ip: a small per-IP map of dropped connection counts.
 
 The metrics API is synchronous and intentionally small to keep dependencies minimal and avoid tying the public API to async primitives. Typical usage is to create a `Metrics` instance early in server startup and pass clones to subsystems (WebSocket event loop, TLS acceptor, HTTP handlers, etc.). The server periodically logs a small snapshot of metrics for operational visibility.
+
+On-demand metrics via signal (UNIX)
+Mles also supports requesting an on-demand metrics snapshot at runtime on Unix-like systems by sending the SIGUSR1 signal to the process. When the server receives SIGUSR1 it logs an info-level snapshot that includes the same aggregate metrics as the periodic log (connections, channels, messages, errors, dropped connections) and — if present — a compact per-IP dropped-connections map. This is useful for quick operational inspection of rate-limiting or connection problems without restarting or changing configuration.
+
+Example:
+```
+kill -USR1 <pid>
+```
+
+Note: the SIGUSR1 handler is installed only on Unix-like platforms. On non-Unix platforms (for example, Windows) this on-demand signal-triggered snapshot is not available.
 
 Note: the metrics module is meant for in-process visibility and logging. If you need to export metrics to Prometheus, InfluxDB or other backends, adapt the snapshot values to your exporter of choice.
 
