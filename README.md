@@ -142,6 +142,68 @@ Hello Bob!
  * [mles-client](https://github.com/jq-rs/mles-client)
  * \<please ask to add your client here\>
 
+## Metrics and monitoring
+
+Mles includes a lightweight, thread-safe metrics module intended for internal server observability. The metrics module exposes counts and small snapshots suitable for logging, tests and integration with external monitoring systems.
+
+Key metrics provided:
+ - active_connections: current number of connected WebSocket clients.
+ - total_messages_sent: cumulative number of messages successfully sent to clients.
+ - total_messages_received: cumulative number of messages received from clients.
+ - total_channels: current number of active channels tracked by the server.
+ - total_errors: cumulative number of error events encountered by the server.
+ - total_dropped_connections: cumulative number of connections dropped due to policy (for example, per-IP limits).
+ - dropped_by_ip: a small per-IP map of dropped connection counts.
+
+The metrics API is synchronous and intentionally small to keep dependencies minimal and avoid tying the public API to async primitives. Typical usage is to create a `Metrics` instance early in server startup and pass clones to subsystems (WebSocket event loop, TLS acceptor, HTTP handlers, etc.). The server periodically logs a small snapshot of metrics for operational visibility.
+
+Note: the metrics module is meant for in-process visibility and logging. If you need to export metrics to Prometheus, InfluxDB or other backends, adapt the snapshot values to your exporter of choice.
+
+## Graceful shutdown and server handle
+
+Mles provides a server-run API that returns a handle for graceful shutdown and runtime introspection. Use `run_with_shutdown(config)` to start the server and receive a `ServerHandle`. The handle offers:
+
+ - `shutdown()` — request graceful shutdown from another task (cancels the internal shutdown token).
+ - `metrics()` — retrieve a `MetricsSnapshot` with current counters suitable for logging or inspection.
+ - `shutdown_token()` — retrieve a cloneable cancellation token for coordinating shutdown across tasks.
+ - `wait_for_shutdown().await` — await shutdown completion.
+
+Typical usage pattern:
+
+```no_run
+use mles::{run_with_shutdown, ServerConfig};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    let config = ServerConfig::new(
+        vec!["example.com".to_string()],
+        vec!["admin@example.com".to_string()],
+        PathBuf::from("/var/www"),
+        443,
+    )
+    .with_limit(200)
+    .with_filelimit(2048)
+    .with_websocket_config(/* ... */)
+    .with_metrics_logging(true);
+
+    let handle = run_with_shutdown(config).await?;
+
+    // spawn a task to listen for CTRL+C and trigger shutdown
+    let shutdown_token = handle.shutdown_token();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
+        shutdown_token.cancel();
+    });
+
+    // wait for shutdown to complete
+    handle.wait_for_shutdown().await;
+    Ok(())
+}
+```
+
+The graceful shutdown pathway ensures the WebSocket event loop and metric logging task are notified and that the server gives a short period for connections to finish before exiting.
+
 ## References
 
  1. The Transport Layer Security (TLS) Protocol Version 1.3, https://tools.ietf.org/html/rfc8446

@@ -4,6 +4,21 @@ All notable changes to Mles project will be documented in this file after 1.0-re
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.9.0]
+
+- Added a centralized, thread-safe `Metrics` module for runtime observability. The module provides lightweight snapshots (`MetricsSnapshot`) useful for logging and exporting to external monitoring systems.
+- Introduced a graceful shutdown API that returns a `ServerHandle`. The handle exposes:
+  - `shutdown()` to request graceful shutdown,
+  - `wait_for_shutdown().await` to await shutdown completion,
+  - `metrics()` to obtain a `MetricsSnapshot`,
+  - `shutdown_token()` to retrieve a cancellation token for coordinating shutdown across tasks.
+- Merged runtime and WebSocket tuning options into the primary server configuration so they can be configured via `ServerConfig`:
+  - `websocket_config` (ping interval, missed pongs, per-connection rate limit),
+  - `enable_metrics_logging` (periodic metrics logging toggle),
+  - `per_ip_limit` and `per_ip_window_secs` (optional per-IP connection limiting).
+- Added `run_with_shutdown(config)` and `run_with_shutdown_token(config, token)` entrypoints to start the server with graceful shutdown support.
+- Documentation updates: README now documents metrics and graceful shutdown usage.
+
 ## [2.8.1]
 
 Invalidate LRU cache when file metadata changes.
