@@ -6,7 +6,7 @@
  */
 use clap::Parser;
 use log::LevelFilter;
-use mles::{ServerConfigV2, WebSocketConfig};
+use mles::{ServerConfig, WebSocketConfig};
 use simple_logger::SimpleLogger;
 use std::io;
 use std::path::PathBuf;
@@ -20,9 +20,14 @@ const DEFAULT_RATE_LIMIT: &str = "100";
 const DEFAULT_COMPRESSION_CACHE_MB: &str = "10";
 
 fn compression_cache_parser(s: &str) -> Result<usize, String> {
-    let value: usize = s.parse().map_err(|_| format!("'{}' is not a valid number", s))?;
+    let value: usize = s
+        .parse()
+        .map_err(|_| format!("'{}' is not a valid number", s))?;
     if value > 10000 {
-        Err(format!("compression cache size must be between 0 and 10000, got {}", value))
+        Err(format!(
+            "compression cache size must be between 0 and 10000, got {}",
+            value
+        ))
     } else {
         Ok(value)
     }
@@ -106,8 +111,8 @@ async fn main() -> io::Result<()> {
         rate_limit_window_secs: 1,
     };
 
-    // Create server configuration using v2.9 API
-    let config = ServerConfigV2::new(
+    // Create server configuration
+    let config = ServerConfig::new(
         args.domains.clone(),
         args.email,
         args.wwwroot.clone(),
@@ -135,7 +140,7 @@ async fn main() -> io::Result<()> {
     };
 
     log::info!(
-        "Starting Mles v2.9 server on {}:{} serving {}",
+        "Starting Mles server on {}:{} serving {}",
         args.domains.join(", "),
         args.port,
         args.wwwroot.display()
@@ -148,8 +153,8 @@ async fn main() -> io::Result<()> {
         args.rate_limit
     );
 
-    // Start server with v2.9 API
-    let handle = mles::run_v2(config).await?;
+    // Start server
+    let handle = mles::run_with_shutdown(config).await?;
 
     // Setup graceful shutdown on CTRL+C
     let shutdown_handle = handle.shutdown_token();

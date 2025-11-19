@@ -5,20 +5,18 @@
  *  Copyright (C) 2023-2025  Mles developers
  */
 use crate::auth::verify_auth;
+use crate::metrics::Metrics;
 use crate::types::{ChannelInfo, MlesHeader, WsEvent};
+
 use futures_util::{SinkExt, StreamExt};
 use siphasher::sip::SipHasher;
-use std::collections::HashMap;
-use std::collections::{VecDeque, hash_map::Entry};
+use std::collections::{HashMap, VecDeque, hash_map::Entry};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::SystemTime;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::oneshot;
-use tokio::time;
-use tokio::time::Duration;
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::{self, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use warp::Filter;
@@ -53,70 +51,7 @@ impl Default for WebSocketConfig {
     }
 }
 
-// Metrics for observability
-#[derive(Clone)]
-pub struct Metrics {
-    active_connections: Arc<AtomicUsize>,
-    total_messages_sent: Arc<AtomicU64>,
-    total_messages_received: Arc<AtomicU64>,
-    total_channels: Arc<AtomicUsize>,
-    total_errors: Arc<AtomicU64>,
-}
-
-impl Metrics {
-    pub fn new() -> Self {
-        Self {
-            active_connections: Arc::new(AtomicUsize::new(0)),
-            total_messages_sent: Arc::new(AtomicU64::new(0)),
-            total_messages_received: Arc::new(AtomicU64::new(0)),
-            total_channels: Arc::new(AtomicUsize::new(0)),
-            total_errors: Arc::new(AtomicU64::new(0)),
-        }
-    }
-
-    pub fn get_stats(&self) -> MetricsSnapshot {
-        MetricsSnapshot {
-            active_connections: self.active_connections.load(Ordering::Relaxed),
-            total_messages_sent: self.total_messages_sent.load(Ordering::Relaxed),
-            total_messages_received: self.total_messages_received.load(Ordering::Relaxed),
-            total_channels: self.total_channels.load(Ordering::Relaxed),
-            total_errors: self.total_errors.load(Ordering::Relaxed),
-        }
-    }
-
-    fn increment_connections(&self) {
-        self.active_connections.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn decrement_connections(&self) {
-        self.active_connections.fetch_sub(1, Ordering::Relaxed);
-    }
-
-    fn increment_messages_sent(&self) {
-        self.total_messages_sent.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn increment_messages_received(&self) {
-        self.total_messages_received.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn increment_errors(&self) {
-        self.total_errors.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn update_channel_count(&self, count: usize) {
-        self.total_channels.store(count, Ordering::Relaxed);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct MetricsSnapshot {
-    pub active_connections: usize,
-    pub total_messages_sent: u64,
-    pub total_messages_received: u64,
-    pub total_channels: usize,
-    pub total_errors: u64,
-}
+use tokio::sync::mpsc::Sender;
 
 // Rate limiter for per-connection message throttling
 struct RateLimiter {

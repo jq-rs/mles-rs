@@ -9,6 +9,7 @@ pub(crate) mod auth;
 pub(crate) mod cache;
 pub(crate) mod compression;
 pub(crate) mod http;
+pub(crate) mod metrics;
 pub(crate) mod server;
 pub(crate) mod types;
 pub(crate) mod websocket;
@@ -28,8 +29,9 @@ const TASK_BUF: usize = 16;
 const DEFAULT_CACHE_SIZE_MB: usize = 10;
 const METRICS_LOG_INTERVAL_SECS: u64 = 60;
 
-// Re-export WebSocket types for public API
-pub use websocket::{WebSocketConfig, Metrics, MetricsSnapshot};
+// Re-export metrics and WebSocket types for public API
+pub use metrics::{Metrics, MetricsSnapshot};
+pub use websocket::WebSocketConfig;
 
 /// Configuration for the Mles server
 #[derive(Debug, Clone)]
@@ -54,78 +56,96 @@ pub struct ServerConfig {
     pub redirect: bool,
     /// Cache size for compressed files in MB
     pub max_cache_size_mb: Option<usize>,
-}
 
-/// V2.9+ Configuration with enhanced features
-#[derive(Debug, Clone)]
-pub struct ServerConfigV2 {
-    /// Base configuration
-    pub base: ServerConfig,
-    /// WebSocket configuration
+    /// WebSocket runtime configuration
     pub websocket_config: WebSocketConfig,
-    /// Enable periodic metrics logging
+    /// Enable periodic metrics logging task
     pub enable_metrics_logging: bool,
+    /// Optional per-IP allowed connections per window. If `None`, per-IP limiting is disabled.
+    pub per_ip_limit: Option<u32>,
+    /// Per-IP window size in seconds. Only used when `per_ip_limit` is Some(_).
+    pub per_ip_window_secs: Option<u64>,
 }
 
-impl ServerConfigV2 {
-    /// Create a new ServerConfigV2 with required fields
-    pub fn new(
-        domains: Vec<String>,
-        email: Vec<String>,
-        wwwroot: PathBuf,
-        port: u16,
-    ) -> Self {
+impl ServerConfig {
+    /// Create a new ServerConfig with reasonable defaults.
+    pub fn new(domains: Vec<String>, email: Vec<String>, wwwroot: PathBuf, port: u16) -> Self {
         Self {
-            base: ServerConfig {
-                domains,
-                email,
-                cache: None,
-                limit: 100,
-                filelimit: 1024,
-                wwwroot,
-                staging: false,
-                port,
-                redirect: false,
-                max_cache_size_mb: None,
-            },
+            domains,
+            email,
+            cache: None,
+            limit: 100,
+            filelimit: 1024,
+            wwwroot,
+            staging: false,
+            port,
+            redirect: false,
+            max_cache_size_mb: None,
+
             websocket_config: WebSocketConfig::default(),
             enable_metrics_logging: true,
+            per_ip_limit: None,
+            per_ip_window_secs: None,
+        }
+    }
+
+    /// Convert from a legacy (v1) configuration: copy the original fields and
+    /// set defaults for the newly merged fields.
+    pub fn from_v1(v1: ServerConfig) -> Self {
+        // If the supplied config is from a codepath that predates the merged
+        // runtime fields, ensure sensible defaults are applied.
+        Self {
+            domains: v1.domains,
+            email: v1.email,
+            cache: v1.cache,
+            limit: v1.limit,
+            filelimit: v1.filelimit,
+            wwwroot: v1.wwwroot,
+            staging: v1.staging,
+            port: v1.port,
+            redirect: v1.redirect,
+            max_cache_size_mb: v1.max_cache_size_mb,
+
+            websocket_config: WebSocketConfig::default(),
+            enable_metrics_logging: true,
+            per_ip_limit: None,
+            per_ip_window_secs: None,
         }
     }
 
     /// Set the history limit
     pub fn with_limit(mut self, limit: u32) -> Self {
-        self.base.limit = limit;
+        self.limit = limit;
         self
     }
 
     /// Set the file limit
     pub fn with_filelimit(mut self, filelimit: usize) -> Self {
-        self.base.filelimit = filelimit;
+        self.filelimit = filelimit;
         self
     }
 
     /// Enable HTTP redirect for port 80
     pub fn with_redirect(mut self, redirect: bool) -> Self {
-        self.base.redirect = redirect;
+        self.redirect = redirect;
         self
     }
 
     /// Set Let's Encrypt staging mode
     pub fn with_staging(mut self, staging: bool) -> Self {
-        self.base.staging = staging;
+        self.staging = staging;
         self
     }
 
     /// Set ACME cache directory
     pub fn with_cache(mut self, cache: PathBuf) -> Self {
-        self.base.cache = Some(cache);
+        self.cache = Some(cache);
         self
     }
 
     /// Set cache size for compressed files
     pub fn with_max_cache_size_mb(mut self, size: usize) -> Self {
-        self.base.max_cache_size_mb = Some(size);
+        self.max_cache_size_mb = Some(size);
         self
     }
 
@@ -141,17 +161,21 @@ impl ServerConfigV2 {
         self
     }
 
-    /// Convert from legacy ServerConfig
-    pub fn from_v1(config: ServerConfig) -> Self {
-        Self {
-            base: config,
-            websocket_config: WebSocketConfig::default(),
-            enable_metrics_logging: true,
-        }
+    /// Set per-IP allowed connections in the configured window.
+    /// Use `None` to disable per-IP limiting.
+    pub fn with_per_ip_limit(mut self, limit: Option<u32>) -> Self {
+        self.per_ip_limit = limit;
+        self
+    }
+
+    /// Set per-IP window size in seconds. Only used when `per_ip_limit` is Some(_).
+    pub fn with_per_ip_window_secs(mut self, secs: Option<u64>) -> Self {
+        self.per_ip_window_secs = secs;
+        self
     }
 }
 
-/// Server handle for graceful shutdown and metrics access (v2.9+)
+/// Server handle for graceful shutdown and metrics access
 pub struct ServerHandle {
     shutdown_token: CancellationToken,
     metrics: Metrics,
@@ -185,12 +209,6 @@ impl ServerHandle {
     }
 }
 
-/// Run the Mles server with the given configuration (v2.8 API - deprecated)
-///
-/// # Deprecated
-/// This function is maintained for backwards compatibility.
-/// New code should use `run_v2()` which returns a `ServerHandle` for graceful shutdown.
-#[deprecated(since = "2.9.0", note = "Use run_v2() for graceful shutdown support")]
 pub async fn run(config: ServerConfig) -> io::Result<()> {
     let limit = config.limit;
     let www_root_dir = config.wwwroot;
@@ -205,11 +223,11 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     let (tx, rx) = mpsc::channel::<types::WsEvent>(TASK_BUF);
     let rx = ReceiverStream::new(rx);
 
-    // Create basic metrics but don't expose them (v2.8 behavior)
+    // Create basic metrics but don't expose them
     let metrics = Metrics::new();
-    let shutdown_token = CancellationToken::new(); // Never cancelled in v2.8 API
+    let shutdown_token = CancellationToken::new();
 
-    // Spawn WebSocket event loop (v2.8 style - no shutdown)
+    // Spawn WebSocket event loop (no shutdown)
     websocket::spawn_event_loop(rx, limit, metrics.clone(), shutdown_token);
 
     // Create TCP listener
@@ -226,6 +244,9 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         config.staging,
         tcp_incoming,
         semaphore.clone(),
+        metrics.clone(),
+        None,
+        None,
     );
 
     // Spawn HTTP redirect server if requested
@@ -248,59 +269,35 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     // Combine all routes
     let tlsroutes = ws.or(index);
 
-    // Serve TLS connections (v2.8 style - blocks forever)
+    // Serve TLS connections (blocks forever)
     server::serve_tls(tls_incoming, tlsroutes).await;
 
     unreachable!()
 }
 
-/// Run the Mles server with enhanced configuration (v2.9+ API)
+/// Run the Mles server with graceful shutdown support
 ///
 /// Returns a `ServerHandle` that can be used to:
 /// - Trigger graceful shutdown
 /// - Query server metrics
 /// - Monitor server state
-///
-/// # Example
-///
-/// ```no_run
-/// use mles::{run_v2, ServerConfigV2};
-/// use std::path::PathBuf;
-///
-/// #[tokio::main]
-/// async fn main() -> std::io::Result<()> {
-///     let config = ServerConfigV2::new(
-///         vec!["example.com".to_string()],
-///         vec!["admin@example.com".to_string()],
-///         PathBuf::from("/var/www"),
-///         443,
-///     );
-///
-///     let handle = run_v2(config).await?;
-///
-///     // Wait for CTRL+C
-///     tokio::signal::ctrl_c().await?;
-///     handle.shutdown();
-///
-///     Ok(())
-/// }
-/// ```
-pub async fn run_v2(config: ServerConfigV2) -> io::Result<ServerHandle> {
-    run_v2_with_shutdown(config, CancellationToken::new()).await
+pub async fn run_with_shutdown(config: ServerConfig) -> io::Result<ServerHandle> {
+    run_with_shutdown_token(config, CancellationToken::new()).await
 }
 
-/// Run the Mles server with external shutdown coordination (v2.9+ API)
+/// Run the Mles server with external shutdown coordination
 ///
 /// This allows coordinating shutdown with other parts of your application
 /// by providing an external `CancellationToken`.
-pub async fn run_v2_with_shutdown(
-    config: ServerConfigV2,
+pub async fn run_with_shutdown_token(
+    config: ServerConfig,
     shutdown_token: CancellationToken,
 ) -> io::Result<ServerHandle> {
-    let limit = config.base.limit;
-    let www_root_dir = config.base.wwwroot.clone();
-    let filelimit = config.base.filelimit;
-    let max_cache_size_mb = match config.base.max_cache_size_mb {
+    // Use the merged ServerConfig fields directly (no `base` indirection).
+    let limit = config.limit;
+    let www_root_dir = config.wwwroot.clone();
+    let filelimit = config.filelimit;
+    let max_cache_size_mb = match config.max_cache_size_mb {
         Some(size) => size,
         None => DEFAULT_CACHE_SIZE_MB,
     };
@@ -315,8 +312,8 @@ pub async fn run_v2_with_shutdown(
     let ws_config = config.websocket_config.clone();
 
     log::info!(
-        "Starting Mles server v2.9 on port {} with {} file limit, WebSocket ping interval: {}ms",
-        config.base.port,
+        "Starting Mles server on port {} with {} file limit, WebSocket ping interval: {}ms",
+        config.port,
         filelimit,
         ws_config.ping_interval_ms
     );
@@ -355,25 +352,28 @@ pub async fn run_v2_with_shutdown(
     }
 
     // Create TCP listener
-    let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, config.base.port)
+    let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, config.port)
         .parse()
         .unwrap();
     let tcp_incoming = server::create_tcp_incoming(addr)?;
 
     // Create TLS incoming stream
     let tls_incoming = server::create_tls_incoming(
-        config.base.domains.clone(),
-        config.base.email,
-        config.base.cache,
-        config.base.staging,
+        config.domains.clone(),
+        config.email,
+        config.cache,
+        config.staging,
         tcp_incoming,
         semaphore.clone(),
+        metrics.clone(),
+        config.per_ip_limit,
+        config.per_ip_window_secs,
     );
 
     // Spawn HTTP redirect server if requested
-    if config.base.redirect {
+    if config.redirect {
         log::info!("Starting HTTP redirect server on port 80");
-        http::spawn_http_redirect_server(config.base.domains.clone());
+        http::spawn_http_redirect_server(config.domains.clone());
     }
 
     // Create WebSocket handler with config and metrics
@@ -387,16 +387,13 @@ pub async fn run_v2_with_shutdown(
 
     // Create HTTP file serving routes with configured cache size
     let index = http::create_http_file_routes(
-        config.base.domains.clone(),
+        config.domains.clone(),
         www_root_dir.clone(),
         semaphore.clone(),
         compression_cache,
     );
 
-    log::info!(
-        "Serving static files from: {}",
-        www_root_dir.display()
-    );
+    log::info!("Serving static files from: {}", www_root_dir.display());
 
     // Combine all routes
     let tlsroutes = ws.or(index);
@@ -409,8 +406,8 @@ pub async fn run_v2_with_shutdown(
 
     log::info!(
         "Mles server started successfully on {}:{}",
-        config.base.domains.join(", "),
-        config.base.port
+        config.domains.join(", "),
+        config.port
     );
 
     // Spawn the server task
@@ -434,10 +431,13 @@ pub async fn run_v2_with_shutdown(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, Instant};
 
     #[test]
-    fn test_server_config_v2_builder() {
-        let config = ServerConfigV2::new(
+    fn test_server_config_builder() {
+        let config = ServerConfig::new(
             vec!["example.com".to_string()],
             vec!["admin@example.com".to_string()],
             PathBuf::from("/var/www"),
@@ -448,10 +448,10 @@ mod tests {
         .with_redirect(true)
         .with_staging(true);
 
-        assert_eq!(config.base.limit, 200);
-        assert_eq!(config.base.filelimit, 2048);
-        assert_eq!(config.base.redirect, true);
-        assert_eq!(config.base.staging, true);
+        assert_eq!(config.limit, 200);
+        assert_eq!(config.filelimit, 2048);
+        assert_eq!(config.redirect, true);
+        assert_eq!(config.staging, true);
     }
 
     #[test]
@@ -463,7 +463,8 @@ mod tests {
     }
 
     #[test]
-    fn test_v1_to_v2_conversion() {
+    fn test_from_v1_conversion() {
+        // Simulate an older-style ServerConfig (fields present but we treat it as v1)
         let v1_config = ServerConfig {
             domains: vec!["example.com".to_string()],
             email: vec!["admin@example.com".to_string()],
@@ -475,11 +476,79 @@ mod tests {
             port: 443,
             redirect: false,
             max_cache_size_mb: None,
+            // These are the newer fields — but when converting from v1 we apply defaults
+            websocket_config: WebSocketConfig::default(),
+            enable_metrics_logging: true,
+            per_ip_limit: None,
+            per_ip_window_secs: None,
         };
 
-        let v2_config = ServerConfigV2::from_v1(v1_config);
-        assert_eq!(v2_config.base.limit, 100);
-        assert_eq!(v2_config.base.port, 443);
-        assert_eq!(v2_config.enable_metrics_logging, true);
+        let new_config = ServerConfig::from_v1(v1_config);
+        assert_eq!(new_config.limit, 100);
+        assert_eq!(new_config.port, 443);
+        assert_eq!(new_config.enable_metrics_logging, true);
+    }
+
+    #[test]
+    fn test_per_ip_builder_fields() {
+        let config = ServerConfig::new(
+            vec!["example.com".to_string()],
+            vec!["admin@example.com".to_string()],
+            PathBuf::from("/var/www"),
+            443,
+        )
+        .with_per_ip_limit(Some(120))
+        .with_per_ip_window_secs(Some(60));
+
+        assert_eq!(config.per_ip_limit, Some(120));
+        assert_eq!(config.per_ip_window_secs, Some(60));
+    }
+
+    /// Unit test that simulates a simple per-IP limiter and ensures a dropped-connections
+    /// metric (AtomicU64) increments when a source exceeds the allowed count.
+    #[test]
+    fn test_per_ip_drop_metrics_increment() {
+        // Simple in-memory per-ip counter with window reset semantics.
+        let per_ip_limit = 3u32;
+        let window_secs = 2u64;
+
+        // dropped metric that would be shared with server internals in production
+        let dropped_metric = AtomicU64::new(0);
+
+        let mut counters: HashMap<String, (Instant, u32)> = HashMap::new();
+
+        // helper that simulates an incoming connection from `ip`
+        let mut simulate_conn = |ip: &str| {
+            let now = Instant::now();
+            let entry = counters.entry(ip.to_string()).or_insert((now, 0));
+            if now.duration_since(entry.0).as_secs() >= window_secs {
+                *entry = (now, 1);
+                true // accepted
+            } else {
+                if entry.1 < per_ip_limit {
+                    entry.1 = entry.1.saturating_add(1);
+                    true // accepted
+                } else {
+                    // would be dropped; increment metric
+                    dropped_metric.fetch_add(1, Ordering::SeqCst);
+                    false // dropped
+                }
+            }
+        };
+
+        // Simulate 5 connections from the same IP in quick succession
+        let ip = "203.0.113.5";
+        assert_eq!(simulate_conn(ip), true); // 1
+        assert_eq!(simulate_conn(ip), true); // 2
+        assert_eq!(simulate_conn(ip), true); // 3
+        // Now should exceed
+        assert_eq!(simulate_conn(ip), false); // dropped
+        assert_eq!(simulate_conn(ip), false); // dropped
+
+        assert_eq!(dropped_metric.load(Ordering::SeqCst), 2);
+
+        // Wait for the window to expire and simulate again -> should be accepted and counter reset
+        std::thread::sleep(Duration::from_secs(window_secs + 1));
+        assert_eq!(simulate_conn(ip), true);
     }
 }
