@@ -7,6 +7,7 @@
 
 pub(crate) mod auth;
 pub(crate) mod cache;
+pub(crate) mod mina;
 pub(crate) mod compression;
 pub(crate) mod http;
 pub(crate) mod proxy;
@@ -120,6 +121,11 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         compression_cache,
     );
 
+    // Define the mina status page route
+    let page_route = warp::path("mina_status")
+        .and(warp::get())
+        .and_then(mina::serve_status_page);
+
     // Combine all routes
     let http_routes: BoxedFilter<(Box<dyn warp::Reply>,)> = if config.proxies.is_empty() {
         index.boxed()
@@ -128,7 +134,7 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         let proxy_routes = proxy::create_proxy_routes(&config.proxies, client);
         proxy_routes.or(index).unify().boxed()
     };
-    let tlsroutes = ws.or(http_routes);
+    let tlsroutes = page_route.or(ws).or(http_routes);
 
     // Serve TLS connections
     server::serve_tls(tls_incoming, tlsroutes).await;
