@@ -9,18 +9,21 @@ pub(crate) mod auth;
 pub(crate) mod cache;
 pub(crate) mod compression;
 pub(crate) mod http;
+pub(crate) mod proxy;
 pub(crate) mod server;
 pub(crate) mod types;
 pub(crate) mod websocket;
 
 use std::io;
 use std::net::Ipv6Addr;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use warp::Filter;
+use warp::filters::BoxedFilter;
 
 const TASK_BUF: usize = 16;
 const DEFAULT_CACHE_SIZE_MB: usize = 10;
@@ -48,6 +51,12 @@ pub struct ServerConfig {
     pub redirect: bool,
     /// Cache size for compressed files in MB
     pub max_cache_size_mb: Option<usize>,
+    /// Reverse-proxy rules: list of (url_prefix, upstream_base_url) pairs.
+    /// Requests to `/{prefix}/...` are forwarded to `{upstream}/...`.
+    pub proxies: Vec<(String, String)>,
+    /// Per-IP TCP-accept rate limit (connections per minute). `None` disables.
+    /// Applies to both the TLS listener and the HTTP redirect listener.
+    pub rate_limit: Option<NonZeroU32>,
 }
 
 /// Run the Mles server with the given configuration
@@ -74,6 +83,16 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         .unwrap();
     let tcp_incoming = server::create_tcp_incoming(addr)?;
 
+    // Optionally wrap with a per-IP TCP-accept rate limiter. Shared between the
+    // TLS listener and the HTTP redirect listener so an abusive IP can't bypass
+    // by hammering port 80.
+    let rate_limiter = config.rate_limit.map(server::create_rate_limiter);
+
+    let tcp_incoming: futures_util::stream::BoxStream<'static, _> = match rate_limiter.clone() {
+        Some(limiter) => server::rate_limit_incoming(tcp_incoming, limiter),
+        None => futures_util::StreamExt::boxed(tcp_incoming),
+    };
+
     // Create TLS incoming stream
     let tls_incoming = server::create_tls_incoming(
         config.domains.clone(),
@@ -86,7 +105,7 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
 
     // Spawn HTTP redirect server if requested
     if config.redirect {
-        http::spawn_http_redirect_server(config.domains.clone());
+        http::spawn_http_redirect_server(config.domains.clone(), rate_limiter.clone());
     }
 
     // Create WebSocket handler
@@ -102,7 +121,14 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     );
 
     // Combine all routes
-    let tlsroutes = ws.or(index);
+    let http_routes: BoxedFilter<(Box<dyn warp::Reply>,)> = if config.proxies.is_empty() {
+        index.boxed()
+    } else {
+        let client = proxy::create_client();
+        let proxy_routes = proxy::create_proxy_routes(&config.proxies, client);
+        proxy_routes.or(index).unify().boxed()
+    };
+    let tlsroutes = ws.or(http_routes);
 
     // Serve TLS connections
     server::serve_tls(tls_incoming, tlsroutes).await;

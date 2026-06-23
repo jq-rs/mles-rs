@@ -9,6 +9,7 @@ use log::LevelFilter;
 use mles::ServerConfig;
 use simple_logger::SimpleLogger;
 use std::io;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 const HISTORY_LIMIT: &str = "200";
@@ -55,6 +56,17 @@ struct Args {
     /// Compression cache size in MB
     #[arg(short = 'C', long)]
     compression_cache: Option<usize>,
+
+    /// Reverse-proxy rules in the form prefix=http://upstream:port
+    /// Example: --proxy keeper=http://localhost:8080 --proxy verify=http://localhost:8081
+    #[arg(short = 'P', long = "proxy")]
+    proxy: Vec<String>,
+
+    /// Per-IP TCP-accept rate limit (connections/minute). Applies to ports 80
+    /// and the TLS port. Connections beyond the limit are dropped before TLS.
+    /// Omit to disable.
+    #[arg(long = "rate-limit", value_parser = clap::value_parser!(u32).range(1..))]
+    rate_limit: Option<u32>,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -67,6 +79,17 @@ async fn main() -> io::Result<()> {
 
     let args = Args::parse();
 
+    let proxies: Vec<(String, String)> = args
+        .proxy
+        .iter()
+        .filter_map(|s| {
+            let mut parts = s.splitn(2, '=');
+            let prefix = parts.next()?.trim().to_string();
+            let upstream = parts.next()?.trim().to_string();
+            Some((prefix, upstream))
+        })
+        .collect();
+
     let config = ServerConfig {
         domains: args.domains,
         email: args.email,
@@ -78,6 +101,8 @@ async fn main() -> io::Result<()> {
         port: args.port,
         redirect: args.redirect,
         max_cache_size_mb: args.compression_cache,
+        proxies,
+        rate_limit: args.rate_limit.and_then(NonZeroU32::new),
     };
 
     mles::run(config).await

@@ -69,6 +69,13 @@ Options:
           Compression cache size in MB for static file serving
           Set to 0 to disable caching
 
+      --rate-limit <RATE_LIMIT>
+          Per-IP TCP-accept rate limit (connections/minute)
+          Applies to the TLS port and (when --redirect is set) port 80.
+          Connections from an IP exceeding the quota are dropped before TLS
+          handshake. IPv4-mapped IPv6 addresses are normalized so a client
+          counts as one IP regardless of socket family. Omit to disable.
+
   -h, --help
           Print help
 ```
@@ -122,6 +129,22 @@ mles \
   --compression-cache 100 \
   --limit 500 \
   --filelimit 1024
+```
+
+### With per-IP rate limiting
+
+Cap each client IP at 120 new TCP connections per minute across both ports.
+Useful when fronting upstream services via `--proxy`, since abusive IPs are
+rejected at TCP accept before reaching the TLS handshake or any upstream:
+
+```bash
+mles \
+  --domains your.domain \
+  --email admin@your.domain \
+  --cache /var/cache/mles \
+  --wwwroot /var/www \
+  --redirect \
+  --rate-limit 120
 ```
 
 ## Example clients
