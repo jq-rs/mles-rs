@@ -260,7 +260,7 @@ pub(crate) fn create_http_file_routes(
     www_root_dir: PathBuf,
     semaphore: Arc<Semaphore>,
     compression_cache: cache::SharedCache,
-) -> BoxedFilter<(impl warp::Reply,)> {
+) -> BoxedFilter<(Box<dyn warp::Reply>,)> {
     let mut vindex = Vec::new();
     for domain in domains {
         let sem = semaphore.clone();
@@ -295,14 +295,26 @@ pub(crate) fn create_http_file_routes(
     index
 }
 
-pub(crate) fn spawn_http_redirect_server(domains: Vec<String>) {
+pub(crate) fn spawn_http_redirect_server(
+    domains: Vec<String>,
+    rate_limiter: Option<Arc<crate::server::IpRateLimiter>>,
+) {
     tokio::spawn(async move {
         let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, 80)
             .parse()
             .unwrap();
         if let Ok(tcp_incoming) = crate::server::create_tcp_incoming(addr) {
             let hindex = create_http_redirect_routes(domains);
-            crate::server::serve_http(tcp_incoming, hindex).await;
+            match rate_limiter {
+                Some(limiter) => {
+                    let limited =
+                        crate::server::rate_limit_incoming(tcp_incoming, limiter);
+                    crate::server::serve_http(limited, hindex).await;
+                }
+                None => {
+                    crate::server::serve_http(tcp_incoming, hindex).await;
+                }
+            }
         }
     });
 }

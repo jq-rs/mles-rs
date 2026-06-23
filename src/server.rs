@@ -5,20 +5,70 @@
  *  Copyright (C) 2023-2025  Mles developers
  */
 use futures_util::StreamExt;
+use governor::clock::DefaultClock;
+use governor::state::keyed::DefaultKeyedStateStore;
+use governor::{Quota, RateLimiter};
 use hyper::server::conn::http1;
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
 use rustls_acme::AcmeConfig;
 use rustls_acme::caches::DirCache;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::net::TcpSocket;
+use tokio::net::{TcpSocket, TcpStream};
 use tokio::sync::Semaphore;
 use tokio_stream::wrappers::TcpListenerStream;
 
 const BACKLOG: u32 = 1024;
+
+pub(crate) type IpRateLimiter =
+    RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
+
+/// Build a per-IP rate limiter that allows `per_minute` accepted connections
+/// per minute with a small burst.
+pub(crate) fn create_rate_limiter(per_minute: NonZeroU32) -> Arc<IpRateLimiter> {
+    Arc::new(RateLimiter::keyed(Quota::per_minute(per_minute)))
+}
+
+fn peer_ip(stream: &TcpStream) -> Option<IpAddr> {
+    let addr = stream.peer_addr().ok()?;
+    Some(match addr.ip() {
+        IpAddr::V6(v6) => v6.to_canonical(),
+        v4 => v4,
+    })
+}
+
+/// Wrap an incoming TCP stream with a per-IP rate limiter. Connections from
+/// IPs over the quota are dropped immediately (before TLS handshake), which
+/// the client observes as a closed connection.
+pub(crate) fn rate_limit_incoming(
+    tcp_incoming: TcpListenerStream,
+    limiter: Arc<IpRateLimiter>,
+) -> futures_util::stream::BoxStream<'static, Result<TcpStream, io::Error>> {
+    tcp_incoming
+        .filter_map(move |conn| {
+            let limiter = limiter.clone();
+            async move {
+                let stream = match conn {
+                    Ok(s) => s,
+                    Err(e) => return Some(Err(e)),
+                };
+                let Some(ip) = peer_ip(&stream) else {
+                    return Some(Ok(stream));
+                };
+                if limiter.check_key(&ip).is_ok() {
+                    Some(Ok(stream))
+                } else {
+                    log::debug!("rate-limited connection from {}", ip);
+                    None
+                }
+            }
+        })
+        .boxed()
+}
 
 pub(crate) fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStream> {
     let socket = TcpSocket::new_v6()?;
@@ -30,16 +80,19 @@ pub(crate) fn create_tcp_incoming(addr: SocketAddr) -> io::Result<TcpListenerStr
     Ok(TcpListenerStream::new(tcp_listener))
 }
 
-pub(crate) fn create_tls_incoming(
+pub(crate) fn create_tls_incoming<S>(
     domains: Vec<String>,
     email: Vec<String>,
     cache: Option<PathBuf>,
     staging: bool,
-    tcp_incoming: TcpListenerStream,
+    tcp_incoming: S,
     semaphore: Arc<Semaphore>,
 ) -> impl futures_util::Stream<
     Item = Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, std::io::Error>,
-> {
+>
+where
+    S: futures_util::Stream<Item = Result<TcpStream, io::Error>> + Send + Unpin + 'static,
+{
     let tls_incoming = AcmeConfig::new(domains)
         .contact(email.iter().map(|e| format!("mailto:{}", e)))
         .cache_option(cache.map(DirCache::new))
@@ -56,8 +109,9 @@ pub(crate) fn create_tls_incoming(
     })
 }
 
-pub(crate) async fn serve_http<F>(tcp_incoming: TcpListenerStream, routes: F)
+pub(crate) async fn serve_http<S, F>(tcp_incoming: S, routes: F)
 where
+    S: futures_util::Stream<Item = Result<TcpStream, io::Error>>,
     F: warp::Filter + Clone + Send + Sync + 'static,
     F::Extract: warp::Reply,
 {

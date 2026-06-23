@@ -1,6 +1,6 @@
 [package]
 name = "mles"
-version = "2.8.1"
+version = "2.9.0"
 authors = ["jq-rs"]
 edition = "2024"
 description = "Mles, a distributed publish-subscribe data server"
@@ -26,8 +26,10 @@ tokio-util = { version="0.7.16", features = ["compat"] }
 tokio-rustls = "0.26"
 rustls-acme = { version="0.14", default-features = false, features = ["tokio", "aws-lc-rs", "webpki-roots"] }
 warp = { version = "0.4", features = ["websocket"] }
-hyper = { version = "1", features = ["server", "http1"] }
-hyper-util = { version = "0.1", features = ["server", "tokio"] }
+hyper = { version = "1", features = ["server", "http1", "client"] }
+hyper-util = { version = "0.1", features = ["server", "tokio", "client-legacy", "http1"] }
+http-body-util = "0.1"
+bytes = "1"
 simple_logger = "5"
 clap = { version = "4", features = ["derive"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
@@ -38,6 +40,7 @@ serde_json = "1.0"
 siphasher = "1.0.0"
 http-types = "2"
 lru = "0.16"
+governor = "0.6"
 
 [profile.release]
 lto = true
