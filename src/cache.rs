@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 const MB: usize = 1024 * 1024;
-const DEFAULT_FILE_SIZE_MB: usize = 1;
+const DEFAULT_FILE_SIZE_MB: usize = 12;
 const MAX_FILE_SIZE: usize = DEFAULT_FILE_SIZE_MB * MB;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
@@ -251,11 +251,11 @@ mod tests {
 
     #[test]
     fn test_max_file_size() {
-        let mut cache = CompressionCache::new(10);
+        let mut cache = CompressionCache::new(DEFAULT_FILE_SIZE_MB * 2);
         let now = SystemTime::now();
 
-        // Try to insert file larger than MAX_FILE_SIZE (1MB)
-        let huge_data = vec![0u8; 2_000_000]; // 2MB
+        // Try to insert file larger than MAX_FILE_SIZE
+        let huge_data = vec![0u8; MAX_FILE_SIZE + 1];
         cache.insert("huge", "br", now, huge_data);
 
         // Should not be cached

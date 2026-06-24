@@ -26,7 +26,7 @@ use warp::Filter;
 use warp::filters::BoxedFilter;
 
 const TASK_BUF: usize = 16;
-const DEFAULT_CACHE_SIZE_MB: usize = 10;
+const DEFAULT_CACHE_SIZE_MB: usize = 24;
 
 /// Configuration for the Mles server
 #[derive(Debug, Clone)]
