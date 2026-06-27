@@ -119,7 +119,10 @@ pub(crate) async fn dyn_reply(
             let mut use_zstd = false;
             if let Some(encoding) = encoding {
                 log::debug!("Encoding: {encoding}");
-                if ctype.contains("text") || ctype.contains("json") {
+                if ctype.contains("text") || ctype.contains("json")
+                   || ctype.contains("javascript") || ctype.contains("svg")
+                   || ctype.contains("wasm")
+                {
                     if encoding.contains(ZSTD) {
                         // Try cache first with modification time
                         let mut cache_guard = cache.write().await;
