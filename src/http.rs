@@ -34,6 +34,22 @@ pub(crate) async fn dyn_hreply(
     )))
 }
 
+// Wrap a file response with the headers required for browsers to enable
+// crossOriginIsolated (needed by SharedArrayBuffer + WebAssembly threads).                                                                                                                       
+// COOP/COEP gate the top-level document; CORP authorises every same-origin                                                                                                                       
+// sub-resource (JS/CSS/WASM) so COEP doesn't block them.                                                                                                                                         
+fn with_isolation<T: warp::Reply>(reply: T) -> impl warp::Reply {                                                                                                                                 
+    warp::reply::with_header(                                                                                                                                                                     
+        warp::reply::with_header(                                                                                                                                                          
+            warp::reply::with_header(reply, "Cross-Origin-Opener-Policy", "same-origin"),                                                                                                  
+            "Cross-Origin-Embedder-Policy",                                                                                                                                                
+            "require-corp",                                                                                                                                                                
+        ),                                                                                                                                                                                 
+        "Cross-Origin-Resource-Policy",                                                                                                                                                    
+        "same-origin",                                                                                                                                                                     
+    )                                                                                                                                                                                      
+}                                                                                                                                                                                          
+
 pub(crate) async fn dyn_reply(
     tuple: (
         Option<String>,
@@ -168,12 +184,12 @@ pub(crate) async fn dyn_reply(
             }
             log::debug!("Reply headers: {reply_headers:?}");
             match reply_headers {
-                ReplyHeaders::NONE => Ok(Box::new(warp::reply::with_header(
+                ReplyHeaders::NONE => Ok(Box::new(with_isolation(warp::reply::with_header(
                     warp::reply::Response::new(buffer.into()),
                     "Content-Type",
                     &ctype,
-                ))),
-                ReplyHeaders::Br => Ok(Box::new(warp::reply::with_header(
+                )))),
+                ReplyHeaders::Br => Ok(Box::new(with_isolation(warp::reply::with_header(
                     warp::reply::with_header(
                         warp::reply::Response::new(buffer.into()),
                         "Content-Type",
@@ -181,8 +197,8 @@ pub(crate) async fn dyn_reply(
                     ),
                     "Content-Encoding",
                     BR,
-                ))),
-                ReplyHeaders::Zstd => Ok(Box::new(warp::reply::with_header(
+                )))),
+                ReplyHeaders::Zstd => Ok(Box::new(with_isolation(warp::reply::with_header(
                     warp::reply::with_header(
                         warp::reply::Response::new(buffer.into()),
                         "Content-Type",
@@ -190,8 +206,8 @@ pub(crate) async fn dyn_reply(
                     ),
                     "Content-Encoding",
                     ZSTD,
-                ))),
-                ReplyHeaders::AllowOrigin => Ok(Box::new(warp::reply::with_header(
+                )))),
+                ReplyHeaders::AllowOrigin => Ok(Box::new(with_isolation(warp::reply::with_header(
                     warp::reply::with_header(
                         warp::reply::Response::new(buffer.into()),
                         "Content-Type",
@@ -199,8 +215,8 @@ pub(crate) async fn dyn_reply(
                     ),
                     "Access-Control-Allow-Origin",
                     "*",
-                ))),
-                ReplyHeaders::ZstdWithAllowOrigin => Ok(Box::new(warp::reply::with_header(
+                )))),
+                ReplyHeaders::ZstdWithAllowOrigin => Ok(Box::new(with_isolation(warp::reply::with_header(
                     warp::reply::with_header(
                         warp::reply::with_header(
                             warp::reply::Response::new(buffer.into()),
@@ -212,8 +228,8 @@ pub(crate) async fn dyn_reply(
                     ),
                     "Access-Control-Allow-Origin",
                     "*",
-                ))),
-                ReplyHeaders::BrWithAllowOrigin => Ok(Box::new(warp::reply::with_header(
+                )))),
+                ReplyHeaders::BrWithAllowOrigin => Ok(Box::new(with_isolation(warp::reply::with_header(
                     warp::reply::with_header(
                         warp::reply::with_header(
                             warp::reply::Response::new(buffer.into()),
@@ -225,7 +241,7 @@ pub(crate) async fn dyn_reply(
                     ),
                     "Access-Control-Allow-Origin",
                     "*",
-                ))),
+                )))),
             }
         }
         Err(_) => {
