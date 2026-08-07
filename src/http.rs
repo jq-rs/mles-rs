@@ -38,17 +38,52 @@ pub(crate) async fn dyn_hreply(
 // crossOriginIsolated (needed by SharedArrayBuffer + WebAssembly threads).                                                                                                                       
 // COOP/COEP gate the top-level document; CORP authorises every same-origin                                                                                                                       
 // sub-resource (JS/CSS/WASM) so COEP doesn't block them.                                                                                                                                         
-fn with_isolation<T: warp::Reply>(reply: T) -> impl warp::Reply {                                                                                                                                 
-    warp::reply::with_header(                                                                                                                                                                     
-        warp::reply::with_header(                                                                                                                                                          
-            warp::reply::with_header(reply, "Cross-Origin-Opener-Policy", "same-origin"),                                                                                                  
-            "Cross-Origin-Embedder-Policy",                                                                                                                                                
-            "require-corp",                                                                                                                                                                
-        ),                                                                                                                                                                                 
+// Also stacks the baseline security headers via with_security_headers so
+// every HTTPS reply gets the full hardening set.
+fn with_isolation<T: warp::Reply>(reply: T) -> impl warp::Reply {
+     warp::reply::with_header(
+         warp::reply::with_header(
+            warp::reply::with_header(
+                with_security_headers(reply),
+                "Cross-Origin-Opener-Policy",
+                "same-origin",
+            ),
+             "Cross-Origin-Embedder-Policy",
+             "require-corp",
+         ),
         "Cross-Origin-Resource-Policy",                                                                                                                                                    
         "same-origin",                                                                                                                                                                     
     )                                                                                                                                                                                      
 }                                                                                                                                                                                          
+
+
+// Baseline security hardening headers applied to every HTTPS file response.
+// - HSTS pins the browser to HTTPS for a year so an active MITM on the first
+//   subsequent request can't downgrade with a rewritten redirect.
+// - nosniff stops the browser from MIME-sniffing responses away from the
+//   declared Content-Type (mles-rs falls back to */* for unknown extensions).
+// - DENY blocks the site from being loaded in iframes (clickjacking).
+// - strict-origin-when-cross-origin keeps full URL paths (which may contain
+//   licenseHash/txHash query strings) from leaking to third-party links.
+fn with_security_headers<T: warp::Reply>(reply: T) -> impl warp::Reply {
+    warp::reply::with_header(
+        warp::reply::with_header(
+            warp::reply::with_header(
+                warp::reply::with_header(
+                    reply,
+                    "Strict-Transport-Security",
+                    "max-age=31536000; includeSubDomains",
+                ),
+                "X-Content-Type-Options",
+                "nosniff",
+            ),
+            "X-Frame-Options",
+            "DENY",
+        ),
+        "Referrer-Policy",
+        "strict-origin-when-cross-origin",
+    )
+}
 
 pub(crate) async fn dyn_reply(
     tuple: (
