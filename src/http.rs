@@ -72,7 +72,7 @@ fn with_security_headers<T: warp::Reply>(reply: T) -> impl warp::Reply {
                 warp::reply::with_header(
                     reply,
                     "Strict-Transport-Security",
-                    "max-age=31536000; includeSubDomains",
+                    "max-age=31536000; includeSubDomains; preload"
                 ),
                 "X-Content-Type-Options",
                 "nosniff",
