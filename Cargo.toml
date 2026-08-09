@@ -41,6 +41,7 @@ siphasher = "1.0.0"
 http-types = "2"
 lru = "0.16"
 governor = "0.6"
+httpdate = "1"
 
 [profile.release]
 lto = true
