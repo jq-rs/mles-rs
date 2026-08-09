@@ -122,19 +122,20 @@ impl CompressionCache {
         };
 
         // Remove existing entry if present (to update size tracking)
-        if let Some(cache) = self.cache.as_mut() {
-            if let Some(old_entry) = cache.pop(&key) {
-                self.current_size -= old_entry.size;
-            }
+        if let Some(cache) = self.cache.as_mut()
+            && let Some(old_entry) = cache.pop(&key)
+        {
+            self.current_size -= old_entry.size;
         }
 
         self.make_space(size);
 
-        if self.max_size > 0 && self.current_size + size <= self.max_size {
-            if let Some(cache) = self.cache.as_mut() {
-                self.current_size += size;
-                cache.put(key, CacheEntry::new(data));
-            }
+        if self.max_size > 0
+            && self.current_size + size <= self.max_size
+            && let Some(cache) = self.cache.as_mut()
+        {
+            self.current_size += size;
+            cache.put(key, CacheEntry::new(data));
         }
     }
 

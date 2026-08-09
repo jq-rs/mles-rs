@@ -37,12 +37,3 @@ pub(crate) enum WsEvent {
     Logoff(u64, u64),
 }
 
-#[derive(Debug)]
-pub(crate) enum ReplyHeaders {
-    NONE,
-    Zstd,
-    Br,
-    AllowOrigin,
-    ZstdWithAllowOrigin,
-    BrWithAllowOrigin,
-}
