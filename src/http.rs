@@ -126,14 +126,13 @@ type DynReplyArgs = (
     String,         // domain
     String,         // www_root
     warp::path::Tail,
-    Arc<Semaphore>,
     cache::SharedCache,
 );
 
 pub(crate) async fn dyn_reply(
     tuple: DynReplyArgs,
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (encoding, ims, uri, domain, www_root, tail, semaphore, cache) = tuple;
+    let (encoding, ims, uri, domain, www_root, tail, cache) = tuple;
 
     if uri != domain {
         return Err(warp::reject::not_found());
@@ -144,9 +143,6 @@ pub(crate) async fn dyn_reply(
     }
     let file_path = format!("{}/{}/{}", www_root, uri, path);
 
-    let _permit = semaphore.acquire().await.unwrap();
-
-    log::debug!("Avail file permits {}", semaphore.available_permits());
     log::debug!("Accessing {file_path}...");
 
     // Stat first: need mtime for 304 evaluation before we decide to read.
@@ -282,12 +278,10 @@ pub(crate) fn create_http_redirect_routes(
 pub(crate) fn create_http_file_routes(
     domains: Vec<String>,
     www_root_dir: PathBuf,
-    semaphore: Arc<Semaphore>,
     compression_cache: cache::SharedCache,
 ) -> BoxedFilter<(Box<dyn warp::Reply>,)> {
     let mut vindex = Vec::new();
     for domain in domains {
-        let sem = semaphore.clone();
         let www_root = www_root_dir.clone();
         let cache = compression_cache.clone();
         let index = warp::get()
@@ -307,7 +301,6 @@ pub(crate) fn create_http_file_routes(
                         domain.clone(),
                         www_root.to_str().unwrap().to_string(),
                         path,
-                        sem.clone(),
                         cache.clone(),
                     )
                 },
@@ -327,6 +320,8 @@ pub(crate) fn create_http_file_routes(
 pub(crate) fn spawn_http_redirect_server(
     domains: Vec<String>,
     rate_limiter: Option<Arc<crate::server::IpRateLimiter>>,
+    semaphore: Arc<Semaphore>,
+    per_ip: Arc<crate::server::PerIpLimiter>,
 ) {
     tokio::spawn(async move {
         let addr = format!("[{}]:{}", Ipv6Addr::UNSPECIFIED, 80)
@@ -334,16 +329,9 @@ pub(crate) fn spawn_http_redirect_server(
             .unwrap();
         if let Ok(tcp_incoming) = crate::server::create_tcp_incoming(addr) {
             let hindex = create_http_redirect_routes(domains);
-            match rate_limiter {
-                Some(limiter) => {
-                    let limited =
-                        crate::server::rate_limit_incoming(tcp_incoming, limiter);
-                    crate::server::serve_http(limited, hindex).await;
-                }
-                None => {
-                    crate::server::serve_http(tcp_incoming, hindex).await;
-                }
-            }
+            let policed =
+                crate::server::enforce_ip_policy(tcp_incoming, rate_limiter, per_ip);
+            crate::server::serve_http(policed, hindex, semaphore).await;
         }
     });
 }

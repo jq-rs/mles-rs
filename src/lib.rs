@@ -19,6 +19,7 @@ use std::net::Ipv6Addr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -27,6 +28,10 @@ use warp::filters::BoxedFilter;
 
 const TASK_BUF: usize = 16;
 const DEFAULT_CACHE_SIZE_MB: usize = 24;
+// Governor's keyed store never evicts on its own — call `retain_recent()`
+// periodically so an attacker who cycles through many source IPs (or IPv6
+// /64 prefixes) can't grow the state map without bound.
+const RATE_LIMIT_GC_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Configuration for the Mles server
 #[derive(Debug, Clone)]
@@ -57,6 +62,10 @@ pub struct ServerConfig {
     /// Per-IP TCP-accept rate limit (connections per minute). `None` disables.
     /// Applies to both the TLS listener and the HTTP redirect listener.
     pub rate_limit: Option<NonZeroU32>,
+    /// Maximum concurrent live connections per source (v4 address or v6 /64
+    /// prefix). Bounds an attacker who exhausts the arrival-rate burst then
+    /// keeps connections idle-alive under the header-read timeout.
+    pub per_ip_conn_limit: NonZeroU32,
 }
 
 /// Run the Mles server with the given configuration
@@ -68,7 +77,10 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         Some(size) => size,
         None => DEFAULT_CACHE_SIZE_MB,
     };
-    let semaphore = Arc::new(Semaphore::new(filelimit));
+    // Two independent semaphores so a stall on the redirect port can't
+    // exhaust the connection budget that TLS clients rely on.
+    let tls_semaphore = Arc::new(Semaphore::new(filelimit));
+    let redirect_semaphore = Arc::new(Semaphore::new(filelimit));
 
     // Create WebSocket event channel
     let (tx, rx) = mpsc::channel::<types::WsEvent>(TASK_BUF);
@@ -88,10 +100,24 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     // by hammering port 80.
     let rate_limiter = config.rate_limit.map(server::create_rate_limiter);
 
-    let tcp_incoming: futures_util::stream::BoxStream<'static, _> = match rate_limiter.clone() {
-        Some(limiter) => server::rate_limit_incoming(tcp_incoming, limiter),
-        None => futures_util::StreamExt::boxed(tcp_incoming),
-    };
+    // Governor doesn't age out cold keys — do it ourselves.
+    if let Some(limiter) = rate_limiter.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(RATE_LIMIT_GC_INTERVAL);
+            loop {
+                interval.tick().await;
+                limiter.retain_recent();
+            }
+        });
+    }
+
+    // Per-IP concurrent-connection cap — separate instances for TLS and the
+    // HTTP redirect so a flood on one port doesn't consume the other's quota.
+    let tls_per_ip = server::PerIpLimiter::new(config.per_ip_conn_limit);
+    let redirect_per_ip = server::PerIpLimiter::new(config.per_ip_conn_limit);
+
+    let tcp_incoming =
+        server::enforce_ip_policy(tcp_incoming, rate_limiter.clone(), tls_per_ip);
 
     // Create TLS incoming stream
     let tls_incoming = server::create_tls_incoming(
@@ -100,23 +126,29 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         config.cache,
         config.staging,
         tcp_incoming,
-        semaphore.clone(),
     );
 
     // Spawn HTTP redirect server if requested
     if config.redirect {
-        http::spawn_http_redirect_server(config.domains.clone(), rate_limiter.clone());
+        http::spawn_http_redirect_server(
+            config.domains.clone(),
+            rate_limiter.clone(),
+            redirect_semaphore,
+            redirect_per_ip,
+        );
     }
 
     // Create WebSocket handler
     let ws = websocket::create_ws_handler(tx.clone());
 
     let compression_cache = cache::create_cache(max_cache_size_mb);
-    // Create HTTP file serving routes with configured cache size
+    // Create HTTP file serving routes with configured cache size. Per-request
+    // gating happens at the connection layer (serve_tls holds one permit per
+    // live connection) — HTTP/1.1 serves requests serially on a connection,
+    // so the connection cap already bounds concurrent file I/O.
     let index = http::create_http_file_routes(
         config.domains,
         www_root_dir,
-        semaphore.clone(),
         compression_cache,
     );
 
@@ -131,7 +163,7 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
     let tlsroutes = ws.or(http_routes);
 
     // Serve TLS connections
-    server::serve_tls(tls_incoming, tlsroutes).await;
+    server::serve_tls(tls_incoming, tlsroutes, tls_semaphore).await;
 
     unreachable!()
 }
