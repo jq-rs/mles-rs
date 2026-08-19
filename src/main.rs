@@ -15,6 +15,9 @@ use std::path::PathBuf;
 const HISTORY_LIMIT: &str = "200";
 const MAX_FILES_OPEN: &str = "256";
 const TLS_PORT: &str = "443";
+// Room for a corporate NAT or IPv6 /64 with many legit users, but well
+// below the connection-semaphore cap so no single source can starve others.
+const PER_IP_CONN_LIMIT: &str = "32";
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -67,6 +70,13 @@ struct Args {
     /// Omit to disable.
     #[arg(long = "rate-limit", value_parser = clap::value_parser!(u32).range(1..))]
     rate_limit: Option<u32>,
+
+    /// Maximum concurrent live connections per source IP (or IPv6 /64 prefix).
+    /// Bounds an attacker who exhausts the rate-limit burst then keeps
+    /// connections open under the header-read timeout. Applies to both TLS
+    /// and HTTP redirect listeners with independent counters.
+    #[arg(long = "per-ip-limit", default_value = PER_IP_CONN_LIMIT, value_parser = clap::value_parser!(u32).range(1..))]
+    per_ip_limit: u32,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -103,6 +113,8 @@ async fn main() -> io::Result<()> {
         max_cache_size_mb: args.compression_cache,
         proxies,
         rate_limit: args.rate_limit.and_then(NonZeroU32::new),
+        per_ip_conn_limit: NonZeroU32::new(args.per_ip_limit)
+            .expect("clap enforces per-ip-limit >= 1"),
     };
 
     mles::run(config).await
