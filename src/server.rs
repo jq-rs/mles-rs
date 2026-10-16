@@ -45,9 +45,11 @@ pub(crate) fn create_rate_limiter(per_minute: NonZeroU32) -> Arc<IpRateLimiter> 
     Arc::new(RateLimiter::keyed(Quota::per_minute(per_minute)))
 }
 
-fn peer_ip(stream: &TcpStream) -> Option<IpAddr> {
+/// The client's address on an accepted connection, normalised: the listener
+/// is dual-stack, so IPv4 clients arrive as IPv4-mapped IPv6 (::ffff:a.b.c.d).
+fn peer_socket_addr(stream: &TcpStream) -> Option<SocketAddr> {
     let addr = stream.peer_addr().ok()?;
-    Some(rate_limit_key(addr.ip()))
+    Some(SocketAddr::new(addr.ip().to_canonical(), addr.port()))
 }
 
 // Normalise the peer address into the key we actually want to rate-limit on.
@@ -128,7 +130,37 @@ impl Drop for PerIpPermit {
 pub(crate) struct PermittedStream<T> {
     inner: T,
     _permit: PerIpPermit,
+    peer: Option<SocketAddr>,
 }
+
+/// The client's address of an accepted connection, through the TLS layers
+/// around it. The reverse proxy passes it upstream in `X-Forwarded-For`.
+pub(crate) trait PeerAddr {
+    fn peer_addr(&self) -> Option<SocketAddr>;
+}
+
+impl<T> PeerAddr for PermittedStream<T> {
+    fn peer_addr(&self) -> Option<SocketAddr> {
+        self.peer
+    }
+}
+
+impl<T: PeerAddr> PeerAddr for tokio_util::compat::Compat<T> {
+    fn peer_addr(&self) -> Option<SocketAddr> {
+        self.get_ref().peer_addr()
+    }
+}
+
+impl<T: PeerAddr> PeerAddr for rustls_acme::futures_rustls::server::TlsStream<T> {
+    fn peer_addr(&self) -> Option<SocketAddr> {
+        self.get_ref().0.peer_addr()
+    }
+}
+
+/// Request extension carrying the connection's client address
+/// (see `proxy::create_proxy_routes`).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ClientAddr(pub SocketAddr);
 
 impl<T: AsyncRead + Unpin> AsyncRead for PermittedStream<T> {
     fn poll_read(
@@ -192,7 +224,10 @@ where
                 // Fall back to an unspecified key when peer_addr() fails — a
                 // single shared bucket for those cases, not a bypass. Rare
                 // in practice (usually means the socket already closed).
-                let key = peer_ip(&stream).unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+                let peer = peer_socket_addr(&stream);
+                let key = peer
+                    .map(|a| rate_limit_key(a.ip()))
+                    .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
                 if let Some(limiter) = rate_limiter.as_ref()
                     && limiter.check_key(&key).is_err()
@@ -212,6 +247,7 @@ where
                 Some(Ok(PermittedStream {
                     inner: stream,
                     _permit: permit,
+                    peer,
                 }))
             }
         })
@@ -235,11 +271,14 @@ pub(crate) fn create_tls_incoming<S, T>(
     staging: bool,
     tcp_incoming: S,
 ) -> impl futures_util::Stream<
-    Item = Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, std::io::Error>,
+    Item = Result<
+        impl tokio::io::AsyncRead + tokio::io::AsyncWrite + PeerAddr + Unpin,
+        std::io::Error,
+    >,
 >
 where
     S: futures_util::Stream<Item = Result<T, io::Error>> + Send + Unpin + 'static,
-    T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    T: AsyncRead + AsyncWrite + PeerAddr + Unpin + Send + 'static,
 {
     AcmeConfig::new(domains)
         .contact(email.iter().map(|e| format!("mailto:{}", e)))
@@ -291,7 +330,7 @@ where
 pub(crate) async fn serve_tls<S, T, E, F>(tls_incoming: S, routes: F, semaphore: Arc<Semaphore>)
 where
     S: futures_util::Stream<Item = Result<T, E>>,
-    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + PeerAddr + Unpin + Send + 'static,
     E: std::fmt::Debug,
     F: warp::Filter + Clone + Send + Sync + 'static,
     F::Extract: warp::Reply,
@@ -306,8 +345,19 @@ where
                     Ok(p) => p,
                     Err(_) => break, // semaphore closed → shutdown
                 };
+                // The client's address rides on every request of this
+                // connection, for the reverse proxy's X-Forwarded-For.
+                let peer = stream.peer_addr();
                 let io = TokioIo::new(stream);
-                let service_clone = TowerToHyperService::new(service.clone());
+                let inner = TowerToHyperService::new(service.clone());
+                let service_clone = hyper::service::service_fn(
+                    move |mut req: hyper::Request<hyper::body::Incoming>| {
+                        if let Some(addr) = peer {
+                            req.extensions_mut().insert(ClientAddr(addr));
+                        }
+                        hyper::service::Service::call(&inner, req)
+                    },
+                );
 
                 tokio::spawn(async move {
                     let _permit = permit; // held for the whole connection lifetime
@@ -328,5 +378,73 @@ where
                 log::debug!("TLS connection error: {:?}", err);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// The real accept path (dual-stack listener, IP policy, serve_tls,
+    /// proxy routes) over plain TCP: TLS only passes the address through.
+    #[tokio::test]
+    async fn a_proxied_request_reaches_the_upstream_with_the_client_address() {
+        // Upstream: answers with the X-Forwarded-For headers it received.
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = upstream.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = upstream.accept().await.unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = s.read(&mut chunk).await.unwrap();
+                assert!(n > 0);
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            let xff: Vec<String> = String::from_utf8_lossy(&buf)
+                .lines()
+                .filter(|l| l.to_ascii_lowercase().starts_with("x-forwarded-for:"))
+                .map(|l| l[l.find(':').unwrap() + 1..].trim().to_string())
+                .collect();
+            let body = xff.join("|");
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            s.write_all(resp.as_bytes()).await.unwrap();
+        });
+
+        // The production dual-stack listener; IPv4 where the host has no IPv6.
+        let incoming = match create_tcp_incoming("[::]:0".parse().unwrap()) {
+            Ok(l) => l,
+            Err(_) => {
+                TcpListenerStream::new(tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap())
+            }
+        };
+        let port = incoming.as_ref().local_addr().unwrap().port();
+        let permitted = enforce_ip_policy(
+            incoming,
+            None,
+            PerIpLimiter::new(NonZeroU32::new(4).unwrap()),
+        );
+        let routes = crate::proxy::create_proxy_routes(
+            &[("keeper".to_string(), format!("http://{upstream_addr}"))],
+            crate::proxy::create_client(),
+        );
+        tokio::spawn(serve_tls(permitted, routes, Arc::new(Semaphore::new(4))));
+
+        // An IPv4 client on the dual-stack listener, with a forged entry.
+        let mut c = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        c.write_all(
+            b"GET /keeper/verify HTTP/1.1\r\nHost: x\r\nX-Forwarded-For: 6.6.6.6\r\nConnection: close\r\n\r\n",
+        )
+        .await
+        .unwrap();
+        let mut resp = String::new();
+        c.read_to_string(&mut resp).await.unwrap();
+        assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+        assert!(resp.ends_with("\r\n\r\n6.6.6.6, 127.0.0.1"), "{resp}");
     }
 }
