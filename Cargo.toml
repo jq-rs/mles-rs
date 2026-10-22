@@ -1,6 +1,6 @@
 [package]
 name = "mles"
-version = "2.9.2"
+version = "2.9.3"
 authors = ["jq-rs"]
 edition = "2024"
 description = "Mles, a distributed publish-subscribe data server"
@@ -41,6 +41,7 @@ siphasher = "1.0.0"
 http-types = "2"
 lru = "0.16"
 governor = "0.6"
+httpdate = "1"
 
 [profile.release]
 lto = true

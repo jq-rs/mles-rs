@@ -44,9 +44,11 @@ pub(crate) fn add_message(msg: Message, limit: u32, queue: &mut VecDeque<Message
 
 pub(crate) fn spawn_event_loop(mut rx: ReceiverStream<WsEvent>, limit: u32) {
     tokio::spawn(async move {
+        type WsSender = Sender<Option<Result<Message, warp::Error>>>;
+        type ChannelSenders = HashMap<u64, WsSender>;
+
         let mut msg_db: HashMap<u64, ChannelInfo> = HashMap::new();
-        let mut ch_db: HashMap<u64, HashMap<u64, Sender<Option<Result<Message, warp::Error>>>>> =
-            HashMap::new();
+        let mut ch_db: HashMap<u64, ChannelSenders> = HashMap::new();
 
         // Create cleanup interval
         let mut cleanup_interval = time::interval(CLEANUP_INTERVAL);
@@ -59,11 +61,11 @@ pub(crate) fn spawn_event_loop(mut rx: ReceiverStream<WsEvent>, limit: u32) {
                     let threshold = Duration::from_secs(CHANNEL_CLEANUP_DAYS * 24 * 60 * 60);
 
                     msg_db.retain(|&ch, info| {
-                        if let Ok(elapsed) = now.duration_since(info.last_activity) {
-                            if elapsed > threshold {
-                                log::info!("Cleaning up inactive channel {ch:x}");
-                                return false; // Remove channel
-                            }
+                        if let Ok(elapsed) = now.duration_since(info.last_activity)
+                            && elapsed > threshold
+                        {
+                            log::info!("Cleaning up inactive channel {ch:x}");
+                            return false; // Remove channel
                         }
                         true // Keep channel
                     });
@@ -300,7 +302,7 @@ pub(crate) fn create_ws_handler(
                     while !is_closed_ping.load(Ordering::SeqCst) {
                         interval.tick().await;
 
-                        if let Err(_) = tx2_inner.send(Some(Ok(Message::ping(Vec::new())))).await {
+                        if tx2_inner.send(Some(Ok(Message::ping(Vec::new())))).await.is_err() {
                             break;
                         }
 
