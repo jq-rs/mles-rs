@@ -4,6 +4,16 @@ All notable changes to Mles project will be documented in this file after 1.0-re
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.9.3]
+
+Performance and ratelimiting improvements.
+
+X-Forward-For support.
+
+Allow to compress js-files.
+
+CORS headers by default.
+
 ## [2.8.1]
 
 Invalidate LRU cache when file metadata changes.
