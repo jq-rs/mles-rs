@@ -56,6 +56,16 @@ fn with_isolation<T: warp::Reply>(reply: T) -> impl warp::Reply {
     )
 }
 
+// The security headers go on every file response; the cross-origin ones
+// (isolation above, and Access-Control-Allow-Origin on JSON) only with --cors.
+fn with_file_headers<T: warp::Reply + 'static>(reply: T, cors: bool) -> Box<dyn warp::Reply> {
+    if cors {
+        Box::new(with_isolation(reply))
+    } else {
+        Box::new(with_security_headers(reply))
+    }
+}
+
 // Baseline security hardening headers applied to every HTTPS file response.
 // - HSTS pins the browser to HTTPS for a year so an active MITM on the first
 //   subsequent request can't downgrade with a rewritten redirect.
@@ -127,12 +137,13 @@ type DynReplyArgs = (
     String,         // www_root
     warp::path::Tail,
     cache::SharedCache,
+    bool, // cors
 );
 
 pub(crate) async fn dyn_reply(
     tuple: DynReplyArgs,
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    let (encoding, ims, uri, domain, www_root, tail, cache) = tuple;
+    let (encoding, ims, uri, domain, www_root, tail, cache, cors) = tuple;
 
     if uri != domain {
         return Err(warp::reject::not_found());
@@ -170,7 +181,7 @@ pub(crate) async fn dyn_reply(
             .header("Last-Modified", &last_modified)
             .body(Vec::<u8>::new())
             .unwrap_or_else(|_| Response::new(Vec::new()));
-        return Ok(Box::new(with_isolation(resp)));
+        return Ok(with_file_headers(resp, cors));
     }
 
     let ctype = content_type(&file_path);
@@ -245,12 +256,12 @@ pub(crate) async fn dyn_reply(
     if let Some(enc) = chosen_encoding {
         builder = builder.header("Content-Encoding", enc);
     }
-    if ctype.contains("json") {
+    if cors && ctype.contains("json") {
         builder = builder.header("Access-Control-Allow-Origin", "*");
     }
 
     match builder.body(body_bytes.unwrap()) {
-        Ok(r) => Ok(Box::new(with_isolation(r))),
+        Ok(r) => Ok(with_file_headers(r, cors)),
         Err(_) => Ok(err500()),
     }
 }
@@ -279,6 +290,7 @@ pub(crate) fn create_http_file_routes(
     domains: Vec<String>,
     www_root_dir: PathBuf,
     compression_cache: cache::SharedCache,
+    cors: bool,
 ) -> BoxedFilter<(Box<dyn warp::Reply>,)> {
     let mut vindex = Vec::new();
     for domain in domains {
@@ -302,6 +314,7 @@ pub(crate) fn create_http_file_routes(
                         www_root.to_str().unwrap().to_string(),
                         path,
                         cache.clone(),
+                        cors,
                     )
                 },
             )
