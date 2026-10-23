@@ -66,6 +66,11 @@ pub struct ServerConfig {
     /// prefix). Bounds an attacker who exhausts the arrival-rate burst then
     /// keeps connections idle-alive under the header-read timeout.
     pub per_ip_conn_limit: NonZeroU32,
+    /// Add cross-origin headers to files served from the web root: COOP,
+    /// COEP and CORP on every file (cross-origin isolation, needed by
+    /// SharedArrayBuffer and WebAssembly threads), and
+    /// `Access-Control-Allow-Origin: *` on JSON files.
+    pub cors: bool,
 }
 
 /// Run the Mles server with the given configuration
@@ -150,6 +155,7 @@ pub async fn run(config: ServerConfig) -> io::Result<()> {
         config.domains,
         www_root_dir,
         compression_cache,
+        config.cors,
     );
 
     // Combine all routes

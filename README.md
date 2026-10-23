@@ -76,6 +76,13 @@ Options:
           handshake. IPv4-mapped IPv6 addresses are normalized so a client
           counts as one IP regardless of socket family. Omit to disable.
 
+      --cors
+          Add cross-origin headers to files served from the www-root:
+          Cross-Origin-Opener-Policy, Cross-Origin-Embedder-Policy and
+          Cross-Origin-Resource-Policy on every file (cross-origin isolation,
+          needed by SharedArrayBuffer and WebAssembly threads), and
+          Access-Control-Allow-Origin: * on JSON files. Off by default.
+
   -h, --help
           Print help
 ```

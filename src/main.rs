@@ -77,6 +77,13 @@ struct Args {
     /// and HTTP redirect listeners with independent counters.
     #[arg(long = "per-ip-limit", default_value = PER_IP_CONN_LIMIT, value_parser = clap::value_parser!(u32).range(1..))]
     per_ip_limit: u32,
+
+    /// Add cross-origin headers to files served from the web root: COOP,
+    /// COEP and CORP on every file (cross-origin isolation, needed by
+    /// SharedArrayBuffer and WebAssembly threads), and
+    /// `Access-Control-Allow-Origin: *` on JSON files. Off by default.
+    #[arg(long)]
+    cors: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -115,6 +122,7 @@ async fn main() -> io::Result<()> {
         rate_limit: args.rate_limit.and_then(NonZeroU32::new),
         per_ip_conn_limit: NonZeroU32::new(args.per_ip_limit)
             .expect("clap enforces per-ip-limit >= 1"),
+        cors: args.cors,
     };
 
     mles::run(config).await
