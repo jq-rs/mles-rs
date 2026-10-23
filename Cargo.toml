@@ -46,3 +46,6 @@ httpdate = "1"
 [profile.release]
 lto = true
 strip = true
+
+[dev-dependencies]
+warp = { version = "0.4", features = ["websocket", "test"] }
