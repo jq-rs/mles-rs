@@ -83,9 +83,9 @@ pub fn create_proxy_routes(
                             body,
                         )
                         .await
-                        .map_err(|e| {
+                        .or_else(|e| {
                             log::error!("[proxy] {}", e);
-                            warp::reject::reject()
+                            Ok::<_, warp::Rejection>(upstream_unavailable())
                         })
                     }
                 },
@@ -100,6 +100,20 @@ pub fn create_proxy_routes(
     }
 
     combined.expect("create_proxy_routes called with empty rules")
+}
+
+/// What a client gets when the upstream can't be reached or drops the
+/// connection: a JSON 502 it can retry, not a rejection that falls through to
+/// the static routes (which answer a POST with "405 HTTP method not allowed").
+fn upstream_unavailable() -> Box<dyn warp::Reply> {
+    let body = r#"{"error":"The service behind this proxy is unavailable","code":"UPSTREAM_UNAVAILABLE","retryable":true}"#;
+    let mut reply = warp::reply::Response::new(body.into());
+    *reply.status_mut() = warp::http::StatusCode::BAD_GATEWAY;
+    reply.headers_mut().insert(
+        warp::http::header::CONTENT_TYPE,
+        warp::http::HeaderValue::from_static("application/json"),
+    );
+    Box::new(reply)
 }
 
 async fn forward(
@@ -251,6 +265,23 @@ mod tests {
         let h = with_forwarded_for(headers(&["10.0.0.1", "192.0.2.7"]), Some(ip));
         let all: Vec<_> = h.get_all(X_FORWARDED_FOR).iter().collect();
         assert_eq!(all, ["10.0.0.1, 192.0.2.7, 81.2.3.4"]);
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_upstream_is_a_json_502_not_a_fallthrough() {
+        // Nothing listens on port 1: the connection is refused.
+        let routes = create_proxy_routes(&[("api/keeper".to_string(), "http://127.0.0.1:1".to_string())], create_client());
+        let res = warp::test::request()
+            .method("POST")
+            .path("/api/keeper/prove/deploy")
+            .body("{}")
+            .reply(&routes)
+            .await;
+        assert_eq!(res.status(), 502);
+        assert_eq!(res.headers()["content-type"], "application/json");
+        let body: serde_json::Value = serde_json::from_slice(res.body()).unwrap();
+        assert_eq!(body["code"], "UPSTREAM_UNAVAILABLE");
+        assert_eq!(body["retryable"], true);
     }
 
     #[test]
