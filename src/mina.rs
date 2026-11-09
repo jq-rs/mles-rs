@@ -134,13 +134,12 @@ pub(crate) async fn generate_status_page() -> String {
         };
 
         while let Some(word) = words.next() {
-            if word == "time" {
-                if let Some(ms_value) = words.next() {
-                    if let Ok(parsed_time) = ms_value.parse::<u64>() {
-                        last_proof_time = Some(parsed_time);
-                        break;
-                    }
-                }
+            if word == "time"
+                && let Some(ms_value) = words.next()
+                && let Ok(parsed_time) = ms_value.parse::<u64>()
+            {
+                last_proof_time = Some(parsed_time);
+                break;
             }
         }
 
@@ -179,9 +178,9 @@ pub(crate) async fn generate_status_page() -> String {
         ));
     }
 
-    html.push_str(&format!(
-        r#"<div id="mina-price" class="status">Mina Price: <span class="grey">Loading...</span></div>"#
-    ));
+    html.push_str(
+        r#"<div id="mina-price" class="status">Mina Price: <span class="grey">Loading...</span></div>"#,
+    );
 
     html.push_str(
         r#"
@@ -196,25 +195,25 @@ pub(crate) async fn generate_status_page() -> String {
 pub(crate) async fn check_file_status(path: &str) -> (bool, String, String) {
     match fs::metadata(path).await {
         Ok(metadata) => {
-            if let Ok(modified) = metadata.modified() {
-                if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
-                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-                    let elapsed_secs = now.as_secs() - duration.as_secs();
+            if let Ok(modified) = metadata.modified()
+                && let Ok(duration) = modified.duration_since(UNIX_EPOCH)
+            {
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                let elapsed_secs = now.as_secs() - duration.as_secs();
 
-                    let content = match fs::read_to_string(path).await {
-                        Ok(file_content) => file_content,
-                        Err(_) => "Error reading file content".to_string(),
-                    };
+                let content = match fs::read_to_string(path).await {
+                    Ok(file_content) => file_content,
+                    Err(_) => "Error reading file content".to_string(),
+                };
 
-                    if elapsed_secs <= 60 {
-                        return (true, format!("OK, {} seconds ago", elapsed_secs), content);
-                    } else {
-                        return (
-                            false,
-                            format!("Failed, {} seconds ago", elapsed_secs),
-                            content,
-                        );
-                    }
+                if elapsed_secs <= 60 {
+                    return (true, format!("OK, {elapsed_secs} seconds ago"), content);
+                } else {
+                    return (
+                        false,
+                        format!("Failed, {elapsed_secs} seconds ago"),
+                        content,
+                    );
                 }
             }
             (
