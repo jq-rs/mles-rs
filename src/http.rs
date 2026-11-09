@@ -6,7 +6,6 @@
  */
 use crate::cache;
 use crate::compression::{BR, ZSTD, compress};
-use http_types::mime;
 use std::net::Ipv6Addr;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -96,15 +95,9 @@ fn with_security_headers<T: warp::Reply>(reply: T) -> impl warp::Reply {
 
 fn content_type(file_path: &str) -> String {
     let ext = file_path.rsplit('.').next().unwrap_or("");
-    match mime::Mime::from_extension(ext) {
-        Some(m) => format!("{}/{}", m.basetype(), m.subtype()),
-        None => match ext {
-            "png" => format!("{}/{}", mime::PNG.basetype(), mime::PNG.subtype()),
-            "jpg" => format!("{}/{}", mime::JPEG.basetype(), mime::JPEG.subtype()),
-            "ico" => format!("{}/{}", mime::ICO.basetype(), mime::ICO.subtype()),
-            "apk" => "application/vnd.android.package-archive".to_string(),
-            _ => format!("{}/{}", mime::ANY.basetype(), mime::ANY.subtype()),
-        },
+    match mime_guess::from_ext(ext).first() {
+        Some(m) => m.essence_str().to_string(),
+        None => "*/*".to_string(),
     }
 }
 
@@ -359,6 +352,26 @@ pub(crate) fn spawn_http_redirect_server(
 #[cfg(test)]
 mod tests {
     use super::resolve_file;
+
+    #[test]
+    fn content_types() {
+        for (file, ctype) in [
+            ("index.html", "text/html"),
+            ("app.css", "text/css"),
+            ("app.js", "text/javascript"),
+            ("data.json", "application/json"),
+            ("prover.wasm", "application/wasm"),
+            ("logo.svg", "image/svg+xml"),
+            ("icon.png", "image/png"),
+            ("photo.jpg", "image/jpeg"),
+            ("favicon.ico", "image/x-icon"),
+            ("font.woff2", "font/woff2"),
+            ("llms.txt", "text/plain"),
+            ("app.apk", "application/vnd.android.package-archive"),
+        ] {
+            assert_eq!(super::content_type(file), ctype, "{file}");
+        }
+    }
 
     #[tokio::test]
     async fn a_directory_serves_its_index() {

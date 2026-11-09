@@ -20,11 +20,11 @@ name = "mles"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version="1.48", features = ["full"] }
-tokio-stream = { version="0.1.17", features = ["net"] }
-tokio-util = { version="0.7.16", features = ["compat"] }
+tokio = { version="1.54", features = ["full"] }
+tokio-stream = { version="0.1.19", features = ["net"] }
+tokio-util = { version="0.7.20", features = ["compat"] }
 tokio-rustls = "0.26"
-rustls-acme = { version="0.14", default-features = false, features = ["tokio", "aws-lc-rs", "webpki-roots"] }
+rustls-acme = { version="0.15", default-features = false, features = ["tokio", "aws-lc-rs", "webpki-roots"] }
 warp = { version = "0.4", features = ["websocket"] }
 hyper = { version = "1", features = ["server", "http1", "client"] }
 hyper-util = { version = "0.1", features = ["server", "tokio", "client-legacy", "http1"] }
@@ -33,14 +33,14 @@ bytes = "1"
 simple_logger = "5"
 clap = { version = "4", features = ["derive"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
-log = "0.4.20"
+log = "0.4.35"
 serde = { version = "1.0", features = ["derive"] }
-async-compression = { version = "0.4.6", features = ["tokio", "brotli", "zstd"] }
+async-compression = { version = "0.4.52", features = ["tokio", "brotli", "zstd"] }
 serde_json = "1.0"
 siphasher = "1.0.0"
-http-types = "2"
-lru = "0.16"
-governor = "0.6"
+mime_guess = "2"
+lru = "0.19"
+governor = "0.10"
 httpdate = "1"
 
 [profile.release]
