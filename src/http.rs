@@ -28,7 +28,7 @@ pub(crate) async fn dyn_hreply(
     }
 
     Ok(Box::new(warp::redirect::redirect(
-        warp::http::Uri::from_str(&format!("https://{}/{}", &domain, tail.as_str()))
+        warp::http::Uri::from_str(&format!("https://{}/{}", domain, tail.as_str()))
             .expect("problem with uri?"),
     )))
 }
