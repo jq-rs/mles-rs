@@ -140,6 +140,16 @@ type DynReplyArgs = (
     bool, // cors
 );
 
+/// The file a request path names under `<www_root>/<domain>/`: the path
+/// itself, or for a directory (`/`, `/permits`, `/permits/`) its index.html.
+async fn resolve_file(www_root: &str, domain: &str, path: &str) -> String {
+    let file_path = format!("{www_root}/{domain}/{path}");
+    match tokio::fs::metadata(&file_path).await {
+        Ok(m) if m.is_dir() => format!("{}/index.html", file_path.trim_end_matches('/')),
+        _ => file_path,
+    }
+}
+
 pub(crate) async fn dyn_reply(
     tuple: DynReplyArgs,
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
@@ -148,18 +158,15 @@ pub(crate) async fn dyn_reply(
     if uri != domain {
         return Err(warp::reject::not_found());
     }
-    let mut path = tail.as_str();
-    if path.is_empty() {
-        path = "index.html";
-    }
-    let file_path = format!("{}/{}/{}", www_root, uri, path);
+    let file_path = resolve_file(&www_root, &uri, tail.as_str()).await;
 
     log::debug!("Accessing {file_path}...");
 
     // Stat first: need mtime for 304 evaluation before we decide to read.
+    // A directory without an index.html is not found (reading it would fail).
     let metadata = match tokio::fs::metadata(&file_path).await {
-        Ok(m) => m,
-        Err(_) => {
+        Ok(m) if !m.is_dir() => m,
+        _ => {
             log::debug!("{file_path} does not exist");
             return Ok(Box::new(warp::reply::with_status(
                 "Not Found",
@@ -347,4 +354,28 @@ pub(crate) fn spawn_http_redirect_server(
             crate::server::serve_http(policed, hindex, semaphore).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_file;
+
+    #[tokio::test]
+    async fn a_directory_serves_its_index() {
+        let root = std::env::temp_dir().join(format!("mles-resolve-{}", std::process::id()));
+        let site = root.join("example.test");
+        std::fs::create_dir_all(site.join("permits")).unwrap();
+        std::fs::write(site.join("index.html"), "home").unwrap();
+        std::fs::write(site.join("permits/index.html"), "permits").unwrap();
+        std::fs::write(site.join("apps.html"), "apps").unwrap();
+        let www = root.to_str().unwrap();
+        let at = |p: &str| format!("{www}/example.test/{p}");
+        assert_eq!(resolve_file(www, "example.test", "").await, at("index.html"));
+        assert_eq!(resolve_file(www, "example.test", "permits").await, at("permits/index.html"));
+        assert_eq!(resolve_file(www, "example.test", "permits/").await, at("permits/index.html"));
+        assert_eq!(resolve_file(www, "example.test", "apps.html").await, at("apps.html"));
+        // Missing paths stay as they are (the caller answers 404).
+        assert_eq!(resolve_file(www, "example.test", "nope.html").await, at("nope.html"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }
