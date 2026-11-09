@@ -367,10 +367,9 @@ where
                         .serve_connection(io, service_clone)
                         .with_upgrades()
                         .await
+                        && !err.is_timeout()
                     {
-                        if !err.is_timeout() {
-                            log::debug!("Error serving TLS connection: {:?}", err);
-                        }
+                        log::debug!("Error serving TLS connection: {:?}", err);
                     }
                 });
             }
