@@ -446,4 +446,49 @@ mod tests {
         assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
         assert!(resp.ends_with("\r\n\r\n6.6.6.6, 127.0.0.1"), "{resp}");
     }
+
+    /// A proof takes 30-60 s, sometimes more: nothing on the proxy path (the
+    /// header-read timeout included, 60 s) may cut an answer that comes later.
+    /// Paused time: the upstream's 75 s pass at once, and any timer on the way
+    /// that is shorter would fire first.
+    #[tokio::test(start_paused = true)]
+    async fn a_slow_upstream_answer_after_75_s_still_reaches_the_client() {
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = upstream.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut s, _) = upstream.accept().await.unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = s.read(&mut chunk).await.unwrap();
+                assert!(n > 0);
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            tokio::time::sleep(Duration::from_secs(75)).await;
+            s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nproved")
+                .await
+                .unwrap();
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let permitted = enforce_ip_policy(
+            TcpListenerStream::new(listener),
+            None,
+            PerIpLimiter::new(NonZeroU32::new(4).unwrap()),
+        );
+        let routes = crate::proxy::create_proxy_routes(
+            &[("api/keeper".to_string(), format!("http://{upstream_addr}"))],
+            crate::proxy::create_client(),
+        );
+        tokio::spawn(serve_tls(permitted, routes, Arc::new(Semaphore::new(4))));
+
+        let mut c = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        c.write_all(b"POST /api/keeper/prove/buy HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+            .await
+            .unwrap();
+        let mut resp = String::new();
+        c.read_to_string(&mut resp).await.unwrap();
+        assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+        assert!(resp.ends_with("proved"), "{resp}");
+    }
 }

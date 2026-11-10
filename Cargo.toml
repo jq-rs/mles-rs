@@ -48,4 +48,5 @@ lto = true
 strip = true
 
 [dev-dependencies]
+tokio = { version = "1.54", features = ["full", "test-util"] }
 warp = { version = "0.4", features = ["websocket", "test"] }
